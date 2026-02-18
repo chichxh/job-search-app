@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -24,7 +25,9 @@ class HHImportFilters:
 class HHImportResult:
     pages_processed: int = 0
     vacancies_seen: int = 0
-    vacancies_saved: int = 0
+    saved_count: int = 0
+    updated_count: int = 0
+    errors_count: int = 0
 
 
 class HHImportService:
@@ -38,11 +41,12 @@ class HHImportService:
         result = HHImportResult()
 
         logger.info(
-            "HH import started | text=%s area=%s per_page=%s pages_limit=%s",
+            "HH import started | text=%s area=%s per_page=%s pages_limit=%s include_details=%s",
             filters.text,
             filters.area,
             filters.per_page,
             filters.pages_limit,
+            filters.include_details,
         )
 
         total_pages_from_api: Optional[int] = None
@@ -67,25 +71,44 @@ class HHImportService:
             )
 
             saved_on_page = 0
-            for item in items:
-                details: Optional[dict[str, Any]] = None
-                if filters.include_details:
-                    details = await self.hh_client.get_vacancy_details(str(item.get("id")))
+            updated_on_page = 0
+            errors_on_page = 0
 
-                values = self._map_to_vacancy_values(item, details)
-                self._upsert_vacancy(values)
-                result.vacancies_seen += 1
-                result.vacancies_saved += 1
-                saved_on_page += 1
+            for item in items:
+                try:
+                    details: Optional[dict[str, Any]] = None
+                    if filters.include_details:
+                        details = await self.hh_client.get_vacancy_details(str(item.get("id")))
+
+                    values = self._map_to_vacancy_values(item, details)
+                    is_existing = self._vacancy_exists(values["source"], values["external_id"])
+                    self._upsert_vacancy(values)
+
+                    result.vacancies_seen += 1
+                    if is_existing:
+                        result.updated_count += 1
+                        updated_on_page += 1
+                    else:
+                        result.saved_count += 1
+                        saved_on_page += 1
+                except Exception:  # noqa: BLE001
+                    logger.exception("Failed to process HH vacancy | external_id=%s", item.get("id"))
+                    self.db.rollback()
+                    result.errors_count += 1
+                    errors_on_page += 1
 
             self.db.commit()
             result.pages_processed += 1
 
             logger.info(
-                "HH page committed | page=%s saved=%s cumulative_saved=%s",
+                "HH page committed | page=%s saved=%s updated=%s errors=%s cumulative_saved=%s cumulative_updated=%s cumulative_errors=%s",
                 page + 1,
                 saved_on_page,
-                result.vacancies_saved,
+                updated_on_page,
+                errors_on_page,
+                result.saved_count,
+                result.updated_count,
+                result.errors_count,
             )
 
             if total_pages_from_api is not None and page + 1 >= total_pages_from_api:
@@ -94,10 +117,12 @@ class HHImportService:
             await self.hh_client.polite_delay()
 
         logger.info(
-            "HH import finished | pages_processed=%s vacancies_seen=%s vacancies_saved=%s",
+            "HH import finished | pages_processed=%s vacancies_seen=%s saved=%s updated=%s errors=%s",
             result.pages_processed,
             result.vacancies_seen,
-            result.vacancies_saved,
+            result.saved_count,
+            result.updated_count,
+            result.errors_count,
         )
         return result
 
@@ -111,11 +136,14 @@ class HHImportService:
         )
         self.db.execute(stmt)
 
+    def _vacancy_exists(self, source: str, external_id: str) -> bool:
+        stmt = select(Vacancy.id).where(Vacancy.source == source, Vacancy.external_id == external_id).limit(1)
+        return self.db.execute(stmt).scalar_one_or_none() is not None
+
     @staticmethod
     def _map_to_vacancy_values(item: dict[str, Any], details: Optional[dict[str, Any]]) -> dict[str, Any]:
         salary = item.get("salary") or {}
         snippet = item.get("snippet") or {}
-        description = None
 
         if details and details.get("description"):
             description = details["description"]
