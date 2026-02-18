@@ -1,6 +1,9 @@
 import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.routers.vacancies import router as vacancies_router
 
 app = FastAPI(title="Job Search App")
 
@@ -15,10 +18,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/")
 def root():
     return {"message": "Hello! Go to /docs"}
 
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+app.include_router(vacancies_router, prefix="/api/v1")
