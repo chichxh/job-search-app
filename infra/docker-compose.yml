@@ -1,0 +1,102 @@
+services:
+  db:
+    image: postgres:16
+    container_name: jobsearch_db
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    ports:
+      # порт НА VM (госте). Его же ты пробрасываешь VirtualBox на Windows.
+      - "15432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: jobsearch_redis
+    restart: unless-stopped
+    ports:
+      - "16379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: jobsearch_api
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      # VirtualBox shared folder часто не дает нормальные file events → включаем polling
+      WATCHFILES_FORCE_POLLING: "1"
+      PYTHONPATH: "/app"
+    volumes:
+      # монтируем исходники, чтобы изменения на Windows сразу были видны в контейнере
+      - ../backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: jobsearch_worker
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      PYTHONPATH: "/app"
+    volumes:
+      - ../backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      celery -A app.celery_app:celery_app worker
+      --loglevel=INFO
+      --concurrency=1
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: jobsearch_frontend
+    restart: unless-stopped
+    environment:
+      # Vite на shared-folder тоже лучше с polling
+      CHOKIDAR_USEPOLLING: "true"
+      BROWSER: "none"
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+    command: >
+      npm run dev -- --host 0.0.0.0 --port 5173
+
+volumes:
+  pgdata:
