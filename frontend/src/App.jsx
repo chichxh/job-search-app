@@ -4,6 +4,7 @@ import './App.css';
 
 const API_BASE_URL = '/api/v1';
 
+
 function createTestVacancyPayload() {
   const suffix = Date.now();
 
