@@ -88,6 +88,7 @@ services:
       # Vite на shared-folder тоже лучше с polling
       CHOKIDAR_USEPOLLING: "true"
       BROWSER: "none"
+      VITE_API_PROXY_TARGET: "http://api:8000"
     volumes:
       - ../frontend:/app
       - /app/node_modules

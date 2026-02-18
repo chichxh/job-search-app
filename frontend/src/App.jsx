@@ -2,16 +2,24 @@ import { useEffect, useRef, useState } from 'react';
 
 import './App.css';
 
-const API_BASE_URL = 'http://localhost:8000';
-const API_PREFIX = '/api/v1';
+const API_BASE_URL = '/api/v1';
 
-async function apiRequest(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, options);
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `Request failed with status ${response.status}`);
-  }
-  return response.json();
+
+function createTestVacancyPayload() {
+  const suffix = Date.now();
+
+  return {
+    source: 'manual',
+    external_id: `test-${suffix}`,
+    title: `Тестовая вакансия #${suffix}`,
+    company_name: 'Demo Company',
+    location: 'Remote',
+    salary_from: 150000,
+    salary_to: 220000,
+    currency: 'RUB',
+    description: 'Автоматически созданная тестовая вакансия',
+    status: 'open',
+  };
 }
 
 const initialForm = {
