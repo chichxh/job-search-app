@@ -1,27 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
+ 
+ import './App.css';
+ 
+const API_BASE_URL = 'http://localhost:8000';
+const API_PREFIX = '/api/v1';
 
-import './App.css';
-
-const API_BASE_URL = '/api/v1';
-
-
-function createTestVacancyPayload() {
-  const suffix = Date.now();
-
-  return {
-    source: 'manual',
-    external_id: `test-${suffix}`,
-    title: `Тестовая вакансия #${suffix}`,
-    company_name: 'Demo Company',
-    location: 'Remote',
-    salary_from: 150000,
-    salary_to: 220000,
-    currency: 'RUB',
-    description: 'Автоматически созданная тестовая вакансия',
-    status: 'open',
-  };
-}
-
+async function apiRequest(path, options = {}) {
+  const response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, options);
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `Request failed with status ${response.status}`);
+  }
+  return response.json();
+ }
+ 
 const initialForm = {
   text: 'python backend',
   area: '',
@@ -29,36 +21,36 @@ const initialForm = {
   pages_limit: 3,
 };
 
-export default function App() {
-  const [vacancies, setVacancies] = useState([]);
+ export default function App() {
+   const [vacancies, setVacancies] = useState([]);
   const [isLoadingVacancies, setIsLoadingVacancies] = useState(false);
   const [isStartingImport, setIsStartingImport] = useState(false);
-  const [error, setError] = useState('');
+   const [error, setError] = useState('');
   const [taskId, setTaskId] = useState('');
   const [taskState, setTaskState] = useState('');
   const [taskResult, setTaskResult] = useState(null);
   const [taskError, setTaskError] = useState('');
   const [form, setForm] = useState(initialForm);
   const pollIntervalRef = useRef(null);
-
-  const loadVacancies = async () => {
+ 
+   const loadVacancies = async () => {
     setIsLoadingVacancies(true);
-    setError('');
-
-    try {
+     setError('');
+ 
+     try {
       const data = await apiRequest('/vacancies');
-      setVacancies(data);
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
+       setVacancies(data);
+     } catch (requestError) {
+       setError(requestError.message);
+     } finally {
       setIsLoadingVacancies(false);
-    }
-  };
-
-  useEffect(() => {
-    loadVacancies();
-  }, []);
-
+     }
+   };
+ 
+   useEffect(() => {
+     loadVacancies();
+   }, []);
+ 
   useEffect(
     () => () => {
       if (pollIntervalRef.current) {
@@ -110,7 +102,7 @@ export default function App() {
   const handleStartImport = async (event) => {
     event.preventDefault();
     setIsStartingImport(true);
-    setError('');
+     setError('');
     setTaskError('');
     setTaskResult(null);
     setTaskState('');
@@ -122,32 +114,32 @@ export default function App() {
       pages_limit: Number(form.pages_limit),
       fetch_details: true,
     };
-
-    try {
+ 
+     try {
       const data = await apiRequest('/import/hh', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+         method: 'POST',
+         headers: {
+           'Content-Type': 'application/json',
+         },
         body: JSON.stringify(payload),
-      });
-
+       });
+ 
       setTaskId(data.task_id);
       setTaskState('PENDING');
       pollTaskStatus(data.task_id);
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
+     } catch (requestError) {
+       setError(requestError.message);
+     } finally {
       setIsStartingImport(false);
-    }
-  };
-
-  return (
-    <main className="vacancies-page">
-      <header className="vacancies-header">
+     }
+   };
+ 
+   return (
+     <main className="vacancies-page">
+       <header className="vacancies-header">
         <h1>HH Import MVP</h1>
-      </header>
-
+       </header>
+ 
       <form onSubmit={handleStartImport} className="vacancy-card" style={{ marginBottom: '16px' }}>
         <h2>Запуск импорта</h2>
         <p>
@@ -211,29 +203,29 @@ export default function App() {
       ) : null}
 
       {isLoadingVacancies ? <p>Загрузка вакансий...</p> : null}
-      {error ? <p className="error">{error}</p> : null}
-
+       {error ? <p className="error">{error}</p> : null}
+ 
       {!isLoadingVacancies && vacancies.length === 0 ? <p>Вакансий пока нет.</p> : null}
-
-      <ul className="vacancies-list">
-        {vacancies.map((vacancy) => (
-          <li key={vacancy.id} className="vacancy-card">
-            <h2>{vacancy.title}</h2>
-            <p>
-              <strong>Компания:</strong> {vacancy.company_name ?? '—'}
-            </p>
-            <p>
-              <strong>Локация:</strong> {vacancy.location ?? '—'}
-            </p>
+ 
+       <ul className="vacancies-list">
+         {vacancies.map((vacancy) => (
+           <li key={vacancy.id} className="vacancy-card">
+             <h2>{vacancy.title}</h2>
+             <p>
+               <strong>Компания:</strong> {vacancy.company_name ?? '—'}
+             </p>
+             <p>
+               <strong>Локация:</strong> {vacancy.location ?? '—'}
+             </p>
             <p>
               <strong>Источник:</strong> {vacancy.source}
             </p>
-            <p>
-              <strong>Статус:</strong> {vacancy.status}
-            </p>
-          </li>
-        ))}
-      </ul>
-    </main>
-  );
-}
+             <p>
+               <strong>Статус:</strong> {vacancy.status}
+             </p>
+           </li>
+         ))}
+       </ul>
+     </main>
+   );
+ }
