@@ -1,7 +1,8 @@
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
@@ -43,6 +44,12 @@ class SavedSearch(Base):
     salary_from: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     salary_to: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     currency: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    filters_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default="{}",
+    )
     per_page: Mapped[int] = mapped_column(Integer, nullable=False, server_default="20", default=20)
     pages_limit: Mapped[int] = mapped_column(Integer, nullable=False, server_default="3", default=3)
     cursor_page: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", default=0)

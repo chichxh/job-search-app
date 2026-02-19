@@ -179,6 +179,7 @@ class HHImportService:
             per_page=saved_search.per_page,
             pages_limit=saved_search.pages_limit,
             include_details=True,
+            extra_params=saved_search.filters_json,
         )
 
         result = await self.import_vacancies(
