@@ -1,12 +1,13 @@
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.db.models import Vacancy
+from app.db.models import SavedSearch, Vacancy
 from app.integrations.hh_client import HHClient
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,11 @@ logger = logging.getLogger(__name__)
 class HHImportFilters:
     text: str
     area: Optional[str] = None
+    schedule: Optional[str] = None
+    experience: Optional[str] = None
+    salary_from: Optional[int] = None
+    salary_to: Optional[int] = None
+    currency: Optional[str] = None
     per_page: int = 20
     pages_limit: int = 1
     include_details: bool = True
@@ -28,6 +34,7 @@ class HHImportResult:
     saved_count: int = 0
     updated_count: int = 0
     errors_count: int = 0
+    stop_by_cutoff: bool = False
 
 
 class HHImportService:
@@ -37,24 +44,42 @@ class HHImportService:
         self.db = db
         self.hh_client = hh_client
 
-    async def import_vacancies(self, filters: HHImportFilters) -> HHImportResult:
+    async def import_vacancies(
+        self,
+        filters: HHImportFilters,
+        *,
+        cutoff_published_at: Optional[datetime] = None,
+        start_page: int = 0,
+    ) -> HHImportResult:
         result = HHImportResult()
 
         logger.info(
-            "HH import started | text=%s area=%s per_page=%s pages_limit=%s include_details=%s",
+            "HH import started | text=%s area=%s schedule=%s experience=%s salary_from=%s salary_to=%s currency=%s per_page=%s pages_limit=%s include_details=%s start_page=%s cutoff=%s",
             filters.text,
             filters.area,
+            filters.schedule,
+            filters.experience,
+            filters.salary_from,
+            filters.salary_to,
+            filters.currency,
             filters.per_page,
             filters.pages_limit,
             filters.include_details,
+            start_page,
+            cutoff_published_at,
         )
 
         total_pages_from_api: Optional[int] = None
 
-        for page in range(filters.pages_limit):
+        for offset in range(filters.pages_limit):
+            page = start_page + offset
             page_payload = await self.hh_client.search_vacancies(
                 text=filters.text,
                 area=filters.area,
+                schedule=filters.schedule,
+                experience=filters.experience,
+                salary=filters.salary_from,
+                currency=filters.currency,
                 page=page,
                 per_page=filters.per_page,
             )
@@ -73,9 +98,15 @@ class HHImportService:
             saved_on_page = 0
             updated_on_page = 0
             errors_on_page = 0
+            stop_by_cutoff = False
 
             for item in items:
                 try:
+                    published_at = self._parse_hh_datetime(item.get("published_at"))
+                    if cutoff_published_at and published_at and published_at <= cutoff_published_at:
+                        stop_by_cutoff = True
+                        continue
+
                     details: Optional[dict[str, Any]] = None
                     if filters.include_details:
                         details = await self.hh_client.get_vacancy_details(str(item.get("id")))
@@ -101,15 +132,20 @@ class HHImportService:
             result.pages_processed += 1
 
             logger.info(
-                "HH page committed | page=%s saved=%s updated=%s errors=%s cumulative_saved=%s cumulative_updated=%s cumulative_errors=%s",
+                "HH page committed | page=%s saved=%s updated=%s errors=%s stop_by_cutoff=%s cumulative_saved=%s cumulative_updated=%s cumulative_errors=%s",
                 page + 1,
                 saved_on_page,
                 updated_on_page,
                 errors_on_page,
+                stop_by_cutoff,
                 result.saved_count,
                 result.updated_count,
                 result.errors_count,
             )
+
+            if stop_by_cutoff:
+                result.stop_by_cutoff = True
+                break
 
             if total_pages_from_api is not None and page + 1 >= total_pages_from_api:
                 break
@@ -117,14 +153,63 @@ class HHImportService:
             await self.hh_client.polite_delay()
 
         logger.info(
-            "HH import finished | pages_processed=%s vacancies_seen=%s saved=%s updated=%s errors=%s",
+            "HH import finished | pages_processed=%s vacancies_seen=%s saved=%s updated=%s errors=%s stop_by_cutoff=%s",
             result.pages_processed,
             result.vacancies_seen,
             result.saved_count,
             result.updated_count,
             result.errors_count,
+            result.stop_by_cutoff,
         )
         return result
+
+    async def sync_saved_search(self, saved_search: SavedSearch) -> HHImportResult:
+        cutoff = saved_search.last_seen_published_at or saved_search.last_sync_at
+
+        filters = HHImportFilters(
+            text=saved_search.text,
+            area=saved_search.area,
+            schedule=saved_search.schedule,
+            experience=saved_search.experience,
+            salary_from=saved_search.salary_from,
+            salary_to=saved_search.salary_to,
+            currency=saved_search.currency,
+            per_page=saved_search.per_page,
+            pages_limit=saved_search.pages_limit,
+            include_details=True,
+        )
+
+        result = await self.import_vacancies(
+            filters,
+            cutoff_published_at=cutoff,
+            start_page=saved_search.cursor_page,
+        )
+
+        saved_search.last_sync_at = datetime.now(timezone.utc)
+        latest_seen = self._latest_published_at(fallback_cutoff=saved_search.last_seen_published_at)
+
+        if latest_seen:
+            saved_search.last_seen_published_at = latest_seen
+
+        saved_search.cursor_page = 0 if result.stop_by_cutoff else saved_search.cursor_page + result.pages_processed
+        self.db.add(saved_search)
+        self.db.commit()
+        self.db.refresh(saved_search)
+
+        return result
+
+    def _latest_published_at(self, *, fallback_cutoff: Optional[datetime]) -> Optional[datetime]:
+        stmt = (
+            select(Vacancy.published_at)
+            .where(
+                Vacancy.source == "hh",
+                Vacancy.title.is_not(None),
+            )
+            .order_by(Vacancy.published_at.desc())
+            .limit(1)
+        )
+        latest = self.db.execute(stmt).scalar_one_or_none()
+        return latest or fallback_cutoff
 
     def _upsert_vacancy(self, values: dict[str, Any]) -> None:
         stmt = insert(Vacancy).values(**values)
@@ -162,5 +247,12 @@ class HHImportService:
             "currency": salary.get("currency"),
             "description": description,
             "url": item.get("alternate_url"),
+            "published_at": HHImportService._parse_hh_datetime(item.get("published_at")),
             "status": "open",
         }
+
+    @staticmethod
+    def _parse_hh_datetime(value: Optional[str]) -> Optional[datetime]:
+        if not value:
+            return None
+        return datetime.fromisoformat(value)
