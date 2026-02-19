@@ -62,6 +62,8 @@ class HHClient:
         currency: Optional[str] = None,
         page: int = 0,
         per_page: int = 20,
+        clusters: bool = False,
+        extra_params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         params: dict[str, Any] = {"text": text, "page": page, "per_page": per_page}
         if area:
@@ -74,13 +76,68 @@ class HHClient:
             params["salary"] = salary
         if currency:
             params["currency"] = currency
-        return await self._request("GET", "/vacancies", params=params)
+        if clusters:
+            params["clusters"] = "true"
+
+        return await self._request(
+            "GET",
+            "/vacancies",
+            params=self._build_query_params(params, extra_params),
+        )
+
+    async def get_vacancy_clusters(
+        self,
+        *,
+        text: str,
+        area: Optional[str] = None,
+        schedule: Optional[str] = None,
+        experience: Optional[str] = None,
+        salary: Optional[int] = None,
+        currency: Optional[str] = None,
+        extra_params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return await self.search_vacancies(
+            text=text,
+            area=area,
+            schedule=schedule,
+            experience=experience,
+            salary=salary,
+            currency=currency,
+            page=0,
+            per_page=1,
+            clusters=True,
+            extra_params=extra_params,
+        )
 
     async def get_vacancy_details(self, vacancy_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/vacancies/{vacancy_id}")
 
     async def polite_delay(self) -> None:
         await asyncio.sleep(random.uniform(self.min_delay_s, self.max_delay_s))
+
+    def _build_query_params(
+        self,
+        base_params: dict[str, Any],
+        extra_params: dict[str, Any] | None,
+    ) -> list[tuple[str, str]]:
+        params: list[tuple[str, str]] = []
+
+        for key, value in base_params.items():
+            params.append((key, str(value)))
+
+        if not extra_params:
+            return params
+
+        for key, value in extra_params.items():
+            if value is None:
+                continue
+            if isinstance(value, list):
+                for item in value:
+                    params.append((key, str(item)))
+                continue
+            params.append((key, str(value)))
+
+        return params
 
     async def _request(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
         if not self._client:
