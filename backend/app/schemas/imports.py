@@ -6,6 +6,11 @@ from pydantic import BaseModel, Field
 class HHImportRequest(BaseModel):
     text: str = Field(min_length=1, max_length=255)
     area: Optional[int] = None
+    schedule: Optional[str] = Field(default=None, max_length=50)
+    experience: Optional[str] = Field(default=None, max_length=50)
+    salary_from: Optional[int] = Field(default=None, ge=0)
+    salary_to: Optional[int] = Field(default=None, ge=0)
+    currency: Optional[str] = Field(default=None, max_length=10)
     per_page: int = Field(default=20, ge=1, le=100)
     pages_limit: int = Field(default=3, ge=1, le=20)
     fetch_details: bool = True

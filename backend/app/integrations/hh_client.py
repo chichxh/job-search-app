@@ -56,12 +56,24 @@ class HHClient:
         *,
         text: str,
         area: Optional[str] = None,
+        schedule: Optional[str] = None,
+        experience: Optional[str] = None,
+        salary: Optional[int] = None,
+        currency: Optional[str] = None,
         page: int = 0,
         per_page: int = 20,
     ) -> dict[str, Any]:
         params: dict[str, Any] = {"text": text, "page": page, "per_page": per_page}
         if area:
             params["area"] = area
+        if schedule:
+            params["schedule"] = schedule
+        if experience:
+            params["experience"] = experience
+        if salary is not None:
+            params["salary"] = salary
+        if currency:
+            params["currency"] = currency
         return await self._request("GET", "/vacancies", params=params)
 
     async def get_vacancy_details(self, vacancy_id: str) -> dict[str, Any]:
