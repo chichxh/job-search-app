@@ -6,7 +6,7 @@ const API_BASE_URL = 'http://localhost:8000';
 const API_PREFIX = '/api/v1';
 
 async function apiRequest(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, options);
+  const response = await fetch(`${API_PREFIX}${path}`, options);
   if (!response.ok) {
     const text = await response.text();
     throw new Error(text || `Request failed with status ${response.status}`);
@@ -211,6 +211,7 @@ const initialForm = {
          {vacancies.map((vacancy) => (
            <li key={vacancy.id} className="vacancy-card">
              <h2>{vacancy.title}</h2>
+             <h3>{vacancy.salary_from} - {vacancy.salary_to} {vacancy.currency}</h3>
              <p>
                <strong>Компания:</strong> {vacancy.company_name ?? '—'}
              </p>
@@ -223,6 +224,13 @@ const initialForm = {
              <p>
                <strong>Статус:</strong> {vacancy.status}
              </p>
+             <p>
+              <strong>Создан</strong> {vacancy.created_at}
+             </p>
+             <p> 
+              <strong>Обновлен:</strong> {vacancy.updated_at}
+             </p>
+             <a href={vacancy.url}>Ссылка</a>
            </li>
          ))}
        </ul>

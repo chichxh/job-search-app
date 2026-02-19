@@ -77,6 +77,27 @@ services:
       celery -A app.celery_app:celery_app worker
       --loglevel=INFO
       --concurrency=1
+  
+  beat:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: jobsearch_beat
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      PYTHONPATH: "/app"
+    volumes:
+      - ../backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      celery -A app.celery_app:celery_app beat
+      --loglevel=INFO
 
   frontend:
     build:
