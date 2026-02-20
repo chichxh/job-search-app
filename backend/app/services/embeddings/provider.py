@@ -1,8 +1,8 @@
+import hashlib
+import math
 import os
 from abc import ABC, abstractmethod
 from functools import lru_cache
-
-from sentence_transformers import SentenceTransformer
 
 
 class EmbeddingProvider(ABC):
@@ -18,20 +18,36 @@ class EmbeddingProvider(ABC):
         """Возвращает embedding для текста."""
 
 
-class LocalSentenceTransformerProvider(EmbeddingProvider):
-    """Локальный провайдер на sentence-transformers."""
+class LocalHashEmbeddingProvider(EmbeddingProvider):
+    """Легковесный CPU-only провайдер на hashing trick без внешних ML-зависимостей."""
 
-    def __init__(self, model_name: str) -> None:
+    def __init__(self, model_name: str, embedding_dim: int) -> None:
         self._model_name = model_name
-        self._model = SentenceTransformer(model_name)
+        self._embedding_dim = embedding_dim
 
     @property
     def name(self) -> str:
         return f"local:{self._model_name}"
 
     def embed_text(self, text: str) -> list[float]:
-        vector = self._model.encode(text or "", normalize_embeddings=True)
-        return vector.tolist()
+        vector = [0.0] * self._embedding_dim
+        tokens = (text or "").lower().split()
+
+        if not tokens:
+            return vector
+
+        for token in tokens:
+            digest = hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest()
+            token_hash = int.from_bytes(digest, byteorder="big", signed=False)
+            idx = token_hash % self._embedding_dim
+            sign = 1.0 if ((token_hash >> 1) & 1) == 0 else -1.0
+            vector[idx] += sign
+
+        norm = math.sqrt(sum(value * value for value in vector))
+        if norm == 0.0:
+            return vector
+
+        return [value / norm for value in vector]
 
 
 class OpenAIEmbeddingProvider(EmbeddingProvider):
@@ -61,10 +77,11 @@ def get_embedding_provider() -> EmbeddingProvider:
     """Фабрика провайдера из env."""
 
     provider_name = os.getenv("EMBEDDING_PROVIDER", "local").lower()
-    model_name = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+    model_name = os.getenv("EMBEDDING_MODEL", "hashing-cpu")
+    embedding_dim = int(os.getenv("EMBEDDING_DIM", "384"))
 
     if provider_name == "local":
-        return LocalSentenceTransformerProvider(model_name=model_name)
+        return LocalHashEmbeddingProvider(model_name=model_name, embedding_dim=embedding_dim)
     if provider_name == "openai":
         return OpenAIEmbeddingProvider()
     if provider_name == "gigachat":
