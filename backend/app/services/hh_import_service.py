@@ -8,7 +8,6 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.db.models import SavedSearch, Vacancy
-from app.tasks.embedding_tasks import build_vacancy_embedding
 from app.integrations.hh_client import HHClient
 
 logger = logging.getLogger(__name__)
@@ -117,7 +116,7 @@ class HHImportService:
                     values = self._map_to_vacancy_values(item, details)
                     is_existing = self._vacancy_exists(values["source"], values["external_id"])
                     vacancy_id = self._upsert_vacancy(values)
-                    build_vacancy_embedding.delay(vacancy_id)
+                    self._schedule_vacancy_embedding(vacancy_id)
 
                     result.vacancies_seen += 1
                     if is_existing:
@@ -215,6 +214,13 @@ class HHImportService:
         )
         latest = self.db.execute(stmt).scalar_one_or_none()
         return latest or fallback_cutoff
+
+
+    @staticmethod
+    def _schedule_vacancy_embedding(vacancy_id: int) -> None:
+        from app.tasks.embedding_tasks import build_vacancy_embedding
+
+        build_vacancy_embedding.delay(vacancy_id)
 
     def _upsert_vacancy(self, values: dict[str, Any]) -> int:
         stmt = insert(Vacancy).values(**values)
