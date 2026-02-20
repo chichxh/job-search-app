@@ -17,3 +17,8 @@
   - `POST /saved-searches/{id}/sync`
   - `GET /saved-searches/{id}/clusters`
 - Periodic Celery sync uses `filters_json` from `saved_searches` when requesting HH vacancies.
+
+## Миграции в контейнере
+
+- `docker compose exec api alembic revision --autogenerate -m "add matching tables"`
+- `docker compose exec api alembic upgrade head`

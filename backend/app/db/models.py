@@ -1,11 +1,25 @@
+import os
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint, func
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
+
+EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "384"))
 
 
 class Vacancy(Base):
@@ -62,3 +76,80 @@ class SavedSearch(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+
+class Profile(Base):
+    __tablename__ = "profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    resume_text: Mapped[str] = mapped_column(Text, nullable=False)
+    skills_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class VacancyRequirement(Base):
+    __tablename__ = "vacancy_requirements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    vacancy_id: Mapped[int] = mapped_column(
+        ForeignKey("vacancies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    raw_text: Mapped[str] = mapped_column(Text, nullable=False)
+    normalized_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    weight: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1", default=1)
+    is_hard: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false", default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ResumeEvidence(Base):
+    __tablename__ = "resume_evidence"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    vacancy_id: Mapped[int] = mapped_column(ForeignKey("vacancies.id", ondelete="CASCADE"), nullable=False, index=True)
+    requirement_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("vacancy_requirements.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    evidence_text: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class VacancyScore(Base):
+    __tablename__ = "vacancy_scores"
+    __table_args__ = (UniqueConstraint("profile_id", "vacancy_id", name="uq_vacancy_scores_profile_vacancy"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    vacancy_id: Mapped[int] = mapped_column(ForeignKey("vacancies.id", ondelete="CASCADE"), nullable=False, index=True)
+    layer1_score: Mapped[float] = mapped_column(Float, nullable=False)
+    layer2_score: Mapped[float] = mapped_column(Float, nullable=False)
+    final_score: Mapped[float] = mapped_column(Float, nullable=False)
+    verdict: Mapped[str] = mapped_column(String(20), nullable=False)
+    explanation: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class VacancyEmbedding(Base):
+    __tablename__ = "vacancy_embeddings"
+
+    vacancy_id: Mapped[int] = mapped_column(
+        ForeignKey("vacancies.id", ondelete="CASCADE"), primary_key=True, nullable=False
+    )
+    embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIM), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ProfileEmbedding(Base):
+    __tablename__ = "profile_embeddings"
+
+    profile_id: Mapped[int] = mapped_column(
+        ForeignKey("profiles.id", ondelete="CASCADE"), primary_key=True, nullable=False
+    )
+    embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIM), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
