@@ -22,3 +22,9 @@
 
 - `docker compose exec api alembic revision --autogenerate -m "add matching tables"`
 - `docker compose exec api alembic upgrade head`
+
+## Embeddings (Celery)
+
+- Провайдер задаётся env: `EMBEDDING_PROVIDER` (`local`), `EMBEDDING_MODEL` (`all-MiniLM-L6-v2`), `EMBEDDING_DIM` (`384`).
+- При сохранении/обновлении вакансий и профилей ставятся Celery-задачи на пересчёт embedding.
+- Dev endpoint для массового пересчёта: `POST /api/v1/dev/embeddings/rebuild-vacancies?limit=20`.
