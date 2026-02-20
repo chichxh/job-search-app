@@ -33,6 +33,8 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
+      args:
+        INSTALL_ML: "false"
     container_name: jobsearch_api
     restart: unless-stopped
     env_file:
@@ -64,6 +66,8 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
+      args:
+        INSTALL_ML: "true"
     container_name: jobsearch_worker
     restart: unless-stopped
     env_file:
@@ -89,6 +93,8 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
+      args:
+        INSTALL_ML: "false"
     container_name: jobsearch_beat
     restart: unless-stopped
     env_file:
