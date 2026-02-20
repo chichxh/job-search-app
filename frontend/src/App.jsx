@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
- 
- import './App.css';
- 
+
+import './App.css';
+
 const API_BASE_URL = 'http://localhost:8000';
 const API_PREFIX = '/api/v1';
 
@@ -12,8 +12,8 @@ async function apiRequest(path, options = {}) {
     throw new Error(text || `Request failed with status ${response.status}`);
   }
   return response.json();
- }
- 
+}
+
 const initialForm = {
   text: 'python backend',
   area: '',
@@ -21,36 +21,40 @@ const initialForm = {
   pages_limit: 3,
 };
 
- export default function App() {
-   const [vacancies, setVacancies] = useState([]);
+export default function App() {
+  const [vacancies, setVacancies] = useState([]);
   const [isLoadingVacancies, setIsLoadingVacancies] = useState(false);
   const [isStartingImport, setIsStartingImport] = useState(false);
-   const [error, setError] = useState('');
+  const [isLoadingClusters, setIsLoadingClusters] = useState(false);
+  const [error, setError] = useState('');
   const [taskId, setTaskId] = useState('');
   const [taskState, setTaskState] = useState('');
   const [taskResult, setTaskResult] = useState(null);
   const [taskError, setTaskError] = useState('');
+  const [clustersData, setClustersData] = useState(null);
+  const [selectedClusterItem, setSelectedClusterItem] = useState(null);
+  const [selectedExtraParams, setSelectedExtraParams] = useState(null);
   const [form, setForm] = useState(initialForm);
   const pollIntervalRef = useRef(null);
- 
-   const loadVacancies = async () => {
+
+  const loadVacancies = async () => {
     setIsLoadingVacancies(true);
-     setError('');
- 
-     try {
+    setError('');
+
+    try {
       const data = await apiRequest('/vacancies');
-       setVacancies(data);
-     } catch (requestError) {
-       setError(requestError.message);
-     } finally {
+      setVacancies(data);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
       setIsLoadingVacancies(false);
-     }
-   };
- 
-   useEffect(() => {
-     loadVacancies();
-   }, []);
- 
+    }
+  };
+
+  useEffect(() => {
+    loadVacancies();
+  }, []);
+
   useEffect(
     () => () => {
       if (pollIntervalRef.current) {
@@ -99,14 +103,7 @@ const initialForm = {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleStartImport = async (event) => {
-    event.preventDefault();
-    setIsStartingImport(true);
-     setError('');
-    setTaskError('');
-    setTaskResult(null);
-    setTaskState('');
-
+  const buildImportPayload = () => {
     const payload = {
       text: form.text.trim(),
       area: form.area.trim() === '' ? null : Number(form.area),
@@ -114,32 +111,79 @@ const initialForm = {
       pages_limit: Number(form.pages_limit),
       fetch_details: true,
     };
- 
-     try {
+
+    if (selectedExtraParams) {
+      payload.extra_params = selectedExtraParams;
+    }
+
+    return payload;
+  };
+
+  const handleStartImport = async (event) => {
+    event.preventDefault();
+    setIsStartingImport(true);
+    setError('');
+    setTaskError('');
+    setTaskResult(null);
+    setTaskState('');
+
+    try {
       const data = await apiRequest('/import/hh', {
-         method: 'POST',
-         headers: {
-           'Content-Type': 'application/json',
-         },
-        body: JSON.stringify(payload),
-       });
- 
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(buildImportPayload()),
+      });
+
       setTaskId(data.task_id);
       setTaskState('PENDING');
       pollTaskStatus(data.task_id);
-     } catch (requestError) {
-       setError(requestError.message);
-     } finally {
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
       setIsStartingImport(false);
-     }
-   };
- 
-   return (
-     <main className="vacancies-page">
-       <header className="vacancies-header">
+    }
+  };
+
+  const handleLoadClusters = async () => {
+    setIsLoadingClusters(true);
+    setError('');
+
+    try {
+      const data = await apiRequest('/import/hh/clusters', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(buildImportPayload()),
+      });
+
+      setClustersData(data);
+      setSelectedClusterItem(null);
+      setSelectedExtraParams(null);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setIsLoadingClusters(false);
+    }
+  };
+
+  const handleSelectClusterItem = (item) => {
+    if (!item.params) {
+      return;
+    }
+
+    setSelectedClusterItem(item);
+    setSelectedExtraParams(item.params);
+  };
+
+  return (
+    <main className="vacancies-page">
+      <header className="vacancies-header">
         <h1>HH Import MVP</h1>
-       </header>
- 
+      </header>
+
       <form onSubmit={handleStartImport} className="vacancy-card" style={{ marginBottom: '16px' }}>
         <h2>Запуск импорта</h2>
         <p>
@@ -183,10 +227,54 @@ const initialForm = {
           </label>
         </p>
 
-        <button type="submit" disabled={isStartingImport}>
-          {isStartingImport ? 'Starting...' : 'Start HH Import'}
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button type="submit" disabled={isStartingImport}>
+            {isStartingImport ? 'Starting...' : 'Start HH Import'}
+          </button>
+          <button type="button" onClick={handleLoadClusters} disabled={isLoadingClusters}>
+            {isLoadingClusters ? 'Loading...' : 'Показать кластеры'}
+          </button>
+        </div>
+
+        {selectedExtraParams ? (
+          <p style={{ marginTop: '12px' }}>
+            <strong>Выбранный кластер:</strong> {selectedClusterItem?.name}
+            <br />
+            <code>{JSON.stringify(selectedExtraParams)}</code>
+          </p>
+        ) : null}
       </form>
+
+      {clustersData ? (
+        <section className="vacancy-card" style={{ marginBottom: '16px' }}>
+          <h2>Кластеры (found: {clustersData.found})</h2>
+          {clustersData.clusters?.map((cluster) => (
+            <div key={cluster.id ?? cluster.name} style={{ marginBottom: '12px' }}>
+              <h3>{cluster.name ?? cluster.id}</h3>
+              <ul>
+                {(cluster.items ?? []).map((item) => (
+                  <li key={`${cluster.id ?? cluster.name}-${item.value ?? item.name}`}>
+                    {item.name} ({item.count})
+                    {item.params ? (
+                      <button
+                        type="button"
+                        onClick={() => handleSelectClusterItem(item)}
+                        style={{ marginLeft: '8px' }}
+                      >
+                        Выбрать
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          <details>
+            <summary>Raw JSON</summary>
+            <pre>{JSON.stringify(clustersData, null, 2)}</pre>
+          </details>
+        </section>
+      ) : null}
 
       {taskId ? (
         <section className="vacancy-card" style={{ marginBottom: '16px' }}>
@@ -203,37 +291,39 @@ const initialForm = {
       ) : null}
 
       {isLoadingVacancies ? <p>Загрузка вакансий...</p> : null}
-       {error ? <p className="error">{error}</p> : null}
- 
+      {error ? <p className="error">{error}</p> : null}
+
       {!isLoadingVacancies && vacancies.length === 0 ? <p>Вакансий пока нет.</p> : null}
- 
-       <ul className="vacancies-list">
-         {vacancies.map((vacancy) => (
-           <li key={vacancy.id} className="vacancy-card">
-             <h2>{vacancy.title}</h2>
-             <h3>{vacancy.salary_from} - {vacancy.salary_to} {vacancy.currency}</h3>
-             <p>
-               <strong>Компания:</strong> {vacancy.company_name ?? '—'}
-             </p>
-             <p>
-               <strong>Локация:</strong> {vacancy.location ?? '—'}
-             </p>
+
+      <ul className="vacancies-list">
+        {vacancies.map((vacancy) => (
+          <li key={vacancy.id} className="vacancy-card">
+            <h2>{vacancy.title}</h2>
+            <h3>
+              {vacancy.salary_from} - {vacancy.salary_to} {vacancy.currency}
+            </h3>
+            <p>
+              <strong>Компания:</strong> {vacancy.company_name ?? '—'}
+            </p>
+            <p>
+              <strong>Локация:</strong> {vacancy.location ?? '—'}
+            </p>
             <p>
               <strong>Источник:</strong> {vacancy.source}
             </p>
-             <p>
-               <strong>Статус:</strong> {vacancy.status}
-             </p>
-             <p>
+            <p>
+              <strong>Статус:</strong> {vacancy.status}
+            </p>
+            <p>
               <strong>Создан</strong> {vacancy.created_at}
-             </p>
-             <p> 
+            </p>
+            <p>
               <strong>Обновлен:</strong> {vacancy.updated_at}
-             </p>
-             <a href={vacancy.url}>Ссылка</a>
-           </li>
-         ))}
-       </ul>
-     </main>
-   );
- }
+            </p>
+            <a href={vacancy.url}>Ссылка</a>
+          </li>
+        ))}
+      </ul>
+    </main>
+  );
+}

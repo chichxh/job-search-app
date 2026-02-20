@@ -83,6 +83,7 @@ async def _run_import(db, params: dict[str, Any]):
         per_page=int(params.get("per_page", 20)),
         pages_limit=int(params.get("pages_limit", 3)),
         include_details=bool(params.get("fetch_details", True)),
+        extra_params=params.get("extra_params"),
     )
 
     async with HHClient() as hh_client:

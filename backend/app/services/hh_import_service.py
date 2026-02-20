@@ -25,6 +25,7 @@ class HHImportFilters:
     per_page: int = 20
     pages_limit: int = 1
     include_details: bool = True
+    extra_params: dict[str, str | int | bool | list[str | int] | None] | None = None
 
 
 @dataclass(slots=True)
@@ -82,6 +83,7 @@ class HHImportService:
                 currency=filters.currency,
                 page=page,
                 per_page=filters.per_page,
+                extra_params=filters.extra_params,
             )
 
             total_pages_from_api = page_payload.get("pages", total_pages_from_api)
@@ -177,6 +179,7 @@ class HHImportService:
             per_page=saved_search.per_page,
             pages_limit=saved_search.pages_limit,
             include_details=True,
+            extra_params=saved_search.filters_json,
         )
 
         result = await self.import_vacancies(

@@ -1,6 +1,8 @@
-from typing import Optional
+from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+AllowedExtraParamValue = str | int | bool | list[str | int] | None
 
 
 class HHImportRequest(BaseModel):
@@ -14,6 +16,29 @@ class HHImportRequest(BaseModel):
     per_page: int = Field(default=20, ge=1, le=100)
     pages_limit: int = Field(default=3, ge=1, le=20)
     fetch_details: bool = True
+    extra_params: dict[str, AllowedExtraParamValue] | None = None
+
+    @field_validator("extra_params")
+    @classmethod
+    def validate_extra_params(cls, value: dict[str, AllowedExtraParamValue] | None) -> dict[str, AllowedExtraParamValue] | None:
+        if value is None:
+            return value
+
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise ValueError("extra_params keys must be strings")
+
+            if item is None or isinstance(item, (str, int, bool)):
+                continue
+
+            if isinstance(item, list):
+                if not all(isinstance(entry, (str, int)) for entry in item):
+                    raise ValueError("extra_params list values must contain only strings or integers")
+                continue
+
+            raise ValueError("extra_params supports only str|int|bool|list[str|int]|None values")
+
+        return value
 
 
 class HHImportTaskResponse(BaseModel):
