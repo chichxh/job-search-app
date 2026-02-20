@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.db.models import SavedSearch, Vacancy
+from app.tasks.embedding_tasks import build_vacancy_embedding
 from app.integrations.hh_client import HHClient
 
 logger = logging.getLogger(__name__)
@@ -115,7 +116,8 @@ class HHImportService:
 
                     values = self._map_to_vacancy_values(item, details)
                     is_existing = self._vacancy_exists(values["source"], values["external_id"])
-                    self._upsert_vacancy(values)
+                    vacancy_id = self._upsert_vacancy(values)
+                    build_vacancy_embedding.delay(vacancy_id)
 
                     result.vacancies_seen += 1
                     if is_existing:
@@ -214,7 +216,7 @@ class HHImportService:
         latest = self.db.execute(stmt).scalar_one_or_none()
         return latest or fallback_cutoff
 
-    def _upsert_vacancy(self, values: dict[str, Any]) -> None:
+    def _upsert_vacancy(self, values: dict[str, Any]) -> int:
         stmt = insert(Vacancy).values(**values)
         update_fields = {k: stmt.excluded[k] for k in values if k not in {"source", "external_id"}}
 
@@ -222,7 +224,8 @@ class HHImportService:
             constraint="uq_vacancies_source_external_id",
             set_=update_fields,
         )
-        self.db.execute(stmt)
+        result = self.db.execute(stmt.returning(Vacancy.id))
+        return int(result.scalar_one())
 
     def _vacancy_exists(self, source: str, external_id: str) -> bool:
         stmt = select(Vacancy.id).where(Vacancy.source == source, Vacancy.external_id == external_id).limit(1)

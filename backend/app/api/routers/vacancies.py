@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Vacancy
 from app.db.session import get_db
 from app.schemas.vacancy import VacancyCreate, VacancyRead, VacancyUpdate
+from app.tasks.embedding_tasks import build_vacancy_embedding
 
 router = APIRouter(prefix="/vacancies", tags=["vacancies"])
 
@@ -16,6 +17,7 @@ def create_vacancy(payload: VacancyCreate, db: Session = Depends(get_db)):
     db.add(vacancy)
     db.commit()
     db.refresh(vacancy)
+    build_vacancy_embedding.delay(vacancy.id)
     return vacancy
 
 
@@ -43,6 +45,7 @@ def update_vacancy(vacancy_id: int, payload: VacancyUpdate, db: Session = Depend
 
     db.commit()
     db.refresh(vacancy)
+    build_vacancy_embedding.delay(vacancy.id)
     return vacancy
 
 
