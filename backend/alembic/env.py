@@ -18,6 +18,18 @@ if DATABASE_URL:
 
 target_metadata = Base.metadata
 
+HNSW_INDEX_NAMES = {
+    "ix_vacancy_embeddings_embedding_hnsw",
+    "ix_profile_embeddings_embedding_hnsw",
+}
+
+def include_object(object_, name, type_, reflected, compare_to):
+    # Эти индексы мы создаём вручную SQL'ом в миграции (pgvector + hnsw),
+    # поэтому отключаем их участие в autogenerate-сравнении.
+    if type_ == "index" and name in HNSW_INDEX_NAMES:
+        return False
+    return True
+
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
@@ -27,6 +39,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -41,7 +54,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+        context.configure(connection=connection, target_metadata=target_metadata, compare_type=True, include_object=include_object,)
 
         with context.begin_transaction():
             context.run_migrations()
