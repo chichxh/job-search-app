@@ -15,7 +15,7 @@ export function getProfile(profileId = DEFAULT_PROFILE_ID) {
 
 export function updateProfile(profileId = DEFAULT_PROFILE_ID, payload) {
   return apiFetch(`/profiles/${profileId}`, {
-    method: 'PATCH',
+    method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
     },
