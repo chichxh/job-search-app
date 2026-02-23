@@ -136,3 +136,26 @@
   background: #fef2f2;
   color: #991b1b;
 }
+
+.vacancy-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.vacancy-filters__search {
+  flex: 1 1 280px;
+  min-width: 220px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+  font: inherit;
+}
+
+.vacancy-filters__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #334155;
+}
