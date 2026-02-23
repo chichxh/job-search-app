@@ -4,62 +4,26 @@
   padding: 2rem;
 }
 
-.vacancies-page {
+.app-layout {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-}
-
-.vacancies-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   gap: 1rem;
 }
 
-.vacancies-header h1 {
-  margin: 0;
+.top-nav {
+  border-bottom: 1px solid #444;
+  padding-bottom: 0.75rem;
 }
 
-.vacancies-header button {
-  border: 1px solid #1a1a1a;
-  border-radius: 8px;
-  background: #1a1a1a;
-  color: #fff;
-  padding: 0.6rem 1rem;
-  cursor: pointer;
-}
-
-.vacancies-header button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.vacancies-list {
+.nav-links {
   list-style: none;
-  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
   padding: 0;
-  display: grid;
-  gap: 0.9rem;
-}
-
-.vacancy-card {
-  border: 1px solid #dadada;
-  border-radius: 12px;
-  padding: 1rem;
-  background: #313131;
-}
-
-.vacancy-card h2 {
-  margin: 0 0 0.5rem;
-  font-size: 1.15rem;
-}
-
-.vacancy-card p {
-  margin: 0.3rem 0;
-}
-
-.error {
-  color: #b91c1c;
   margin: 0;
+}
+
+.page-content {
+  padding-top: 0.5rem;
 }
