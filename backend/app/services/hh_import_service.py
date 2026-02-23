@@ -1,13 +1,14 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import re
 from typing import Any, Optional
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.db.models import SavedSearch, Vacancy
+from app.db.models import SavedSearch, Vacancy, VacancyRequirement
 from app.integrations.hh_client import HHClient
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,7 @@ class HHImportService:
             updated_on_page = 0
             errors_on_page = 0
             stop_by_cutoff = False
+            page_embedding_ids: set[int] = set()
 
             for item in items:
                 try:
@@ -116,7 +118,11 @@ class HHImportService:
                     values = self._map_to_vacancy_values(item, details)
                     is_existing = self._vacancy_exists(values["source"], values["external_id"])
                     vacancy_id = self._upsert_vacancy(values)
-                    self._schedule_vacancy_embedding(vacancy_id)
+
+                    if details is not None:
+                        self._replace_generated_requirements(vacancy_id, details)
+
+                    page_embedding_ids.add(vacancy_id)
 
                     result.vacancies_seen += 1
                     if is_existing:
@@ -132,6 +138,10 @@ class HHImportService:
                     errors_on_page += 1
 
             self.db.commit()
+
+            for vacancy_id in page_embedding_ids:
+                self._schedule_vacancy_embedding(vacancy_id)
+
             result.pages_processed += 1
 
             logger.info(
@@ -232,6 +242,97 @@ class HHImportService:
         )
         result = self.db.execute(stmt.returning(Vacancy.id))
         return int(result.scalar_one())
+
+    def _replace_generated_requirements(self, vacancy_id: int, details: dict[str, Any]) -> None:
+        self.db.execute(
+            delete(VacancyRequirement).where(
+                VacancyRequirement.vacancy_id == vacancy_id,
+                VacancyRequirement.kind.in_(("skill", "constraint")),
+            )
+        )
+
+        requirements: list[VacancyRequirement] = []
+        seen: set[tuple[str, str]] = set()
+
+        for raw_skill in self._extract_skills(details):
+            normalized = self._normalize_requirement_value(raw_skill)
+            dedupe_key = ("skill", normalized or raw_skill)
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            requirements.append(
+                VacancyRequirement(
+                    vacancy_id=vacancy_id,
+                    kind="skill",
+                    raw_text=raw_skill,
+                    normalized_key=normalized,
+                    weight=1,
+                    is_hard=False,
+                )
+            )
+
+        for raw_text, normalized_key in self._extract_constraints(details):
+            dedupe_key = ("constraint", normalized_key)
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            requirements.append(
+                VacancyRequirement(
+                    vacancy_id=vacancy_id,
+                    kind="constraint",
+                    raw_text=raw_text,
+                    normalized_key=normalized_key,
+                    weight=1,
+                    is_hard=False,
+                )
+            )
+
+        if requirements:
+            self.db.add_all(requirements)
+
+    @staticmethod
+    def _extract_skills(details: dict[str, Any]) -> list[str]:
+        skills: list[str] = []
+        for skill in details.get("key_skills") or []:
+            name = (skill or {}).get("name")
+            if isinstance(name, str):
+                cleaned = name.strip()
+                if cleaned:
+                    skills.append(cleaned)
+        return skills
+
+    @classmethod
+    def _extract_constraints(cls, details: dict[str, Any]) -> list[tuple[str, str]]:
+        constraints: list[tuple[str, str]] = []
+        mappings = {
+            "experience": details.get("experience"),
+            "schedule": details.get("schedule"),
+            "employment": details.get("employment"),
+            "area": details.get("area"),
+        }
+
+        for key, value in mappings.items():
+            if not isinstance(value, dict):
+                continue
+
+            raw_value = value.get("id") or value.get("name")
+            if not isinstance(raw_value, str) or not raw_value.strip():
+                continue
+
+            normalized_value = cls._normalize_requirement_value(raw_value)
+            if not normalized_value:
+                continue
+
+            constraints.append((f"{key}: {raw_value}", f"{key}:{normalized_value}"))
+
+        return constraints
+
+    @staticmethod
+    def _normalize_requirement_value(value: str) -> str:
+        lowered = value.lower()
+        cleaned = re.sub(r"[^\w\s-]", " ", lowered, flags=re.UNICODE)
+        squashed = " ".join(cleaned.split())
+        return squashed
 
     def _vacancy_exists(self, source: str, external_id: str) -> bool:
         stmt = select(Vacancy.id).where(Vacancy.source == source, Vacancy.external_id == external_id).limit(1)
