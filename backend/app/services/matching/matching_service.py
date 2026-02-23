@@ -32,10 +32,16 @@ from app.db.models import (
     VacancyRequirement,
     VacancyScore,
 )
-from app.services.matching.utils import find_evidence_snippet, normalize_skill
+from app.services.matching.utils import (
+    extract_profile_tokens,
+    find_evidence_snippet,
+    normalize_skill,
+)
 
 
 logger = logging.getLogger(__name__)
+
+MIN_RESUME_TEXT_LEN = 280
 
 
 class MatchingService:
@@ -61,9 +67,16 @@ class MatchingService:
             )
         ).scalars().all()
 
-        profile_text = "\n".join(part for part in [profile.resume_text or "", profile.skills_text or ""] if part)
+        resume_text = profile.resume_text or ""
+        skills_text = profile.skills_text or ""
+        profile_text = "\n".join(part for part in [resume_text, skills_text] if part)
 
-        layer1_score, ats, matched_requirements = self._compute_layer1(requirements, profile_text)
+        layer1_score, ats, matched_evidence = self._compute_layer1(
+            requirements,
+            profile_text,
+            resume_text=resume_text,
+            skills_text=skills_text,
+        )
 
         layer2_score = self._compute_layer2(profile_id=profile_id, vacancy_id=vacancy_id)
 
@@ -90,14 +103,13 @@ class MatchingService:
             "ats": ats,
             "semantic": {"score": layer2_score},
             "final": {"score": final_score, "verdict": verdict},
-            "cover_letter_points": self._build_cover_letter_points(vacancy.title, ats["keywords_present"]),
+            "cover_letter_points": self._build_cover_letter_points(matched_evidence),
         }
 
         self._refresh_evidence(
             profile_id=profile_id,
             vacancy_id=vacancy_id,
-            profile_text=profile_text,
-            matched_requirements=matched_requirements,
+            matched_evidence=matched_evidence,
         )
 
         stmt = insert(VacancyScore).values(
@@ -195,14 +207,18 @@ class MatchingService:
         self,
         requirements: list[VacancyRequirement],
         profile_text: str,
-    ) -> tuple[float, dict[str, list[str]], list[VacancyRequirement]]:
+        resume_text: str,
+        skills_text: str,
+    ) -> tuple[float, dict[str, list[str]], list[tuple[VacancyRequirement, str, float]]]:
         total_weight = sum(max(req.weight, 0) for req in requirements)
         matched_weight = 0
+        profile_tokens = extract_profile_tokens(profile_text)
 
         keywords_present: list[str] = []
         keywords_missing_must: list[str] = []
         keywords_missing_nice: list[str] = []
-        matched_requirements: list[VacancyRequirement] = []
+        keywords_uncertain: list[str] = []
+        matched_evidence: list[tuple[VacancyRequirement, str, float]] = []
 
         for req in requirements:
             needle = req.normalized_key or req.raw_text
@@ -212,11 +228,16 @@ class MatchingService:
             if matched:
                 matched_weight += max(req.weight, 0)
                 keywords_present.append(req.raw_text)
-                matched_requirements.append(req)
+                evidence_text, confidence = evidence
+                matched_evidence.append((req, evidence_text, confidence))
             elif req.is_hard:
                 keywords_missing_must.append(req.raw_text)
+                if self._has_uncertain_token_match(req, profile_tokens):
+                    keywords_uncertain.append(req.raw_text)
             else:
                 keywords_missing_nice.append(req.raw_text)
+                if self._has_uncertain_token_match(req, profile_tokens):
+                    keywords_uncertain.append(req.raw_text)
 
         layer1_score = (matched_weight / total_weight) if total_weight > 0 else 0.0
 
@@ -224,11 +245,17 @@ class MatchingService:
             "keywords_present": self._unique(keywords_present),
             "keywords_missing_must": self._unique(keywords_missing_must),
             "keywords_missing_nice": self._unique(keywords_missing_nice),
-            "keywords_to_add": self._unique(keywords_missing_must + keywords_missing_nice),
-            "structure_suggestions": self._build_structure_suggestions(keywords_missing_must),
+            "keywords_uncertain": self._unique(keywords_uncertain),
+            "keywords_to_add": self._unique(keywords_missing_nice + keywords_uncertain),
         }
 
-        return layer1_score, ats, matched_requirements
+        ats["structure_suggestions"] = self._build_structure_suggestions(
+            keywords_missing_must=ats["keywords_missing_must"],
+            resume_text=resume_text,
+            skills_text=skills_text,
+        )
+
+        return layer1_score, ats, matched_evidence
 
     def _compute_layer2(self, profile_id: int, vacancy_id: int) -> float:
         # Явно читаем записи embedding.
@@ -258,8 +285,7 @@ class MatchingService:
         self,
         profile_id: int,
         vacancy_id: int,
-        profile_text: str,
-        matched_requirements: list[VacancyRequirement],
+        matched_evidence: list[tuple[VacancyRequirement, str, float]],
     ) -> None:
         self.db.execute(
             delete(ResumeEvidence).where(
@@ -268,13 +294,7 @@ class MatchingService:
             )
         )
 
-        for req in matched_requirements:
-            needle = req.normalized_key or req.raw_text
-            found = find_evidence_snippet(profile_text, needle)
-            if not found:
-                continue
-
-            evidence_text, confidence = found
+        for req, evidence_text, confidence in matched_evidence:
             self.db.add(
                 ResumeEvidence(
                     profile_id=profile_id,
@@ -287,27 +307,39 @@ class MatchingService:
             )
 
     @staticmethod
-    def _build_cover_letter_points(vacancy_title: str | None, keywords_present: list[str]) -> list[str]:
+    def _build_cover_letter_points(matched_evidence: list[tuple[VacancyRequirement, str, float]]) -> list[str]:
         points: list[str] = []
-        if vacancy_title:
-            points.append(f"Подчеркните релевантный опыт для роли '{vacancy_title}'.")
-
-        for skill in keywords_present[:3]:
+        for req, evidence_text, _ in matched_evidence[:3]:
+            skill = req.raw_text
             normalized = normalize_skill(skill)
             if normalized:
-                points.append(f"Добавьте кейс с измеримым результатом по навыку: {skill}.")
+                points.append(f"Подкрепите навык '{skill}' фактом из резюме: {evidence_text}")
 
         return points
 
     @staticmethod
-    def _build_structure_suggestions(keywords_missing_must: list[str]) -> list[str]:
+    def _build_structure_suggestions(
+        keywords_missing_must: list[str], resume_text: str, skills_text: str
+    ) -> list[str]:
         suggestions = [
-            "Добавьте блок 'Ключевые навыки' в верхнюю часть резюме.",
             "Опишите достижения в формате 'действие → результат → метрика'.",
         ]
+        if not skills_text or not skills_text.strip():
+            suggestions.append("Добавьте раздел Skills с ключевыми навыками.")
+        if len((resume_text or "").strip()) < MIN_RESUME_TEXT_LEN:
+            suggestions.append("Расширьте описание опыта: добавьте задачи, результаты и метрики.")
         if keywords_missing_must:
             suggestions.append("Явно укажите обязательные навыки в опыте и summary.")
         return suggestions
+
+    @staticmethod
+    def _has_uncertain_token_match(requirement: VacancyRequirement, profile_tokens: set[str]) -> bool:
+        normalized_req = normalize_skill(requirement.normalized_key or requirement.raw_text)
+        if not normalized_req:
+            return False
+
+        req_tokens = [token for token in normalized_req.split() if len(token) >= 3]
+        return any(token in profile_tokens for token in req_tokens)
 
     @staticmethod
     def _unique(values: list[str]) -> list[str]:
