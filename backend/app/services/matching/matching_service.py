@@ -128,6 +128,30 @@ class MatchingService:
             )
         ).scalar_one()
 
+    def compute_recommendations(self, profile_id: int, limit: int = 50) -> list[VacancyScore]:
+        """Compute recommendations for profile from top-N semantic nearest vacancies."""
+        if self.db.get(ProfileEmbedding, profile_id) is None:
+            raise ValueError(f"Profile embedding not found for profile_id={profile_id}")
+
+        top_vacancy_rows = self.db.execute(
+            text(
+                """
+                SELECT ve.vacancy_id, (1 - (ve.embedding <=> pe.embedding)) AS semantic
+                FROM vacancy_embeddings ve
+                JOIN profile_embeddings pe ON pe.profile_id = :profile_id
+                ORDER BY ve.embedding <=> pe.embedding
+                LIMIT :limit
+                """
+            ),
+            {"profile_id": profile_id, "limit": limit},
+        ).all()
+
+        scores: list[VacancyScore] = []
+        for row in top_vacancy_rows:
+            scores.append(self.compute_for_pair(profile_id=profile_id, vacancy_id=row.vacancy_id))
+
+        return sorted(scores, key=lambda score: score.final_score, reverse=True)
+
     def get_tailoring(self, profile_id: int, vacancy_id: int) -> dict[str, Any]:
         """Return explanation and evidence list to display tailoring recommendations."""
         score = self.db.execute(
