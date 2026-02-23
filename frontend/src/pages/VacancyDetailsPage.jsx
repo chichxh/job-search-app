@@ -1,3 +1,12 @@
+import { useParams } from 'react-router-dom';
+
 export default function VacancyDetailsPage() {
-  return <h1>Vacancy Details Page</h1>;
+  const { vacancyId } = useParams();
+
+  return (
+    <section className="page-stack">
+      <h1>Vacancy details</h1>
+      <p>Selected vacancy id: {vacancyId}</p>
+    </section>
+  );
 }

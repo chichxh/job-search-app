@@ -1,29 +1,138 @@
 #root {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 2rem;
+  min-height: 100vh;
 }
 
-.app-layout {
+.layout {
+  min-height: 100vh;
+  background: #f4f7fb;
+  color: #1e293b;
+}
+
+.layout__header {
+  background: #ffffff;
+  border-bottom: 1px solid #dbe4f0;
+}
+
+.layout__container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.layout__header-inner {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.layout__brand {
+  margin: 0;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.layout__nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.layout__nav-link {
+  display: inline-block;
+  border-radius: 8px;
+  padding: 0.45rem 0.75rem;
+  color: #475569;
+}
+
+.layout__nav-link:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.layout__nav-link--active {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.layout__main {
+  padding: 1.5rem 0 2rem;
+}
+
+.page-stack {
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
 
-.top-nav {
-  border-bottom: 1px solid #444;
-  padding-bottom: 0.75rem;
+.page-stack h1 {
+  margin: 0;
+  font-size: 1.8rem;
 }
 
-.nav-links {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
+.vacancy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 1rem;
-  padding: 0;
+}
+
+.vacancy-card {
+  background: #ffffff;
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  padding: 1rem;
+  text-align: left;
+}
+
+.vacancy-card--link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.vacancy-card--link:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+}
+
+.vacancy-card--button {
+  width: 100%;
+  cursor: pointer;
+}
+
+.vacancy-card__title {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.vacancy-card__meta,
+.vacancy-card__salary {
   margin: 0;
 }
 
-.page-content {
-  padding-top: 0.5rem;
+.vacancy-card__salary {
+  margin-top: 0.6rem;
+  font-weight: 600;
+  color: #0f766e;
+}
+
+.loading {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  border-radius: 10px;
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.error-banner {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  border-radius: 10px;
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
 }
