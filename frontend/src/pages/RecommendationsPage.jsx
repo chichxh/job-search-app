@@ -5,10 +5,11 @@ import {
   getTask,
   recomputeRecommendations,
 } from '../api/endpoints.js';
-import { DEFAULT_LIMIT, DEFAULT_PROFILE_ID } from '../config.js';
+import { DEFAULT_PROFILE_ID } from '../config.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import Loading from '../components/Loading.jsx';
 import VacancyCard from '../components/VacancyCard.jsx';
+import { loadJobSearchSettings } from '../utils/settings.js';
 
 function formatScore(score) {
   if (score == null || Number.isNaN(Number(score))) {
@@ -26,20 +27,24 @@ export default function RecommendationsPage() {
   const [taskState, setTaskState] = useState('IDLE');
   const [taskError, setTaskError] = useState('');
   const [hideWeak, setHideWeak] = useState(false);
+  const [settings, setSettings] = useState(loadJobSearchSettings());
 
   const loadRecommendations = useCallback(async () => {
     setLoading(true);
     setError('');
 
     try {
-      const response = await getRecommendations(DEFAULT_PROFILE_ID, DEFAULT_LIMIT);
+      const response = await getRecommendations(
+        DEFAULT_PROFILE_ID,
+        settings.recommendationsLimit,
+      );
       setRecommendations(response.items ?? []);
     } catch (requestError) {
       setError(requestError.message || 'Failed to load recommendations.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [settings.recommendationsLimit]);
 
   useEffect(() => {
     loadRecommendations();
@@ -96,7 +101,8 @@ export default function RecommendationsPage() {
   const visibleRecommendations = useMemo(() => {
     return recommendations.filter((item) => {
       const verdict = item.verdict?.toLowerCase();
-      if (verdict === 'reject') {
+
+      if (settings.hideReject && verdict === 'reject') {
         return false;
       }
 
@@ -106,19 +112,27 @@ export default function RecommendationsPage() {
 
       return true;
     });
-  }, [hideWeak, recommendations]);
+  }, [hideWeak, recommendations, settings.hideReject]);
 
   async function handleRecompute() {
     setTaskError('');
 
     try {
-      const response = await recomputeRecommendations(DEFAULT_PROFILE_ID, DEFAULT_LIMIT);
+      const response = await recomputeRecommendations(
+        DEFAULT_PROFILE_ID,
+        settings.recommendationsLimit,
+      );
       setTaskId(response.task_id);
       setTaskState('PENDING');
     } catch (requestError) {
       setTaskError(requestError.message || 'Failed to start recommendations recompute.');
       setTaskState('FAILURE');
     }
+  }
+
+  function handleReloadSettings() {
+    const nextSettings = loadJobSearchSettings();
+    setSettings(nextSettings);
   }
 
   return (
@@ -135,15 +149,27 @@ export default function RecommendationsPage() {
           Пересчитать рекомендации
         </button>
 
+        <button
+          className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
+          type="button"
+          onClick={handleReloadSettings}
+        >
+          Обновить настройки
+        </button>
+
         <label className="vacancy-filters__toggle">
           <input
             type="checkbox"
             checked={hideWeak}
             onChange={(event) => setHideWeak(event.target.checked)}
           />
-          <span>Скрывать weak (reject скрываются по умолчанию)</span>
+          <span>Скрывать weak</span>
         </label>
       </div>
+
+      <p className="loading">
+        limit: {settings.recommendationsLimit} · hideReject: {settings.hideReject ? 'on' : 'off'}
+      </p>
 
       {taskId ? (
         <p className="loading">Задача {taskId}: {taskState}</p>
