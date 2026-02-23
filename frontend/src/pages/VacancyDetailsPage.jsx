@@ -5,26 +5,7 @@ import { getTailoring, getVacancyById } from '../api/endpoints.js';
 import { DEFAULT_PROFILE_ID } from '../config.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import Loading from '../components/Loading.jsx';
-
-function formatSalary(vacancy) {
-  const salaryFrom = vacancy?.salary_from;
-  const salaryTo = vacancy?.salary_to;
-  const currency = vacancy?.currency;
-
-  if (salaryFrom == null && salaryTo == null) {
-    return 'Не указана';
-  }
-
-  if (salaryFrom != null && salaryTo != null) {
-    return `${salaryFrom} - ${salaryTo}${currency ? ` ${currency}` : ''}`;
-  }
-
-  if (salaryFrom != null) {
-    return `от ${salaryFrom}${currency ? ` ${currency}` : ''}`;
-  }
-
-  return `до ${salaryTo}${currency ? ` ${currency}` : ''}`;
-}
+import { formatDateTime, formatSalary, getSafeText } from '../utils/formatters.js';
 
 function toList(value) {
   return Array.isArray(value) ? value : [];
@@ -170,11 +151,13 @@ export default function VacancyDetailsPage() {
         <article className="vacancy-details">
           <h2 className="vacancy-details__title">{vacancy.title}</h2>
           <div className="vacancy-details__meta-grid">
-            <p><strong>Компания:</strong> {vacancy.company_name ?? 'Не указана'}</p>
-            <p><strong>Локация:</strong> {vacancy.location ?? 'Не указана'}</p>
-            <p><strong>Зарплата:</strong> {formatSalary(vacancy)}</p>
+            <p><strong>Компания:</strong> {getSafeText(vacancy.company_name ?? vacancy.company, 'Не указана')}</p>
+            <p><strong>Локация:</strong> {getSafeText(vacancy.location, 'Не указана')}</p>
+            <p><strong>Зарплата:</strong> {formatSalary(vacancy, { emptyLabel: 'Не указана', fromLabel: 'от', toLabel: 'до' })}</p>
             <p><strong>Статус:</strong> {vacancy.status ?? 'Не указан'}</p>
             <p><strong>Источник:</strong> {vacancy.source ?? 'Не указан'}</p>
+            {formatDateTime(vacancy.created_at) ? <p><strong>Создано:</strong> {formatDateTime(vacancy.created_at)}</p> : null}
+            {formatDateTime(vacancy.updated_at) ? <p><strong>Обновлено:</strong> {formatDateTime(vacancy.updated_at)}</p> : null}
             <p>
               <strong>Ссылка:</strong>{' '}
               {vacancy.url ? (

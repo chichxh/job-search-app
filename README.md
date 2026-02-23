@@ -28,3 +28,22 @@
 - Провайдер задаётся env: `EMBEDDING_PROVIDER` (`local`), `EMBEDDING_MODEL` (`all-MiniLM-L6-v2`), `EMBEDDING_DIM` (`384`).
 - При сохранении/обновлении вакансий и профилей ставятся Celery-задачи на пересчёт embedding.
 - Dev endpoint для массового пересчёта: `POST /api/v1/dev/embeddings/rebuild-vacancies?limit=20`.
+
+## Frontend (Vite)
+
+- Install dependencies: `cd frontend && npm install`.
+- Start frontend in dev mode: `npm run dev`.
+- By default, Vite proxies `/api/*` to `VITE_API_PROXY_TARGET` (default `http://127.0.0.1:8000`) from `frontend/vite.config.js`.
+- Optional env var `VITE_API_BASE_URL` can be set to call API directly (for example `http://localhost:8000`) and bypass the relative base URL.
+
+Examples:
+
+```bash
+# 1) Run with proxy (recommended for local dev)
+cd frontend
+VITE_API_PROXY_TARGET=http://127.0.0.1:8000 npm run dev
+
+# 2) Run with explicit API base URL
+cd frontend
+VITE_API_BASE_URL=http://127.0.0.1:8000 npm run dev
+```

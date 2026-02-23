@@ -120,6 +120,12 @@
   color: #0f766e;
 }
 
+.vacancy-card__dates {
+  margin: 0.65rem 0 0;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
 .loading {
   margin: 0;
   padding: 0.9rem 1rem;
