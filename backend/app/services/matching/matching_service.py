@@ -15,6 +15,7 @@ Example:
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -32,6 +33,9 @@ from app.db.models import (
     VacancyScore,
 )
 from app.services.matching.utils import find_evidence_snippet, normalize_skill
+
+
+logger = logging.getLogger(__name__)
 
 
 class MatchingService:
@@ -136,19 +140,31 @@ class MatchingService:
         top_vacancy_rows = self.db.execute(
             text(
                 """
-                SELECT ve.vacancy_id, (1 - (ve.embedding <=> pe.embedding)) AS semantic
-                FROM vacancy_embeddings ve
+                SELECT v.id AS vacancy_id,
+                       ve.vacancy_id IS NOT NULL AS has_embedding,
+                       (1 - (ve.embedding <=> pe.embedding)) AS semantic
+                FROM vacancies v
                 JOIN profile_embeddings pe ON pe.profile_id = :profile_id
-                ORDER BY ve.embedding <=> pe.embedding
-                LIMIT :limit
+                LEFT JOIN vacancy_embeddings ve ON ve.vacancy_id = v.id
+                ORDER BY (ve.vacancy_id IS NULL), ve.embedding <=> pe.embedding
                 """
             ),
-            {"profile_id": profile_id, "limit": limit},
+            {"profile_id": profile_id},
         ).all()
 
         scores: list[VacancyScore] = []
         for row in top_vacancy_rows:
+            if not row.has_embedding:
+                logger.warning(
+                    "Skipping vacancy without embedding in recommendations | profile_id=%s vacancy_id=%s",
+                    profile_id,
+                    row.vacancy_id,
+                )
+                continue
+
             scores.append(self.compute_for_pair(profile_id=profile_id, vacancy_id=row.vacancy_id))
+            if len(scores) >= limit:
+                break
 
         return sorted(scores, key=lambda score: score.final_score, reverse=True)
 
