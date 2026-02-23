@@ -9,6 +9,7 @@ import { DEFAULT_PROFILE_ID } from '../config.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import Loading from '../components/Loading.jsx';
 import VacancyCard from '../components/VacancyCard.jsx';
+import { formatDateTime, getSafeText } from '../utils/formatters.js';
 import { loadJobSearchSettings } from '../utils/settings.js';
 
 function formatScore(score) {
@@ -188,10 +189,12 @@ export default function RecommendationsPage() {
             {visibleRecommendations.map((item) => (
               <article className="recommendations-item" key={item.id}>
                 <VacancyCard
-                  title={item.title}
-                  company={item.company_name ?? 'Company not specified'}
-                  location={item.location ?? 'Location not specified'}
+                  title={getSafeText(item.title, 'Vacancy title not specified')}
+                  company={getSafeText(item.company_name ?? item.company, 'Company not specified')}
+                  location={getSafeText(item.location, 'Location not specified')}
                   salary="Open vacancy"
+                  createdAt={formatDateTime(item.created_at)}
+                  updatedAt={formatDateTime(item.updated_at)}
                   to={`/vacancies/${item.id}`}
                 />
                 <div className="recommendations-item__score">
@@ -206,7 +209,11 @@ export default function RecommendationsPage() {
             ))}
           </div>
         ) : (
-          <p className="loading">No recommendations for selected filters.</p>
+          <p className="loading">
+            {recommendations.length === 0
+              ? 'Пока нет рекомендаций. Нажмите «Пересчитать рекомендации».'
+              : 'Нет рекомендаций по текущим фильтрам. Попробуйте отключить фильтр weak/reject.'}
+          </p>
         )
       ) : null}
     </section>

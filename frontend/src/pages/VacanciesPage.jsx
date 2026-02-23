@@ -4,29 +4,7 @@ import { getVacancies } from '../api/endpoints.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import Loading from '../components/Loading.jsx';
 import VacancyCard from '../components/VacancyCard.jsx';
-
-function formatSalary(vacancy) {
-  const { salary_from: salaryFrom, salary_to: salaryTo, currency } = vacancy;
-
-  if (salaryFrom == null && salaryTo == null) {
-    return 'Salary not specified';
-  }
-
-  const formatter = new Intl.NumberFormat('en-US');
-  const fromPart = salaryFrom != null ? formatter.format(salaryFrom) : null;
-  const toPart = salaryTo != null ? formatter.format(salaryTo) : null;
-  const currencyPart = currency ?? '';
-
-  if (fromPart && toPart) {
-    return `${fromPart} - ${toPart} ${currencyPart}`.trim();
-  }
-
-  if (fromPart) {
-    return `from ${fromPart} ${currencyPart}`.trim();
-  }
-
-  return `up to ${toPart} ${currencyPart}`.trim();
-}
+import { formatDateTime, formatSalary, getSafeText } from '../utils/formatters.js';
 
 export default function VacanciesPage() {
   const [vacancies, setVacancies] = useState([]);
@@ -45,7 +23,7 @@ export default function VacanciesPage() {
       try {
         const response = await getVacancies();
         if (isMounted) {
-          setVacancies(response);
+          setVacancies(Array.isArray(response) ? response : []);
         }
       } catch (requestError) {
         if (isMounted) {
@@ -73,10 +51,10 @@ export default function VacanciesPage() {
       const company = vacancy.company_name?.toLowerCase() ?? vacancy.company?.toLowerCase() ?? '';
       const location = vacancy.location?.toLowerCase() ?? '';
       const matchesSearch =
-        normalizedSearch.length === 0 ||
-        title.includes(normalizedSearch) ||
-        company.includes(normalizedSearch) ||
-        location.includes(normalizedSearch);
+        normalizedSearch.length === 0
+        || title.includes(normalizedSearch)
+        || company.includes(normalizedSearch)
+        || location.includes(normalizedSearch);
 
       if (!matchesSearch) {
         return false;
@@ -89,6 +67,10 @@ export default function VacanciesPage() {
       return vacancy.status?.toLowerCase() === 'open';
     });
   }, [normalizedSearch, onlyOpen, vacancies]);
+
+  const emptyStateMessage = vacancies.length === 0
+    ? 'Пока нет вакансий. Импортируйте вакансии, чтобы они появились здесь.'
+    : 'Нет вакансий по текущим фильтрам. Попробуйте изменить поиск или отключить "Only open".';
 
   return (
     <section className="page-stack">
@@ -122,16 +104,18 @@ export default function VacanciesPage() {
             {filteredVacancies.map((vacancy) => (
               <VacancyCard
                 key={vacancy.id}
-                title={vacancy.title}
-                company={vacancy.company_name ?? vacancy.company ?? 'Company not specified'}
-                location={vacancy.location ?? 'Location not specified'}
+                title={getSafeText(vacancy.title, 'Vacancy title not specified')}
+                company={getSafeText(vacancy.company_name ?? vacancy.company, 'Company not specified')}
+                location={getSafeText(vacancy.location, 'Location not specified')}
                 salary={formatSalary(vacancy)}
+                createdAt={formatDateTime(vacancy.created_at)}
+                updatedAt={formatDateTime(vacancy.updated_at)}
                 to={`/vacancies/${vacancy.id}`}
               />
             ))}
           </div>
         ) : (
-          <p className="loading">No vacancies found for selected filters.</p>
+          <p className="loading">{emptyStateMessage}</p>
         )
       ) : null}
     </section>
