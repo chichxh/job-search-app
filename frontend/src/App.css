@@ -237,3 +237,66 @@
     grid-template-columns: 1fr;
   }
 }
+
+.vacancy-details,
+.vacancy-details__matching {
+  background: #ffffff;
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.vacancy-details__title {
+  margin: 0;
+}
+
+.vacancy-details__meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 0.75rem;
+}
+
+.vacancy-details__meta-grid p {
+  margin: 0;
+}
+
+.vacancy-details__section-title {
+  margin: 0.35rem 0;
+  font-size: 1.1rem;
+}
+
+.vacancy-details__description {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: inherit;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.8rem;
+}
+
+.vacancy-details__matching-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.vacancy-details__matching-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.vacancy-details__score {
+  margin: 0;
+}
+
+.vacancy-details__hint p {
+  margin: 0 0 0.5rem;
+}
+
+.vacancy-details__link {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
