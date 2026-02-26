@@ -5,7 +5,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.celery_app import celery_app
-from app.db.models import Profile, ProfileEmbedding, Vacancy, VacancyEmbedding, VacancyRequirement
+from app.db.models import Profile, ProfileEmbedding, Vacancy, VacancyEmbedding, VacancyParsed, VacancyRequirement
 from app.db.session import SessionLocal
 from app.services.embeddings.provider import get_embedding_provider
 from app.utils.text_clean import strip_html
@@ -20,9 +20,12 @@ def _looks_like_html(text: str) -> bool:
     return "<" in text and ">" in text
 
 
-def _build_vacancy_text(vacancy: Vacancy, key_skills: list[str]) -> str:
-    description = vacancy.description or ""
-    clean_text = strip_html(description) if _looks_like_html(description) else description
+def _build_vacancy_text(vacancy: Vacancy, key_skills: list[str], parsed_plain_text: str | None = None) -> str:
+    if parsed_plain_text:
+        clean_text = parsed_plain_text
+    else:
+        description = vacancy.description or ""
+        clean_text = strip_html(description) if _looks_like_html(description) else description
     parts = [vacancy.title, clean_text]
     if key_skills:
         parts.append("Ключевые навыки: " + ", ".join(key_skills))
@@ -85,8 +88,12 @@ def build_vacancy_embedding(vacancy_id: int) -> dict[str, str | int]:
         )
         key_skills = list(db.execute(skills_stmt).scalars().all())
 
+        parsed_plain_text = db.execute(
+            select(VacancyParsed.plain_text).where(VacancyParsed.vacancy_id == vacancy_id)
+        ).scalar_one_or_none()
+
         provider = get_embedding_provider()
-        text = _build_vacancy_text(vacancy, key_skills)
+        text = _build_vacancy_text(vacancy, key_skills, parsed_plain_text=parsed_plain_text)
         vector = provider.embed_text(text)
         _upsert_vacancy_embedding(db, vacancy_id=vacancy_id, vector=vector, model_name=provider.name)
         db.commit()
@@ -142,6 +149,9 @@ def rebuild_vacancy_embeddings(limit: int | None = None) -> dict[str, int]:
         for start in range(0, len(vacancy_ids), EMBED_BATCH_SIZE):
             batch_ids = vacancy_ids[start : start + EMBED_BATCH_SIZE]
             vacancies = db.execute(select(Vacancy).where(Vacancy.id.in_(batch_ids))).scalars().all()
+            parsed_text_by_vacancy_id = dict(
+                db.execute(select(VacancyParsed.vacancy_id, VacancyParsed.plain_text).where(VacancyParsed.vacancy_id.in_(batch_ids))).all()
+            )
 
             texts = []
             prepared_ids = []
@@ -152,7 +162,13 @@ def rebuild_vacancy_embeddings(limit: int | None = None) -> dict[str, int]:
                 )
                 key_skills = list(db.execute(skills_stmt).scalars().all())
                 prepared_ids.append(vacancy.id)
-                texts.append(_build_vacancy_text(vacancy, key_skills))
+                texts.append(
+                    _build_vacancy_text(
+                        vacancy,
+                        key_skills,
+                        parsed_plain_text=parsed_text_by_vacancy_id.get(vacancy.id),
+                    )
+                )
 
             vectors = provider.embed_texts(texts)
             for vacancy_id, vector in zip(prepared_ids, vectors, strict=False):

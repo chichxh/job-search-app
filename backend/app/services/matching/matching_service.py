@@ -29,6 +29,7 @@ from app.db.models import (
     ResumeEvidence,
     Vacancy,
     VacancyEmbedding,
+    VacancyParsed,
     VacancyRequirement,
     VacancyScore,
 )
@@ -375,17 +376,27 @@ class MatchingService:
                 )
             )
 
+
+    def _get_vacancy_plain_text(self, vacancy_id: int) -> str | None:
+        return self.db.execute(
+            select(VacancyParsed.plain_text).where(VacancyParsed.vacancy_id == vacancy_id)
+        ).scalar_one_or_none()
+
     def _is_relocation_required(self, vacancy: Vacancy) -> bool:
         if vacancy.source != "hh":
             return False
 
-        description = strip_html(vacancy.description or "").lower()
+        vacancy_plain_text = self._get_vacancy_plain_text(vacancy.id)
+        description = (vacancy_plain_text or strip_html(vacancy.description or "")).lower()
         relocation_tokens = ("релокац", "переезд", "республика татарстан")
         return any(token in description for token in relocation_tokens)
 
     def _is_remote_vacancy(self, vacancy: Vacancy) -> bool:
+        vacancy_plain_text = self._get_vacancy_plain_text(vacancy.id)
         haystack = " ".join(
-            part.lower() for part in [vacancy.title or "", vacancy.location or "", strip_html(vacancy.description or "")] if part
+            part.lower()
+            for part in [vacancy.title or "", vacancy.location or "", vacancy_plain_text or strip_html(vacancy.description or "")]
+            if part
         )
         remote_tokens = ("удален", "remote", "дистанцион")
         return any(token in haystack for token in remote_tokens)
