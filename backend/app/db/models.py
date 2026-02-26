@@ -85,6 +85,10 @@ class Profile(Base):
     title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     resume_text: Mapped[str] = mapped_column(Text, nullable=False)
     skills_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    location: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    remote_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true", default=True)
+    relocation_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false", default=False)
+    salary_min: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
