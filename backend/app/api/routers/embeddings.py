@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Profile, ProfileEmbedding, Vacancy, VacancyEmbedding
 from app.db.session import get_db
 from app.tasks.embedding_tasks import build_profile_embedding, build_vacancy_embedding
+from app.tasks.vacancy_parsing_tasks import backfill_hh_parsed
 
 router = APIRouter(tags=["embeddings"])
 
@@ -85,3 +86,17 @@ def rebuild_single_profile_embedding(
 
     build_profile_embedding.delay(profile_id)
     return {"status": "enqueued", "profile_id": profile_id}
+
+
+@router.post("/dev/vacancies/hh/backfill-parsed")
+def backfill_hh_vacancies_parsed(
+    limit: int | None = Query(default=None, ge=1, le=100000),
+    only_missing: bool = Query(default=True),
+) -> dict[str, str | int | bool | None]:
+    task = backfill_hh_parsed.delay(limit=limit, only_missing=only_missing)
+    return {
+        "status": "enqueued",
+        "task_id": task.id,
+        "limit": limit,
+        "only_missing": only_missing,
+    }
