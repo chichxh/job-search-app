@@ -148,6 +148,19 @@ class VacancyEmbedding(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
+class VacancyParsed(Base):
+    __tablename__ = "vacancy_parsed"
+
+    vacancy_id: Mapped[int] = mapped_column(
+        ForeignKey("vacancies.id", ondelete="CASCADE"), primary_key=True, nullable=False
+    )
+    plain_text: Mapped[str] = mapped_column(Text, nullable=False)
+    sections_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    version: Mapped[str] = mapped_column(String(50), nullable=False)
+    quality_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default="0")
+
+
 class ProfileEmbedding(Base):
     __tablename__ = "profile_embeddings_v2"
 
