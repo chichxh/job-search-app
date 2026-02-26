@@ -8,13 +8,20 @@ from app.celery_app import celery_app
 from app.db.models import Profile, ProfileEmbedding, Vacancy, VacancyEmbedding, VacancyRequirement
 from app.db.session import SessionLocal
 from app.services.embeddings.provider import get_embedding_provider
+from app.utils.text_clean import strip_html
 
 logger = logging.getLogger(__name__)
 
 
+def _looks_like_html(text: str) -> bool:
+    return "<" in text and ">" in text
+
+
 def _build_vacancy_text(vacancy: Vacancy, key_skills: list[str]) -> str:
     # Собираем единый текст для embedding.
-    parts = [vacancy.title, vacancy.description or ""]
+    description = vacancy.description or ""
+    clean_text = strip_html(description) if _looks_like_html(description) else description
+    parts = [vacancy.title, clean_text]
     if key_skills:
         parts.append("Ключевые навыки: " + ", ".join(key_skills))
     return "\n\n".join(part for part in parts if part)

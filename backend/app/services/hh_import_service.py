@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import SavedSearch, Vacancy, VacancyRequirement
 from app.integrations.hh_client import HHClient
+from app.utils.text_clean import strip_html
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,7 @@ class HHImportService:
             errors_on_page = 0
             stop_by_cutoff = False
             page_embedding_ids: set[int] = set()
+            html_log_count = 0
 
             for item in items:
                 try:
@@ -116,11 +118,22 @@ class HHImportService:
                         details = await self.hh_client.get_vacancy_details(str(item.get("id")))
 
                     values = self._map_to_vacancy_values(item, details)
+                    clean_description = strip_html(values.get("description") or "")
+
+                    if html_log_count < 3:
+                        logger.debug(
+                            "HH vacancy description lengths | external_id=%s html_len=%s clean_len=%s",
+                            values["external_id"],
+                            len(values.get("description") or ""),
+                            len(clean_description),
+                        )
+                        html_log_count += 1
+
                     is_existing = self._vacancy_exists(values["source"], values["external_id"])
                     vacancy_id = self._upsert_vacancy(values)
 
                     if details is not None:
-                        self._replace_generated_requirements(vacancy_id, details)
+                        self._replace_generated_requirements(vacancy_id, details, clean_description)
 
                     page_embedding_ids.add(vacancy_id)
 
@@ -243,7 +256,12 @@ class HHImportService:
         result = self.db.execute(stmt.returning(Vacancy.id))
         return int(result.scalar_one())
 
-    def _replace_generated_requirements(self, vacancy_id: int, details: dict[str, Any]) -> None:
+    def _replace_generated_requirements(
+        self,
+        vacancy_id: int,
+        details: dict[str, Any],
+        clean_description: str,
+    ) -> None:
         self.db.execute(
             delete(VacancyRequirement).where(
                 VacancyRequirement.vacancy_id == vacancy_id,
@@ -271,7 +289,7 @@ class HHImportService:
                 )
             )
 
-        for raw_text, normalized_key in self._extract_constraints(details):
+        for raw_text, normalized_key in self._extract_constraints(details, clean_description):
             dedupe_key = ("constraint", normalized_key)
             if dedupe_key in seen:
                 continue
@@ -302,8 +320,13 @@ class HHImportService:
         return skills
 
     @classmethod
-    def _extract_constraints(cls, details: dict[str, Any]) -> list[tuple[str, str]]:
+    def _extract_constraints(
+        cls,
+        details: dict[str, Any],
+        clean_description: str,  # kept for text-based extraction extensions
+    ) -> list[tuple[str, str]]:
         constraints: list[tuple[str, str]] = []
+        _ = clean_description
         mappings = {
             "experience": details.get("experience"),
             "schedule": details.get("schedule"),
