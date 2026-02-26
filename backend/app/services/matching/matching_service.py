@@ -75,14 +75,16 @@ class MatchingService:
         skills_text = profile.skills_text or ""
         profile_text = "\n".join(part for part in [resume_text, skills_text] if part)
 
-        layer1_score, ats, matched_evidence = self._compute_layer1(
+        coverage, ats, matched_evidence = self._compute_layer1(
             requirements,
             profile_text,
             resume_text=resume_text,
             skills_text=skills_text,
         )
+        hard_coverage = coverage["hard"]
+        nice_coverage = coverage["nice"]
 
-        layer2_score = self._compute_layer2(profile_id=profile_id, vacancy_id=vacancy_id)
+        semantic_score = self._compute_layer2(profile_id=profile_id, vacancy_id=vacancy_id)
 
         hard_missing = ats["keywords_missing_must"]
         reasons_failed: list[str] = []
@@ -112,18 +114,30 @@ class MatchingService:
 
         eligibility_ok = len(reasons_failed) == 0
 
-        final_score = 0.55 * layer2_score + 0.45 * layer1_score
+        penalties: list[str] = []
+        final_score = 0.45 * semantic_score + 0.35 * hard_coverage + 0.20 * nice_coverage
+
         if overqualified:
-            final_score = max(0.0, final_score - 0.05)
+            final_score *= 0.9
+            penalties.append("overqualified")
+
+        has_salary_warning = any("зарплаты" in warning for warning in warnings)
+        if has_salary_warning:
+            final_score *= 0.95
+            penalties.append("salary_warning")
+
+        final_score = float(max(0.0, min(1.0, final_score)))
 
         if not eligibility_ok:
             verdict = "reject"
-        elif final_score >= 0.70:
+        elif final_score >= 0.75:
             verdict = "strong"
-        elif final_score >= 0.40:
+        elif final_score >= 0.50:
             verdict = "ok"
-        else:
+        elif final_score >= 0.30:
             verdict = "weak"
+        else:
+            verdict = "reject"
 
         explanation = {
             "eligibility": {
@@ -132,8 +146,17 @@ class MatchingService:
                 "warnings": self._unique(warnings),
             },
             "ats": ats,
-            "semantic": {"score": layer2_score},
-            "final": {"score": final_score, "verdict": verdict},
+            "semantic": {"score": semantic_score},
+            "final": {
+                "score": final_score,
+                "verdict": verdict,
+                "components": {
+                    "semantic": semantic_score,
+                    "hard": hard_coverage,
+                    "nice": nice_coverage,
+                },
+                "penalties": penalties,
+            },
             "cover_letter_points": self._build_cover_letter_points(matched_evidence),
         }
 
@@ -146,8 +169,8 @@ class MatchingService:
         stmt = insert(VacancyScore).values(
             profile_id=profile_id,
             vacancy_id=vacancy_id,
-            layer1_score=layer1_score,
-            layer2_score=layer2_score,
+            layer1_score=(hard_coverage + nice_coverage) / 2,
+            layer2_score=semantic_score,
             final_score=final_score,
             verdict=verdict,
             explanation=explanation,
@@ -240,9 +263,11 @@ class MatchingService:
         profile_text: str,
         resume_text: str,
         skills_text: str,
-    ) -> tuple[float, dict[str, list[str]], list[tuple[VacancyRequirement, str, float]]]:
-        total_weight = sum(max(req.weight, 0) for req in requirements)
-        matched_weight = 0
+    ) -> tuple[dict[str, float], dict[str, list[str]], list[tuple[VacancyRequirement, str, float]]]:
+        matched_hard_weight = 0
+        total_hard_weight = 0
+        matched_nice_weight = 0
+        total_nice_weight = 0
         profile_tokens = extract_profile_tokens(profile_text)
 
         keywords_present: list[str] = []
@@ -257,8 +282,17 @@ class MatchingService:
             term_tokens = tokenize(normalized_needle)
             exact_keyword_match = contains_token(profile_tokens, term_tokens)
 
+            req_weight = max(req.weight, 0)
+            if req.is_hard:
+                total_hard_weight += req_weight
+            else:
+                total_nice_weight += req_weight
+
             if exact_keyword_match:
-                matched_weight += max(req.weight, 0)
+                if req.is_hard:
+                    matched_hard_weight += req_weight
+                else:
+                    matched_nice_weight += req_weight
                 keywords_present.append(req.raw_text)
                 evidence = find_evidence_snippet(profile_text, needle)
                 if evidence:
@@ -273,7 +307,8 @@ class MatchingService:
                 if has_uncertain_match(profile_tokens, normalized_needle):
                     keywords_uncertain.append(req.raw_text)
 
-        layer1_score = (matched_weight / total_weight) if total_weight > 0 else 0.0
+        hard_coverage = (matched_hard_weight / total_hard_weight) if total_hard_weight > 0 else 1.0
+        nice_coverage = (matched_nice_weight / total_nice_weight) if total_nice_weight > 0 else 1.0
 
         ats = {
             "keywords_present": self._unique(keywords_present),
@@ -289,7 +324,7 @@ class MatchingService:
             skills_text=skills_text,
         )
 
-        return layer1_score, ats, matched_evidence
+        return {"hard": hard_coverage, "nice": nice_coverage}, ats, matched_evidence
 
     def _compute_layer2(self, profile_id: int, vacancy_id: int) -> float:
         # Явно читаем записи embedding.

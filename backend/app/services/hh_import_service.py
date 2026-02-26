@@ -289,7 +289,7 @@ class HHImportService:
                 )
             )
 
-        for raw_text, normalized_key in self._extract_constraints(details, clean_description):
+        for raw_text, normalized_key, is_hard in self._extract_constraints(details, clean_description):
             dedupe_key = ("constraint", normalized_key)
             if dedupe_key in seen:
                 continue
@@ -300,8 +300,8 @@ class HHImportService:
                     kind="constraint",
                     raw_text=raw_text,
                     normalized_key=normalized_key,
-                    weight=1,
-                    is_hard=False,
+                    weight=3 if is_hard else 1,
+                    is_hard=is_hard,
                 )
             )
 
@@ -323,10 +323,12 @@ class HHImportService:
     def _extract_constraints(
         cls,
         details: dict[str, Any],
-        clean_description: str,  # kept for text-based extraction extensions
-    ) -> list[tuple[str, str]]:
-        constraints: list[tuple[str, str]] = []
-        _ = clean_description
+        clean_description: str,
+    ) -> list[tuple[str, str, bool]]:
+        constraints: list[tuple[str, str, bool]] = []
+        hard_markers = ("обязательно", "необходимо", "требуется")
+        normalized_description = cls._normalize_requirement_value(clean_description)
+        has_hard_markers = any(marker in normalized_description for marker in hard_markers)
         mappings = {
             "experience": details.get("experience"),
             "schedule": details.get("schedule"),
@@ -346,7 +348,7 @@ class HHImportService:
             if not normalized_value:
                 continue
 
-            constraints.append((f"{key}: {raw_value}", f"{key}:{normalized_value}"))
+            constraints.append((f"{key}: {raw_value}", f"{key}:{normalized_value}", has_hard_markers))
 
         return constraints
 
