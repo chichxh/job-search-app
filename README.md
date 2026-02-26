@@ -25,10 +25,12 @@
 
 ## Embeddings (Celery)
 
-- Провайдер задаётся env: `EMBEDDING_PROVIDER` (`localhash` | `sbert`), `SBERT_MODEL_NAME`, `EMBEDDING_DIM` (`384` для `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`).
-- Для локальной модели используется `sentence-transformers`, загрузка модели кэшируется в процессе воркера и поддерживается батчевый encode.
+- Провайдер задаётся env: `EMBEDDING_PROVIDER` (`fastembed` | `localhash`), по умолчанию `fastembed`.
+- Для `fastembed` используется CPU-only ONNX модель `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (RU/EN). Имя можно переопределить через `FASTEMBED_MODEL_NAME` или `EMBEDDING_MODEL_NAME`.
+- `EMBEDDING_DIM` можно не задавать: приложение автоматически берёт размерность из модели (`384` для `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`) и подставляет её в runtime.
+- Если `EMBEDDING_DIM` задан и не совпадает с размерностью модели, API/worker падают при старте с понятной ошибкой конфигурации.
 - При сохранении/обновлении вакансий и профилей ставятся Celery-задачи на пересчёт embedding.
-- Dev endpoints для массового пересчёта c очисткой старых векторов: `POST /api/v1/dev/embeddings/rebuild-vacancies?limit=20`, `POST /api/v1/dev/embeddings/rebuild-profiles?limit=20`.
+- Dev endpoints для массового пересчёта c очисткой старых векторов: `POST /api/v1/dev/embeddings/rebuild-vacancies?limit=20`, `POST /api/v1/dev/embeddings/rebuild-profiles?limit=20`, `POST /api/v1/dev/embeddings/rebuild-profile/1`.
 
 ## Frontend (Vite)
 

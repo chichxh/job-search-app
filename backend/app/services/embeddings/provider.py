@@ -4,6 +4,11 @@ import os
 from abc import ABC, abstractmethod
 from functools import lru_cache
 
+from app.services.embeddings.fastembed_provider import (
+    DEFAULT_FASTEMBED_MODEL,
+    FastEmbedEmbeddingProvider,
+)
+
 
 class EmbeddingProvider(ABC):
     """Базовый интерфейс провайдера эмбеддингов."""
@@ -55,45 +60,6 @@ class LocalHashEmbeddingProvider(EmbeddingProvider):
         return [value / norm for value in vector]
 
 
-@lru_cache(maxsize=4)
-def _load_sbert_model(model_name: str):
-    from sentence_transformers import SentenceTransformer
-
-    return SentenceTransformer(model_name)
-
-
-class SBERTEmbeddingProvider(EmbeddingProvider):
-    def __init__(self, model_name: str, embedding_dim: int) -> None:
-        self._model_name = model_name
-        self._embedding_dim = embedding_dim
-        self._model = _load_sbert_model(model_name)
-
-        model_dim = self._model.get_sentence_embedding_dimension()
-        if model_dim != embedding_dim:
-            raise ValueError(
-                f"EMBEDDING_DIM ({embedding_dim}) must match SBERT model dimension ({model_dim})"
-            )
-
-    @property
-    def name(self) -> str:
-        return f"sbert:{self._model_name}"
-
-    def embed_text(self, text: str) -> list[float]:
-        return self.embed_texts([text])[0]
-
-    def embed_texts(self, texts: list[str]) -> list[list[float]]:
-        if not texts:
-            return []
-
-        vectors = self._model.encode(
-            texts,
-            batch_size=min(32, max(1, len(texts))),
-            normalize_embeddings=True,
-            convert_to_numpy=True,
-        )
-        return vectors.astype("float32", copy=False).tolist()
-
-
 class OpenAIEmbeddingProvider(EmbeddingProvider):
     """Заглушка для будущей интеграции OpenAI."""
 
@@ -120,21 +86,48 @@ class GigaChatEmbeddingProvider(EmbeddingProvider):
 def get_embedding_provider() -> EmbeddingProvider:
     """Фабрика провайдера из env."""
 
-    provider_name = os.getenv("EMBEDDING_PROVIDER", "localhash").lower()
-    embedding_dim = int(os.getenv("EMBEDDING_DIM", "384"))
+    provider_name = os.getenv("EMBEDDING_PROVIDER", "fastembed").lower()
 
-    if provider_name == "localhash":
-        model_name = os.getenv("EMBEDDING_MODEL", "hashing-cpu")
-        return LocalHashEmbeddingProvider(model_name=model_name, embedding_dim=embedding_dim)
-    if provider_name == "sbert":
-        model_name = os.getenv(
-            "SBERT_MODEL_NAME",
-            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    if provider_name == "fastembed":
+        model_name = os.getenv("FASTEMBED_MODEL_NAME") or os.getenv(
+            "EMBEDDING_MODEL_NAME", DEFAULT_FASTEMBED_MODEL
         )
-        return SBERTEmbeddingProvider(model_name=model_name, embedding_dim=embedding_dim)
+        provider = FastEmbedEmbeddingProvider(model_name=model_name)
+        _validate_embedding_dim(provider.dim)
+        return provider
+
+    embedding_dim = _resolve_embedding_dim(default=384)
+    if provider_name == "localhash":
+        model_name = os.getenv("EMBEDDING_MODEL_NAME", "hashing-cpu")
+        return LocalHashEmbeddingProvider(model_name=model_name, embedding_dim=embedding_dim)
     if provider_name == "openai":
         return OpenAIEmbeddingProvider()
     if provider_name == "gigachat":
         return GigaChatEmbeddingProvider()
 
     raise ValueError(f"Unsupported EMBEDDING_PROVIDER: {provider_name}")
+
+
+def _resolve_embedding_dim(default: int) -> int:
+    return int(os.getenv("EMBEDDING_DIM", str(default)))
+
+
+def _validate_embedding_dim(model_dim: int) -> None:
+    configured_dim = os.getenv("EMBEDDING_DIM")
+    if configured_dim is None:
+        os.environ["EMBEDDING_DIM"] = str(model_dim)
+        return
+
+    configured_dim_int = int(configured_dim)
+    if configured_dim_int != model_dim:
+        raise ValueError(
+            "EMBEDDING_DIM mismatch: "
+            f"configured={configured_dim_int}, model={model_dim}. "
+            "Use matching EMBEDDING_DIM or unset it."
+        )
+
+
+def validate_embedding_configuration() -> None:
+    """Ранняя валидация embedding-конфига (для старта API/worker)."""
+
+    get_embedding_provider()

@@ -69,3 +69,19 @@ def rebuild_profile_embeddings(
         "profile_ids": profile_ids,
         "current_embeddings_for_selected": emb_count,
     }
+
+
+@router.post("/dev/embeddings/rebuild-profile/{profile_id}")
+def rebuild_single_profile_embedding(
+    profile_id: int,
+    db: Session = Depends(get_db),
+) -> dict[str, int | str]:
+    profile = db.get(Profile, profile_id)
+    if profile is None:
+        return {"status": "skipped", "reason": "profile_not_found", "profile_id": profile_id}
+
+    db.execute(delete(ProfileEmbedding).where(ProfileEmbedding.profile_id == profile_id))
+    db.commit()
+
+    build_profile_embedding.delay(profile_id)
+    return {"status": "enqueued", "profile_id": profile_id}

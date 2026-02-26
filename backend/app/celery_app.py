@@ -3,7 +3,11 @@ import os
 from celery import Celery
 from celery.schedules import crontab
 
+from app.services.embeddings.provider import validate_embedding_configuration
+
 SYNC_INTERVAL_MINUTES = int(os.getenv("SAVED_SEARCH_SYNC_INTERVAL_MINUTES", "5"))
+
+validate_embedding_configuration()
 
 celery_app = Celery(
     "job_search_worker",

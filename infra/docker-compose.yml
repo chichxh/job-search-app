@@ -43,8 +43,9 @@ services:
       # VirtualBox shared folder часто не дает нормальные file events → включаем polling
       WATCHFILES_FORCE_POLLING: "1"
       PYTHONPATH: "/app"
-      EMBEDDING_PROVIDER: "${EMBEDDING_PROVIDER:-local}"
-      EMBEDDING_MODEL: "${EMBEDDING_MODEL:-all-MiniLM-L6-v2}"
+      EMBEDDING_PROVIDER: "${EMBEDDING_PROVIDER:-fastembed}"
+      EMBEDDING_MODEL_NAME: "${EMBEDDING_MODEL_NAME:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}"
+      FASTEMBED_MODEL_NAME: "${FASTEMBED_MODEL_NAME:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}"
       EMBEDDING_DIM: "${EMBEDDING_DIM:-384}"
     volumes:
       # монтируем исходники, чтобы изменения на Windows сразу были видны в контейнере
@@ -74,8 +75,9 @@ services:
       - ../.env
     environment:
       PYTHONPATH: "/app"
-      EMBEDDING_PROVIDER: "${EMBEDDING_PROVIDER:-local}"
-      EMBEDDING_MODEL: "${EMBEDDING_MODEL:-all-MiniLM-L6-v2}"
+      EMBEDDING_PROVIDER: "${EMBEDDING_PROVIDER:-fastembed}"
+      EMBEDDING_MODEL_NAME: "${EMBEDDING_MODEL_NAME:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}"
+      FASTEMBED_MODEL_NAME: "${FASTEMBED_MODEL_NAME:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}"
       EMBEDDING_DIM: "${EMBEDDING_DIM:-384}"
     volumes:
       - ../backend:/app
@@ -101,8 +103,9 @@ services:
       - ../.env
     environment:
       PYTHONPATH: "/app"
-      EMBEDDING_PROVIDER: "${EMBEDDING_PROVIDER:-local}"
-      EMBEDDING_MODEL: "${EMBEDDING_MODEL:-all-MiniLM-L6-v2}"
+      EMBEDDING_PROVIDER: "${EMBEDDING_PROVIDER:-fastembed}"
+      EMBEDDING_MODEL_NAME: "${EMBEDDING_MODEL_NAME:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}"
+      FASTEMBED_MODEL_NAME: "${FASTEMBED_MODEL_NAME:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}"
       EMBEDDING_DIM: "${EMBEDDING_DIM:-384}"
     volumes:
       - ../backend:/app
