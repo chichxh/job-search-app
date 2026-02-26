@@ -21,7 +21,9 @@ _SKILL_ALIASES: dict[str, tuple[str, ...]] = {
     "gRPC": ("grpc", "g rpc"),
     "REST": ("rest", "rest api"),
     "WebSocket": ("websocket", "web socket"),
-    "DRF": ("drf", "django rest framework"),
+    "Django REST Framework": ("drf", "django rest framework"),
+    "ООП": ("ооп", "oop", "object oriented programming", "object-oriented programming"),
+    "async": ("async", "асинхрон", "asyncio", "асинхронность"),
     "pytest": ("pytest", "py test"),
     "Git": ("git",),
 }
@@ -36,6 +38,9 @@ def _normalize_text(text: str) -> str:
 
 _HARD_MARKERS = ("обязательно", "необходимо", "требуется")
 _NICE_MARKERS = ("плюсом будет", "желательно")
+_HARD_SECTION_MARKERS = ("требования", "мы ожидаем", "ожидания от кандидата")
+_NICE_SECTION_MARKERS = ("будет плюсом", "плюсом будет", "желательно")
+_STOP_SECTION_MARKERS = ("обязанности", "условия", "мы предлагаем", "о компании", "задачи")
 
 
 def _split_sentences(text: str) -> list[str]:
@@ -50,6 +55,76 @@ def _find_marker_context(text: str, markers: tuple[str, ...]) -> list[str]:
         if any(marker in normalized_sentence for marker in normalized_markers):
             contexts.append(normalized_sentence)
     return contexts
+
+
+def _extract_section_blocks(clean_text: str) -> tuple[str, str]:
+    hard_lines: list[str] = []
+    nice_lines: list[str] = []
+    current_section: str | None = None
+
+    for raw_line in clean_text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+
+        normalized = _normalize_text(stripped)
+        if any(marker in normalized for marker in _HARD_SECTION_MARKERS):
+            current_section = "hard"
+            continue
+        if any(marker in normalized for marker in _NICE_SECTION_MARKERS):
+            current_section = "nice"
+            continue
+        if any(marker in normalized for marker in _STOP_SECTION_MARKERS):
+            current_section = None
+            continue
+
+        content = stripped.lstrip("-•*0123456789.) ").strip()
+        if not content or current_section is None:
+            continue
+
+        if current_section == "hard":
+            hard_lines.append(content)
+        elif current_section == "nice":
+            nice_lines.append(content)
+
+    return "\n".join(hard_lines), "\n".join(nice_lines)
+
+
+def _extract_skills_from_text(text: str, *, is_hard: bool) -> list[dict]:
+    normalized_text = _normalize_text(text)
+    if not normalized_text:
+        return []
+
+    padded_text = f" {normalized_text} "
+    requirements: list[dict] = []
+    for raw_text, aliases in _SKILL_ALIASES.items():
+        if any(f" {_normalize_text(alias)} " in padded_text for alias in aliases):
+            requirements.append(
+                {
+                    "kind": "skill",
+                    "raw_text": raw_text,
+                    "normalized_key": _normalize_text(raw_text),
+                    "is_hard": is_hard,
+                    "weight": 3 if is_hard else 1,
+                }
+            )
+    return requirements
+
+
+def extract_requirements_from_description(clean_text: str) -> list[dict]:
+    hard_block, nice_block = _extract_section_blocks(clean_text)
+    extracted = [
+        *_extract_skills_from_text(hard_block, is_hard=True),
+        *_extract_skills_from_text(nice_block, is_hard=False),
+    ]
+
+    deduped: dict[str, dict] = {}
+    for requirement in extracted:
+        key = requirement["normalized_key"] or requirement["raw_text"]
+        existing = deduped.get(key)
+        if existing is None or (requirement["is_hard"] and not existing["is_hard"]):
+            deduped[key] = requirement
+    return list(deduped.values())
 
 
 def extract_skill_requirements(text: str) -> list[dict]:

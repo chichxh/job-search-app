@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import SavedSearch, Vacancy, VacancyRequirement
 from app.integrations.hh_client import HHClient
+from app.services.requirements_extractor import extract_requirements_from_description
 from app.utils.text_clean import strip_html
 
 logger = logging.getLogger(__name__)
@@ -132,8 +133,7 @@ class HHImportService:
                     is_existing = self._vacancy_exists(values["source"], values["external_id"])
                     vacancy_id = self._upsert_vacancy(values)
 
-                    if details is not None:
-                        self._replace_generated_requirements(vacancy_id, details, clean_description)
+                    self._replace_generated_requirements(vacancy_id, details, clean_description)
 
                     page_embedding_ids.add(vacancy_id)
 
@@ -259,7 +259,7 @@ class HHImportService:
     def _replace_generated_requirements(
         self,
         vacancy_id: int,
-        details: dict[str, Any],
+        details: Optional[dict[str, Any]],
         clean_description: str,
     ) -> None:
         self.db.execute(
@@ -272,9 +272,10 @@ class HHImportService:
         requirements: list[VacancyRequirement] = []
         seen: set[tuple[str, str]] = set()
 
-        for raw_skill in self._extract_skills(details):
-            normalized = self._normalize_requirement_value(raw_skill)
-            dedupe_key = ("skill", normalized or raw_skill)
+        generated_skill_requirements = self._build_skill_requirements(details, clean_description)
+        for requirement in generated_skill_requirements:
+            normalized = requirement["normalized_key"]
+            dedupe_key = ("skill", normalized or requirement["raw_text"])
             if dedupe_key in seen:
                 continue
             seen.add(dedupe_key)
@@ -282,10 +283,10 @@ class HHImportService:
                 VacancyRequirement(
                     vacancy_id=vacancy_id,
                     kind="skill",
-                    raw_text=raw_skill,
+                    raw_text=requirement["raw_text"],
                     normalized_key=normalized,
-                    weight=1,
-                    is_hard=False,
+                    weight=requirement["weight"],
+                    is_hard=requirement["is_hard"],
                 )
             )
 
@@ -309,7 +310,10 @@ class HHImportService:
             self.db.add_all(requirements)
 
     @staticmethod
-    def _extract_skills(details: dict[str, Any]) -> list[str]:
+    def _extract_skills(details: Optional[dict[str, Any]]) -> list[str]:
+        if not details:
+            return []
+
         skills: list[str] = []
         for skill in details.get("key_skills") or []:
             name = (skill or {}).get("name")
@@ -319,12 +323,45 @@ class HHImportService:
                     skills.append(cleaned)
         return skills
 
+    def _build_skill_requirements(
+        self,
+        details: Optional[dict[str, Any]],
+        clean_description: str,
+    ) -> list[dict[str, Any]]:
+        skill_requirements: dict[str, dict[str, Any]] = {}
+
+        for raw_skill in self._extract_skills(details):
+            normalized = self._normalize_requirement_value(raw_skill)
+            key = normalized or raw_skill
+            skill_requirements[key] = {
+                "raw_text": raw_skill,
+                "normalized_key": normalized,
+                "is_hard": False,
+                "weight": 1,
+            }
+
+        for requirement in extract_requirements_from_description(clean_description):
+            key = requirement["normalized_key"] or requirement["raw_text"]
+            existing = skill_requirements.get(key)
+            if existing is None or (requirement["is_hard"] and not existing["is_hard"]):
+                skill_requirements[key] = {
+                    "raw_text": requirement["raw_text"],
+                    "normalized_key": requirement["normalized_key"],
+                    "is_hard": requirement["is_hard"],
+                    "weight": requirement["weight"],
+                }
+
+        return list(skill_requirements.values())
+
     @classmethod
     def _extract_constraints(
         cls,
-        details: dict[str, Any],
+        details: Optional[dict[str, Any]],
         clean_description: str,
     ) -> list[tuple[str, str, bool]]:
+        if not details:
+            return []
+
         constraints: list[tuple[str, str, bool]] = []
         hard_markers = ("обязательно", "необходимо", "требуется")
         normalized_description = cls._normalize_requirement_value(clean_description)
