@@ -33,9 +33,12 @@ from app.db.models import (
     VacancyScore,
 )
 from app.services.matching.utils import (
+    contains_token,
     extract_profile_tokens,
     find_evidence_snippet,
+    has_uncertain_match,
     normalize_skill,
+    tokenize,
 )
 
 
@@ -222,21 +225,24 @@ class MatchingService:
 
         for req in requirements:
             needle = req.normalized_key or req.raw_text
-            evidence = find_evidence_snippet(profile_text, needle)
-            matched = evidence is not None
+            normalized_needle = normalize_skill(needle)
+            term_tokens = tokenize(normalized_needle)
+            exact_keyword_match = contains_token(profile_tokens, term_tokens)
 
-            if matched:
+            if exact_keyword_match:
                 matched_weight += max(req.weight, 0)
                 keywords_present.append(req.raw_text)
-                evidence_text, confidence = evidence
-                matched_evidence.append((req, evidence_text, confidence))
+                evidence = find_evidence_snippet(profile_text, needle)
+                if evidence:
+                    evidence_text, confidence = evidence
+                    matched_evidence.append((req, evidence_text, confidence))
             elif req.is_hard:
                 keywords_missing_must.append(req.raw_text)
-                if self._has_uncertain_token_match(req, profile_tokens):
+                if has_uncertain_match(profile_tokens, normalized_needle):
                     keywords_uncertain.append(req.raw_text)
             else:
                 keywords_missing_nice.append(req.raw_text)
-                if self._has_uncertain_token_match(req, profile_tokens):
+                if has_uncertain_match(profile_tokens, normalized_needle):
                     keywords_uncertain.append(req.raw_text)
 
         layer1_score = (matched_weight / total_weight) if total_weight > 0 else 0.0
@@ -331,15 +337,6 @@ class MatchingService:
         if keywords_missing_must:
             suggestions.append("Явно укажите обязательные навыки в опыте и summary.")
         return suggestions
-
-    @staticmethod
-    def _has_uncertain_token_match(requirement: VacancyRequirement, profile_tokens: set[str]) -> bool:
-        normalized_req = normalize_skill(requirement.normalized_key or requirement.raw_text)
-        if not normalized_req:
-            return False
-
-        req_tokens = [token for token in normalized_req.split() if len(token) >= 3]
-        return any(token in profile_tokens for token in req_tokens)
 
     @staticmethod
     def _unique(values: list[str]) -> list[str]:
