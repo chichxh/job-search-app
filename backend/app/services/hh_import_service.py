@@ -8,10 +8,10 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.db.models import SavedSearch, Vacancy, VacancyRequirement
+from app.db.models import SavedSearch, Vacancy, VacancyParsed, VacancyRequirement
 from app.integrations.hh_client import HHClient
-from app.services.requirements_extractor import extract_requirements_from_description
-from app.utils.text_clean import strip_html
+from app.services.requirements_extractor import extract_requirements_from_description, extract_skill_requirements
+from app.services.vacancy_parsing import parse_hh_description
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +119,9 @@ class HHImportService:
                         details = await self.hh_client.get_vacancy_details(str(item.get("id")))
 
                     values = self._map_to_vacancy_values(item, details)
-                    clean_description = strip_html(values.get("description") or "")
+                    html_description = values.get("description") or ""
+                    parsed = parse_hh_description(html_description)
+                    clean_description = parsed["plain_text"]
 
                     if html_log_count < 3:
                         logger.debug(
@@ -132,8 +134,9 @@ class HHImportService:
 
                     is_existing = self._vacancy_exists(values["source"], values["external_id"])
                     vacancy_id = self._upsert_vacancy(values)
+                    self._upsert_vacancy_parsed(vacancy_id, parsed)
 
-                    self._replace_generated_requirements(vacancy_id, details, clean_description)
+                    self._replace_generated_requirements(vacancy_id, details, parsed)
 
                     page_embedding_ids.add(vacancy_id)
 
@@ -260,7 +263,7 @@ class HHImportService:
         self,
         vacancy_id: int,
         details: Optional[dict[str, Any]],
-        clean_description: str,
+        parsed: dict[str, Any],
     ) -> None:
         self.db.execute(
             delete(VacancyRequirement).where(
@@ -272,7 +275,7 @@ class HHImportService:
         requirements: list[VacancyRequirement] = []
         seen: set[tuple[str, str]] = set()
 
-        generated_skill_requirements = self._build_skill_requirements(details, clean_description)
+        generated_skill_requirements = self._build_skill_requirements(details, parsed)
         for requirement in generated_skill_requirements:
             normalized = requirement["normalized_key"]
             dedupe_key = ("skill", normalized or requirement["raw_text"])
@@ -290,7 +293,7 @@ class HHImportService:
                 )
             )
 
-        for raw_text, normalized_key, is_hard in self._extract_constraints(details, clean_description):
+        for raw_text, normalized_key, is_hard in self._extract_constraints(details, parsed.get("plain_text") or ""):
             dedupe_key = ("constraint", normalized_key)
             if dedupe_key in seen:
                 continue
@@ -326,21 +329,14 @@ class HHImportService:
     def _build_skill_requirements(
         self,
         details: Optional[dict[str, Any]],
-        clean_description: str,
+        parsed: dict[str, Any],
     ) -> list[dict[str, Any]]:
+        clean_description = parsed.get("plain_text") or ""
+        sections = parsed.get("sections") or {}
+
         skill_requirements: dict[str, dict[str, Any]] = {}
 
-        for raw_skill in self._extract_skills(details):
-            normalized = self._normalize_requirement_value(raw_skill)
-            key = normalized or raw_skill
-            skill_requirements[key] = {
-                "raw_text": raw_skill,
-                "normalized_key": normalized,
-                "is_hard": False,
-                "weight": 1,
-            }
-
-        for requirement in extract_requirements_from_description(clean_description):
+        def upsert_requirement(requirement: dict[str, Any]) -> None:
             key = requirement["normalized_key"] or requirement["raw_text"]
             existing = skill_requirements.get(key)
             if existing is None or (requirement["is_hard"] and not existing["is_hard"]):
@@ -351,7 +347,58 @@ class HHImportService:
                     "weight": requirement["weight"],
                 }
 
+        requirements_text = ((sections.get("requirements") or {}).get("text") or "").strip()
+        if requirements_text:
+            for requirement in extract_requirements_from_description(f"Требования:\n{requirements_text}"):
+                requirement["is_hard"] = True
+                requirement["weight"] = 3
+                upsert_requirement(requirement)
+
+        nice_text = ((sections.get("nice_to_have") or {}).get("text") or "").strip()
+        if nice_text:
+            for requirement in extract_requirements_from_description(f"Будет плюсом:\n{nice_text}"):
+                requirement["is_hard"] = False
+                requirement["weight"] = 1
+                upsert_requirement(requirement)
+
+        if len(skill_requirements) < 3:
+            for requirement in extract_skill_requirements(clean_description):
+                upsert_requirement(requirement)
+
+        for raw_skill in self._extract_skills(details):
+            normalized = self._normalize_requirement_value(raw_skill)
+            upsert_requirement(
+                {
+                    "raw_text": raw_skill,
+                    "normalized_key": normalized,
+                    "is_hard": False,
+                    "weight": 1,
+                }
+            )
+
         return list(skill_requirements.values())
+
+    def _upsert_vacancy_parsed(self, vacancy_id: int, parsed: dict[str, Any]) -> None:
+        now_utc = datetime.now(timezone.utc)
+        stmt = insert(VacancyParsed).values(
+            vacancy_id=vacancy_id,
+            plain_text=parsed["plain_text"],
+            sections_json=parsed["sections"],
+            extracted_at=now_utc,
+            version=parsed["version"],
+            quality_score=parsed["quality_score"],
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[VacancyParsed.vacancy_id],
+            set_={
+                "plain_text": stmt.excluded.plain_text,
+                "sections_json": stmt.excluded.sections_json,
+                "extracted_at": stmt.excluded.extracted_at,
+                "version": stmt.excluded.version,
+                "quality_score": stmt.excluded.quality_score,
+            },
+        )
+        self.db.execute(stmt)
 
     @classmethod
     def _extract_constraints(
