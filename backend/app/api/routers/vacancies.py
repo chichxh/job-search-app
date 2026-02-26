@@ -1,14 +1,44 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
-from app.db.models import Vacancy
+from app.db.models import Vacancy, VacancyRequirement
 from app.db.session import get_db
 from app.schemas.vacancy import VacancyCreate, VacancyRead, VacancyUpdate
+from app.services.requirements_extractor import extract_skill_requirements
 from app.tasks.embedding_tasks import build_vacancy_embedding
 
 router = APIRouter(prefix="/vacancies", tags=["vacancies"])
+
+
+def _replace_manual_requirements(db: Session, vacancy: Vacancy) -> None:
+    if vacancy.source != "manual":
+        return
+
+    db.execute(
+        delete(VacancyRequirement).where(
+            VacancyRequirement.vacancy_id == vacancy.id,
+            VacancyRequirement.kind.in_(("skill", "constraint")),
+        )
+    )
+
+    requirements_payload = extract_skill_requirements(vacancy.description or "")
+    if requirements_payload:
+        db.add_all(
+            [
+                VacancyRequirement(
+                    vacancy_id=vacancy.id,
+                    kind=requirement["kind"],
+                    raw_text=requirement["raw_text"],
+                    normalized_key=requirement["normalized_key"],
+                    is_hard=requirement["is_hard"],
+                    weight=requirement["weight"],
+                )
+                for requirement in requirements_payload
+            ]
+        )
 
 
 @router.post("", response_model=VacancyRead, status_code=status.HTTP_201_CREATED)
@@ -17,6 +47,11 @@ def create_vacancy(payload: VacancyCreate, db: Session = Depends(get_db)):
     db.add(vacancy)
     db.commit()
     db.refresh(vacancy)
+
+    _replace_manual_requirements(db, vacancy)
+    db.commit()
+    db.refresh(vacancy)
+
     build_vacancy_embedding.delay(vacancy.id)
     return vacancy
 
@@ -45,6 +80,11 @@ def update_vacancy(vacancy_id: int, payload: VacancyUpdate, db: Session = Depend
 
     db.commit()
     db.refresh(vacancy)
+
+    _replace_manual_requirements(db, vacancy)
+    db.commit()
+    db.refresh(vacancy)
+
     build_vacancy_embedding.delay(vacancy.id)
     return vacancy
 
