@@ -143,6 +143,19 @@
   color: #991b1b;
 }
 
+
+.vacancies-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.vacancies-toolbar__status {
+  margin: 0;
+  color: #334155;
+}
+
 .vacancy-filters {
   display: flex;
   flex-wrap: wrap;

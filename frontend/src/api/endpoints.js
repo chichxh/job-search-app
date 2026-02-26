@@ -37,6 +37,16 @@ export function getTask(taskId) {
   return apiFetch(`/tasks/${taskId}`);
 }
 
+export function startHhImport(payload) {
+  return apiFetch('/import/hh', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getTailoring(profileId = DEFAULT_PROFILE_ID, vacancyId) {
   return apiFetch(`/profiles/${profileId}/vacancies/${vacancyId}/tailoring`);
 }
