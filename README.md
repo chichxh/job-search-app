@@ -25,9 +25,10 @@
 
 ## Embeddings (Celery)
 
-- Провайдер задаётся env: `EMBEDDING_PROVIDER` (`local`), `EMBEDDING_MODEL` (`all-MiniLM-L6-v2`), `EMBEDDING_DIM` (`384`).
+- Провайдер задаётся env: `EMBEDDING_PROVIDER` (`localhash` | `sbert`), `SBERT_MODEL_NAME`, `EMBEDDING_DIM` (`384` для `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`).
+- Для локальной модели используется `sentence-transformers`, загрузка модели кэшируется в процессе воркера и поддерживается батчевый encode.
 - При сохранении/обновлении вакансий и профилей ставятся Celery-задачи на пересчёт embedding.
-- Dev endpoint для массового пересчёта: `POST /api/v1/dev/embeddings/rebuild-vacancies?limit=20`.
+- Dev endpoints для массового пересчёта c очисткой старых векторов: `POST /api/v1/dev/embeddings/rebuild-vacancies?limit=20`, `POST /api/v1/dev/embeddings/rebuild-profiles?limit=20`.
 
 ## Frontend (Vite)
 
