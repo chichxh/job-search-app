@@ -9,6 +9,9 @@ from app.api.routers.saved_searches import router as saved_searches_router
 from app.api.routers.profiles import router as profiles_router
 from app.api.routers.matching import router as matching_router
 from app.api.routers.vacancies import router as vacancies_router
+from app.services.embeddings.provider import validate_embedding_configuration
+
+validate_embedding_configuration()
 
 app = FastAPI(title="Job Search App")
 

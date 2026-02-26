@@ -1,1 +1,1 @@
-sentence-transformers==3.4.1
+# ML dependencies are now part of requirements.txt (fastembed, CPU-only).
