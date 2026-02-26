@@ -21,6 +21,8 @@ target_metadata = Base.metadata
 HNSW_INDEX_NAMES = {
     "ix_vacancy_embeddings_embedding_hnsw",
     "ix_profile_embeddings_embedding_hnsw",
+    "ix_vacancy_embeddings_v2_embedding_hnsw",
+    "ix_profile_embeddings_v2_embedding_hnsw",
 }
 
 def include_object(object_, name, type_, reflected, compare_to):

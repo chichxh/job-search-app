@@ -210,8 +210,8 @@ class MatchingService:
                        ve.vacancy_id IS NOT NULL AS has_embedding,
                        (1 - (ve.embedding <=> pe.embedding)) AS semantic
                 FROM vacancies v
-                JOIN profile_embeddings pe ON pe.profile_id = :profile_id
-                LEFT JOIN vacancy_embeddings ve ON ve.vacancy_id = v.id
+                JOIN profile_embeddings_v2 pe ON pe.profile_id = :profile_id
+                LEFT JOIN vacancy_embeddings_v2 ve ON ve.vacancy_id = v.id
                 ORDER BY (ve.vacancy_id IS NULL), ve.embedding <=> pe.embedding
                 """
             ),
@@ -337,8 +337,8 @@ class MatchingService:
             text(
                 """
                 SELECT 1 - (ve.embedding <=> pe.embedding) AS similarity
-                FROM vacancy_embeddings ve
-                JOIN profile_embeddings pe ON pe.profile_id = :profile_id
+                FROM vacancy_embeddings_v2 ve
+                JOIN profile_embeddings_v2 pe ON pe.profile_id = :profile_id
                 WHERE ve.vacancy_id = :vacancy_id
                 """
             ),

@@ -1,1 +1,1 @@
-# CPU-only lightweight local embeddings are implemented without external ML dependencies.
+sentence-transformers==3.4.1

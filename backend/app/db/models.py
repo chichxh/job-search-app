@@ -138,7 +138,7 @@ class VacancyScore(Base):
 
 
 class VacancyEmbedding(Base):
-    __tablename__ = "vacancy_embeddings"
+    __tablename__ = "vacancy_embeddings_v2"
 
     vacancy_id: Mapped[int] = mapped_column(
         ForeignKey("vacancies.id", ondelete="CASCADE"), primary_key=True, nullable=False
@@ -149,7 +149,7 @@ class VacancyEmbedding(Base):
 
 
 class ProfileEmbedding(Base):
-    __tablename__ = "profile_embeddings"
+    __tablename__ = "profile_embeddings_v2"
 
     profile_id: Mapped[int] = mapped_column(
         ForeignKey("profiles.id", ondelete="CASCADE"), primary_key=True, nullable=False

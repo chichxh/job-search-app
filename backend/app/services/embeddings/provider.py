@@ -17,6 +17,11 @@ class EmbeddingProvider(ABC):
     def embed_text(self, text: str) -> list[float]:
         """Возвращает embedding для текста."""
 
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        """Возвращает embeddings для батча текстов."""
+
+        return [self.embed_text(text) for text in texts]
+
 
 class LocalHashEmbeddingProvider(EmbeddingProvider):
     """Легковесный CPU-only провайдер на hashing trick без внешних ML-зависимостей."""
@@ -50,6 +55,45 @@ class LocalHashEmbeddingProvider(EmbeddingProvider):
         return [value / norm for value in vector]
 
 
+@lru_cache(maxsize=4)
+def _load_sbert_model(model_name: str):
+    from sentence_transformers import SentenceTransformer
+
+    return SentenceTransformer(model_name)
+
+
+class SBERTEmbeddingProvider(EmbeddingProvider):
+    def __init__(self, model_name: str, embedding_dim: int) -> None:
+        self._model_name = model_name
+        self._embedding_dim = embedding_dim
+        self._model = _load_sbert_model(model_name)
+
+        model_dim = self._model.get_sentence_embedding_dimension()
+        if model_dim != embedding_dim:
+            raise ValueError(
+                f"EMBEDDING_DIM ({embedding_dim}) must match SBERT model dimension ({model_dim})"
+            )
+
+    @property
+    def name(self) -> str:
+        return f"sbert:{self._model_name}"
+
+    def embed_text(self, text: str) -> list[float]:
+        return self.embed_texts([text])[0]
+
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+
+        vectors = self._model.encode(
+            texts,
+            batch_size=min(32, max(1, len(texts))),
+            normalize_embeddings=True,
+            convert_to_numpy=True,
+        )
+        return vectors.astype("float32", copy=False).tolist()
+
+
 class OpenAIEmbeddingProvider(EmbeddingProvider):
     """Заглушка для будущей интеграции OpenAI."""
 
@@ -76,12 +120,18 @@ class GigaChatEmbeddingProvider(EmbeddingProvider):
 def get_embedding_provider() -> EmbeddingProvider:
     """Фабрика провайдера из env."""
 
-    provider_name = os.getenv("EMBEDDING_PROVIDER", "local").lower()
-    model_name = os.getenv("EMBEDDING_MODEL", "hashing-cpu")
+    provider_name = os.getenv("EMBEDDING_PROVIDER", "localhash").lower()
     embedding_dim = int(os.getenv("EMBEDDING_DIM", "384"))
 
-    if provider_name == "local":
+    if provider_name == "localhash":
+        model_name = os.getenv("EMBEDDING_MODEL", "hashing-cpu")
         return LocalHashEmbeddingProvider(model_name=model_name, embedding_dim=embedding_dim)
+    if provider_name == "sbert":
+        model_name = os.getenv(
+            "SBERT_MODEL_NAME",
+            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        )
+        return SBERTEmbeddingProvider(model_name=model_name, embedding_dim=embedding_dim)
     if provider_name == "openai":
         return OpenAIEmbeddingProvider()
     if provider_name == "gigachat":
