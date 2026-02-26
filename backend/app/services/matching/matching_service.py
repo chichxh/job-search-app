@@ -40,6 +40,7 @@ from app.services.matching.utils import (
     normalize_skill,
     tokenize,
 )
+from app.utils.text_clean import strip_html
 
 
 logger = logging.getLogger(__name__)
@@ -84,10 +85,36 @@ class MatchingService:
         layer2_score = self._compute_layer2(profile_id=profile_id, vacancy_id=vacancy_id)
 
         hard_missing = ats["keywords_missing_must"]
-        eligibility_ok = len(hard_missing) == 0
-        reasons_failed = ["missing_required_skills"] if not eligibility_ok else []
+        reasons_failed: list[str] = []
+        warnings: list[str] = []
+
+        if hard_missing:
+            reasons_failed.append("missing_required_skills")
+
+        relocation_required = self._is_relocation_required(vacancy)
+        if relocation_required and not profile.relocation_ok:
+            reasons_failed.append("Требуется релокация")
+
+        if self._is_location_mismatch(vacancy=vacancy, profile=profile):
+            reasons_failed.append("Несовпадение локации")
+
+        if profile.salary_min is not None:
+            if vacancy.salary_to is not None and vacancy.salary_to < profile.salary_min:
+                reasons_failed.append("Ожидания по зарплате выше вилки")
+            elif vacancy.salary_from is not None and vacancy.salary_from < profile.salary_min:
+                warnings.append("Нижняя граница зарплаты ниже ожиданий")
+
+        vacancy_level = self._detect_vacancy_level(vacancy.title or "")
+        profile_level = self._detect_profile_level(profile.resume_text or "")
+        overqualified = vacancy_level == "junior" and profile_level == "senior"
+        if overqualified:
+            warnings.append("overqualified")
+
+        eligibility_ok = len(reasons_failed) == 0
 
         final_score = 0.55 * layer2_score + 0.45 * layer1_score
+        if overqualified:
+            final_score = max(0.0, final_score - 0.05)
 
         if not eligibility_ok:
             verdict = "reject"
@@ -101,7 +128,8 @@ class MatchingService:
         explanation = {
             "eligibility": {
                 "ok": eligibility_ok,
-                "reasons_failed": reasons_failed,
+                "reasons_failed": self._unique(reasons_failed),
+                "warnings": self._unique(warnings),
             },
             "ats": ats,
             "semantic": {"score": layer2_score},
@@ -311,6 +339,50 @@ class MatchingService:
                     confidence=float(confidence),
                 )
             )
+
+    def _is_relocation_required(self, vacancy: Vacancy) -> bool:
+        if vacancy.source != "hh":
+            return False
+
+        description = strip_html(vacancy.description or "").lower()
+        relocation_tokens = ("релокац", "переезд", "республика татарстан")
+        return any(token in description for token in relocation_tokens)
+
+    def _is_remote_vacancy(self, vacancy: Vacancy) -> bool:
+        haystack = " ".join(
+            part.lower() for part in [vacancy.title or "", vacancy.location or "", strip_html(vacancy.description or "")] if part
+        )
+        remote_tokens = ("удален", "remote", "дистанцион")
+        return any(token in haystack for token in remote_tokens)
+
+    def _is_location_mismatch(self, vacancy: Vacancy, profile: Profile) -> bool:
+        if not vacancy.location or not profile.location:
+            return False
+        if self._is_remote_vacancy(vacancy):
+            return False
+        return vacancy.location.strip() != profile.location.strip()
+
+    @staticmethod
+    def _detect_vacancy_level(title: str) -> str | None:
+        lowered = (title or "").lower()
+        if "junior" in lowered or "джуниор" in lowered:
+            return "junior"
+        if "senior" in lowered or "сеньор" in lowered:
+            return "senior"
+        if "middle" in lowered or "мидл" in lowered:
+            return "middle"
+        return None
+
+    @staticmethod
+    def _detect_profile_level(resume_text: str) -> str | None:
+        lowered = (resume_text or "").lower()
+        if "6+" in lowered or "senior" in lowered or "сеньор" in lowered:
+            return "senior"
+        if "middle" in lowered or "мидл" in lowered:
+            return "middle"
+        if "junior" in lowered or "джуниор" in lowered:
+            return "junior"
+        return None
 
     @staticmethod
     def _build_cover_letter_points(matched_evidence: list[tuple[VacancyRequirement, str, float]]) -> list[str]:
