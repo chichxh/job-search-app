@@ -111,6 +111,53 @@ def _extract_skills_from_text(text: str, *, is_hard: bool) -> list[dict]:
     return requirements
 
 
+def _extract_skills_from_lines(lines: list[str], *, is_hard: bool) -> list[dict]:
+    requirements: list[dict] = []
+    for line in lines:
+        requirements.extend(_extract_skills_from_text(line, is_hard=is_hard))
+    return requirements
+
+
+def extract_requirements_from_sections(sections: dict) -> list[dict]:
+    requirements_lines = ((sections.get("requirements") or {}).get("lines") or [])
+    nice_to_have_lines = ((sections.get("nice_to_have") or {}).get("lines") or [])
+
+    extracted = [
+        *_extract_skills_from_lines(requirements_lines, is_hard=True),
+        *_extract_skills_from_lines(nice_to_have_lines, is_hard=False),
+    ]
+
+    deduped: dict[str, dict] = {}
+    for requirement in extracted:
+        key = requirement["normalized_key"] or requirement["raw_text"]
+        existing = deduped.get(key)
+        if existing is None or (requirement["is_hard"] and not existing["is_hard"]):
+            deduped[key] = requirement
+    return list(deduped.values())
+
+
+def extract_requirements_fallback(plain_text: str) -> list[dict]:
+    requirements: dict[str, dict] = {}
+    normalized_hard_markers = tuple(_normalize_text(marker) for marker in _HARD_MARKERS)
+
+    for line in plain_text.splitlines():
+        normalized_line = _normalize_text(line)
+        if not normalized_line:
+            continue
+
+        is_hard = any(marker in normalized_line for marker in normalized_hard_markers)
+        for requirement in _extract_skills_from_text(line, is_hard=is_hard):
+            key = requirement["normalized_key"] or requirement["raw_text"]
+            existing = requirements.get(key)
+            if existing is None or (requirement["is_hard"] and not existing["is_hard"]):
+                requirements[key] = requirement
+
+    if requirements:
+        return list(requirements.values())
+
+    return extract_skill_requirements(plain_text)
+
+
 def extract_requirements_from_description(clean_text: str) -> list[dict]:
     hard_block, nice_block = _extract_section_blocks(clean_text)
     extracted = [

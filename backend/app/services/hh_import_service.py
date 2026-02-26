@@ -10,7 +10,10 @@ from sqlalchemy.orm import Session
 
 from app.db.models import SavedSearch, Vacancy, VacancyParsed, VacancyRequirement
 from app.integrations.hh_client import HHClient
-from app.services.requirements_extractor import extract_requirements_from_description, extract_skill_requirements
+from app.services.requirements_extractor import (
+    extract_requirements_fallback,
+    extract_requirements_from_sections,
+)
 from app.services.vacancy_parsing import parse_hh_description
 
 logger = logging.getLogger(__name__)
@@ -331,7 +334,6 @@ class HHImportService:
         details: Optional[dict[str, Any]],
         parsed: dict[str, Any],
     ) -> list[dict[str, Any]]:
-        clean_description = parsed.get("plain_text") or ""
         sections = parsed.get("sections") or {}
 
         skill_requirements: dict[str, dict[str, Any]] = {}
@@ -347,22 +349,12 @@ class HHImportService:
                     "weight": requirement["weight"],
                 }
 
-        requirements_text = ((sections.get("requirements") or {}).get("text") or "").strip()
-        if requirements_text:
-            for requirement in extract_requirements_from_description(f"Требования:\n{requirements_text}"):
-                requirement["is_hard"] = True
-                requirement["weight"] = 3
-                upsert_requirement(requirement)
+        for requirement in extract_requirements_from_sections(sections):
+            upsert_requirement(requirement)
 
-        nice_text = ((sections.get("nice_to_have") or {}).get("text") or "").strip()
-        if nice_text:
-            for requirement in extract_requirements_from_description(f"Будет плюсом:\n{nice_text}"):
-                requirement["is_hard"] = False
-                requirement["weight"] = 1
-                upsert_requirement(requirement)
-
+        clean_description = parsed.get("plain_text") or ""
         if len(skill_requirements) < 3:
-            for requirement in extract_skill_requirements(clean_description):
+            for requirement in extract_requirements_fallback(clean_description):
                 upsert_requirement(requirement)
 
         for raw_skill in self._extract_skills(details):
