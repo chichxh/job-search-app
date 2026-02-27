@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import insert
 from app.celery_app import celery_app
 from app.db.models import Profile, ProfileEmbedding, Vacancy, VacancyEmbedding, VacancyParsed, VacancyRequirement
 from app.db.session import SessionLocal
+from app.services.embeddings.profile_text_builder import build_profile_document, build_profile_documents
 from app.services.embeddings.provider import get_embedding_provider
 from app.utils.text_clean import strip_html
 
@@ -29,11 +30,6 @@ def _build_vacancy_text(vacancy: Vacancy, key_skills: list[str], parsed_plain_te
     parts = [vacancy.title, clean_text]
     if key_skills:
         parts.append("Ключевые навыки: " + ", ".join(key_skills))
-    return "\n\n".join(part for part in parts if part)
-
-
-def _build_profile_text(profile: Profile) -> str:
-    parts = [profile.title or "", profile.resume_text or "", profile.skills_text or ""]
     return "\n\n".join(part for part in parts if part)
 
 
@@ -117,7 +113,7 @@ def build_profile_embedding(profile_id: int) -> dict[str, str | int]:
             return {"status": "skipped", "reason": "profile_not_found", "profile_id": profile_id}
 
         provider = get_embedding_provider()
-        text = _build_profile_text(profile)
+        text = build_profile_document(db, profile_id)
         vector = provider.embed_text(text)
         _upsert_profile_embedding(db, profile_id=profile_id, vector=vector, model_name=provider.name)
         db.commit()
@@ -252,11 +248,12 @@ def rebuild_profile_embeddings(limit: int | None = None) -> dict[str, int]:
         provider = get_embedding_provider()
         for start in range(0, len(profile_ids), EMBED_BATCH_SIZE):
             batch_ids = profile_ids[start : start + EMBED_BATCH_SIZE]
-            profiles = db.execute(select(Profile).where(Profile.id.in_(batch_ids))).scalars().all()
-            texts = [_build_profile_text(profile) for profile in profiles]
+            documents_by_profile_id = build_profile_documents(db, batch_ids)
+            prepared_ids = [profile_id for profile_id in batch_ids if profile_id in documents_by_profile_id]
+            texts = [documents_by_profile_id[profile_id] for profile_id in prepared_ids]
             vectors = provider.embed_texts(texts)
-            for profile, vector in zip(profiles, vectors, strict=False):
-                _upsert_profile_embedding(db, profile_id=profile.id, vector=vector, model_name=provider.name)
+            for profile_id, vector in zip(prepared_ids, vectors, strict=False):
+                _upsert_profile_embedding(db, profile_id=profile_id, vector=vector, model_name=provider.name)
 
         db.commit()
         return {"status": "ok", "processed": len(profile_ids)}
