@@ -53,8 +53,8 @@ VITE_API_BASE_URL=http://127.0.0.1:8000 npm run dev
 
 ## LLM configuration (env)
 
-- `LLM_PROVIDER`: `gigachat` | `openai` (default `gigachat`).
-- `LLM_MODEL`: model name (default `GigaChat`).
+- `LLM_PROVIDER`: `gigachat` | `openai` (default `gigachat`). Для GigaChat выставьте `LLM_PROVIDER=gigachat`.
+- `LLM_MODEL`: model name (default `GigaChat`), например `GigaChat` или `GigaChat-Pro`.
 - `LLM_TEMPERATURE`: float (default `0.2`).
 - `LLM_MAX_TOKENS`: int (default `1200`).
 - `GIGACHAT_AUTH_KEY`: required when `LLM_PROVIDER=gigachat`.
@@ -63,7 +63,28 @@ VITE_API_BASE_URL=http://127.0.0.1:8000 npm run dev
 - `GIGACHAT_API_BASE`: default `https://gigachat.devices.sberbank.ru`.
 - `GIGACHAT_VERIFY_SSL`: bool, default `true`.
 
+Пример env для GigaChat:
+
+```env
+LLM_PROVIDER=gigachat
+LLM_MODEL=GigaChat
+GIGACHAT_AUTH_KEY=...
+GIGACHAT_SCOPE=GIGACHAT_API_PERS
+GIGACHAT_OAUTH_URL=https://ngw.devices.sberbank.ru:9443/api/v2/oauth
+GIGACHAT_API_BASE=https://gigachat.devices.sberbank.ru
+```
+
 Validation helper: `app.core.config.validate_llm_settings()`.
 
 - App startup does **not** require `GIGACHAT_AUTH_KEY`.
 - Clear error is raised only when LLM settings are validated/used and required key is missing.
+
+Проверка генерации документов (после импорта вакансий/профиля и при наличии `profile_id` + `vacancy_id`):
+
+```bash
+# Generate resume draft
+curl -X POST "http://127.0.0.1:8000/api/v1/profiles/<profile_id>/vacancies/<vacancy_id>/resume/generate"
+
+# Generate cover letter draft
+curl -X POST "http://127.0.0.1:8000/api/v1/profiles/<profile_id>/vacancies/<vacancy_id>/cover-letter/generate"
+```
