@@ -27,7 +27,11 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     Profile,
     ProfileEmbedding,
+    ProfileExperience,
+    ProfileProject,
+    ProfileSkill,
     ResumeEvidence,
+    ResumeVersion,
     Vacancy,
     VacancyEmbedding,
     VacancyParsed,
@@ -74,15 +78,30 @@ class MatchingService:
             )
         ).scalars().all()
 
-        resume_text = profile.resume_text or ""
-        skills_text = profile.skills_text or ""
-        profile_text = "\n".join(part for part in [resume_text, skills_text] if part)
+        resume_text = self._get_active_resume_text(profile_id=profile_id) or (profile.resume_text or "")
+        experiences_text = self._get_experiences_text(profile_id=profile_id)
+        projects_text = self._get_projects_text(profile_id=profile_id)
+        profile_text = "\n".join(
+            part
+            for part in [
+                resume_text,
+                profile.summary_about or "",
+                experiences_text,
+                projects_text,
+            ]
+            if part
+        )
+        profile_skill_levels = self._get_profile_skill_levels(profile_id=profile_id)
+        profile_skills_set = set(profile_skill_levels)
 
         coverage, ats, matched_evidence = self._compute_layer1(
             requirements,
             profile_text,
             resume_text=resume_text,
-            skills_text=skills_text,
+            skills_text=profile.skills_text or "",
+            profile_skills_set=profile_skills_set,
+            profile_skill_levels=profile_skill_levels,
+            experience_projects_text="\n".join(part for part in [experiences_text, projects_text] if part),
         )
         hard_coverage = coverage["hard"]
         nice_coverage = coverage["nice"]
@@ -101,12 +120,21 @@ class MatchingService:
         if hard_missing:
             reasons_failed.append("missing_required_skills")
 
-        relocation_required = self._is_relocation_required(vacancy)
-        if relocation_required and not profile.relocation_ok:
-            reasons_failed.append("Требуется релокация")
-
         if self._is_location_mismatch(vacancy=vacancy, profile=profile):
             reasons_failed.append("Несовпадение локации")
+
+        explanation_warnings.extend(
+            [
+                f"preferred_schedule={profile.preferred_schedule}" if profile.preferred_schedule else "",
+                f"preferred_employment={profile.preferred_employment}" if profile.preferred_employment else "",
+                f"relocation_ok={profile.relocation_ok}",
+                f"remote_ok={profile.remote_ok}",
+                f"available_from={profile.available_from.isoformat()}" if profile.available_from else "",
+                f"notice_period_days={profile.notice_period_days}"
+                if profile.notice_period_days is not None
+                else "",
+            ]
+        )
 
         if profile.salary_min is not None:
             if vacancy.salary_to is not None and vacancy.salary_to < profile.salary_min:
@@ -278,6 +306,9 @@ class MatchingService:
         profile_text: str,
         resume_text: str,
         skills_text: str,
+        profile_skills_set: set[str],
+        profile_skill_levels: dict[str, str],
+        experience_projects_text: str,
     ) -> tuple[dict[str, float], dict[str, list[str]], list[tuple[VacancyRequirement, str, float]]]:
         matched_hard_weight = 0
         total_hard_weight = 0
@@ -295,7 +326,14 @@ class MatchingService:
             needle = req.normalized_key or req.raw_text
             normalized_needle = normalize_skill(needle)
             term_tokens = tokenize(normalized_needle)
+            skill_present = normalized_needle in profile_skills_set if normalized_needle else False
             exact_keyword_match = contains_token(profile_tokens, term_tokens)
+            beginner_hard_skill = (
+                skill_present
+                and req.is_hard
+                and profile_skill_levels.get(normalized_needle) == "beginner"
+            )
+            is_present = (skill_present and not beginner_hard_skill) or exact_keyword_match
 
             req_weight = max(req.weight, 0)
             if req.is_hard:
@@ -303,18 +341,28 @@ class MatchingService:
             else:
                 total_nice_weight += req_weight
 
-            if exact_keyword_match:
+            if is_present:
                 if req.is_hard:
                     matched_hard_weight += req_weight
                 else:
                     matched_nice_weight += req_weight
                 keywords_present.append(req.raw_text)
-                evidence = find_evidence_snippet(profile_text, needle)
+
+                evidence = None
+                if skill_present:
+                    evidence = find_evidence_snippet(experience_projects_text, needle)
+                    if not evidence:
+                        evidence = find_evidence_snippet(resume_text, needle)
+                if not evidence:
+                    evidence = find_evidence_snippet(profile_text, needle)
+
                 if evidence:
                     evidence_text, confidence = evidence
                     matched_evidence.append((req, evidence_text, confidence))
             elif req.is_hard:
                 keywords_missing_must.append(req.raw_text)
+                if beginner_hard_skill:
+                    keywords_uncertain.append(req.raw_text)
                 if has_uncertain_match(profile_tokens, normalized_needle):
                     keywords_uncertain.append(req.raw_text)
             else:
@@ -340,6 +388,78 @@ class MatchingService:
         )
 
         return {"hard": hard_coverage, "nice": nice_coverage}, ats, matched_evidence
+
+    def _get_active_resume_text(self, profile_id: int) -> str | None:
+        return self.db.execute(
+            select(ResumeVersion.content_text)
+            .where(
+                ResumeVersion.profile_id == profile_id,
+                ResumeVersion.status == "approved",
+                ResumeVersion.vacancy_id.is_(None),
+            )
+            .order_by(
+                ResumeVersion.approved_at.desc().nullslast(),
+                ResumeVersion.created_at.desc(),
+                ResumeVersion.id.desc(),
+            )
+            .limit(1)
+        ).scalar_one_or_none()
+
+    def _get_experiences_text(self, profile_id: int, limit: int = 5) -> str:
+        experiences = self.db.execute(
+            select(ProfileExperience)
+            .where(ProfileExperience.profile_id == profile_id)
+            .order_by(
+                ProfileExperience.start_date.desc(),
+                ProfileExperience.end_date.desc().nullslast(),
+                ProfileExperience.id.desc(),
+            )
+            .limit(limit)
+        ).scalars().all()
+        parts: list[str] = []
+        for exp in experiences:
+            parts.extend(
+                [
+                    exp.responsibilities_text or "",
+                    exp.achievements_text or "",
+                    exp.tech_stack_text or "",
+                ]
+            )
+        return "\n".join(part for part in parts if part)
+
+    def _get_projects_text(self, profile_id: int, limit: int = 5) -> str:
+        projects = self.db.execute(
+            select(ProfileProject)
+            .where(ProfileProject.profile_id == profile_id)
+            .order_by(
+                ProfileProject.start_date.desc().nullslast(),
+                ProfileProject.created_at.desc(),
+                ProfileProject.id.desc(),
+            )
+            .limit(limit)
+        ).scalars().all()
+        parts: list[str] = []
+        for project in projects:
+            parts.extend([project.description_text or "", project.tech_stack_text or ""])
+        return "\n".join(part for part in parts if part)
+
+    def _get_profile_skill_levels(self, profile_id: int) -> dict[str, str]:
+        rows = self.db.execute(
+            select(ProfileSkill.normalized_key, ProfileSkill.level).where(ProfileSkill.profile_id == profile_id)
+        ).all()
+        level_priority = {"beginner": 1, "intermediate": 2, "advanced": 3, "expert": 4}
+        result: dict[str, str] = {}
+        for normalized_key, level in rows:
+            if not normalized_key:
+                continue
+            normalized = normalize_skill(normalized_key)
+            if not normalized:
+                continue
+            current_level = (level or "").strip().lower()
+            previous_level = result.get(normalized, "")
+            if level_priority.get(current_level, 0) >= level_priority.get(previous_level, 0):
+                result[normalized] = current_level
+        return result
 
     def _compute_layer2(self, profile_id: int, vacancy_id: int) -> float:
         # Явно читаем записи embedding.
@@ -431,11 +551,12 @@ class MatchingService:
         return any(token in haystack for token in remote_tokens)
 
     def _is_location_mismatch(self, vacancy: Vacancy, profile: Profile) -> bool:
-        if not vacancy.location or not profile.location:
+        profile_city = profile.city or profile.location
+        if not vacancy.location or not profile_city:
             return False
         if self._is_remote_vacancy(vacancy):
             return False
-        return vacancy.location.strip() != profile.location.strip()
+        return vacancy.location.strip() != profile_city.strip()
 
     @staticmethod
     def _detect_vacancy_level(title: str) -> str | None:
