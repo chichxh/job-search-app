@@ -184,6 +184,57 @@ def rebuild_vacancy_embeddings(limit: int | None = None) -> dict[str, int]:
         db.close()
 
 
+@celery_app.task(name="app.tasks.embedding_tasks.rebuild_vacancy_embeddings_for_ids")
+def rebuild_vacancy_embeddings_for_ids(vacancy_ids: list[int]) -> dict[str, int]:
+    db = SessionLocal()
+    try:
+        unique_ids = sorted(set(vacancy_ids))
+        if not unique_ids:
+            return {"status": "ok", "processed": 0}
+
+        db.execute(delete(VacancyEmbedding).where(VacancyEmbedding.vacancy_id.in_(unique_ids)))
+
+        provider = get_embedding_provider()
+        processed = 0
+        for start in range(0, len(unique_ids), EMBED_BATCH_SIZE):
+            batch_ids = unique_ids[start : start + EMBED_BATCH_SIZE]
+            vacancies = db.execute(select(Vacancy).where(Vacancy.id.in_(batch_ids))).scalars().all()
+            parsed_text_by_vacancy_id = dict(
+                db.execute(select(VacancyParsed.vacancy_id, VacancyParsed.plain_text).where(VacancyParsed.vacancy_id.in_(batch_ids))).all()
+            )
+
+            texts = []
+            prepared_ids = []
+            for vacancy in vacancies:
+                skills_stmt = select(VacancyRequirement.raw_text).where(
+                    VacancyRequirement.vacancy_id == vacancy.id,
+                    VacancyRequirement.kind == "skill",
+                )
+                key_skills = list(db.execute(skills_stmt).scalars().all())
+                prepared_ids.append(vacancy.id)
+                texts.append(
+                    _build_vacancy_text(
+                        vacancy,
+                        key_skills,
+                        parsed_plain_text=parsed_text_by_vacancy_id.get(vacancy.id),
+                    )
+                )
+
+            vectors = provider.embed_texts(texts)
+            for vacancy_id, vector in zip(prepared_ids, vectors, strict=False):
+                _upsert_vacancy_embedding(db, vacancy_id=vacancy_id, vector=vector, model_name=provider.name)
+                processed += 1
+
+        db.commit()
+        return {"status": "ok", "processed": processed}
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        logger.exception("Failed to rebuild vacancy embeddings for ids")
+        raise
+    finally:
+        db.close()
+
+
 @celery_app.task(name="app.tasks.embedding_tasks.rebuild_profile_embeddings")
 def rebuild_profile_embeddings(limit: int | None = None) -> dict[str, int]:
     db = SessionLocal()
