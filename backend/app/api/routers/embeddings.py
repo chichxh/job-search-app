@@ -92,11 +92,26 @@ def rebuild_single_profile_embedding(
 def backfill_hh_vacancies_parsed(
     limit: int | None = Query(default=None, ge=1, le=100000),
     only_missing: bool = Query(default=True),
+    schedule_embeddings: bool = Query(default=True),
+    schedule_recommendations: bool = Query(default=True),
+    embedding_batch_size: int = Query(default=256, ge=1, le=5000),
+    recommendations_limit: int = Query(default=50, ge=1, le=500),
 ) -> dict[str, str | int | bool | None]:
-    task = backfill_hh_parsed.delay(limit=limit, only_missing=only_missing)
+    task = backfill_hh_parsed.delay(
+        limit=limit,
+        only_missing=only_missing,
+        schedule_embeddings=schedule_embeddings,
+        schedule_recommendations=schedule_recommendations,
+        embedding_batch_size=embedding_batch_size,
+        recommendations_limit=recommendations_limit,
+    )
     return {
         "status": "enqueued",
         "task_id": task.id,
         "limit": limit,
         "only_missing": only_missing,
+        "schedule_embeddings": schedule_embeddings,
+        "schedule_recommendations": schedule_recommendations,
+        "embedding_batch_size": embedding_batch_size,
+        "recommendations_limit": recommendations_limit,
     }
