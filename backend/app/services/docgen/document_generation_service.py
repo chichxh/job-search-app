@@ -55,7 +55,7 @@ class DocumentGenerationService:
             title=self._build_title("AI resume draft", metadata),
         )
         self.db.add(draft)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(draft)
         return draft
 
@@ -85,7 +85,7 @@ class DocumentGenerationService:
             subject="Сопроводительное письмо",
         )
         self.db.add(draft)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(draft)
         return draft
 

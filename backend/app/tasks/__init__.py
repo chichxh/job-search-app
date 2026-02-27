@@ -1,5 +1,6 @@
 """Celery tasks package."""
 
+from app.tasks.docgen_tasks import generate_cover_letter_draft_task, generate_resume_draft_task
 from app.tasks.embedding_tasks import (
     build_profile_embedding,
     build_vacancy_embedding,
@@ -21,4 +22,6 @@ __all__ = [
     "compute_profile_recommendations",
     "backfill_profile",
     "backfill_hh_parsed",
+    "generate_resume_draft_task",
+    "generate_cover_letter_draft_task",
 ]
