@@ -121,6 +121,122 @@ class Profile(Base):
     )
 
 
+class ProfileExperience(Base):
+    __tablename__ = "profile_experiences"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    company_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    position_title: Mapped[str] = mapped_column(String(255), nullable=False)
+    location: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    responsibilities_text: Mapped[str] = mapped_column(Text, nullable=False)
+    achievements_text: Mapped[str] = mapped_column(Text, nullable=False)
+    tech_stack_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    employment_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ProfileProject(Base):
+    __tablename__ = "profile_projects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    description_text: Mapped[str] = mapped_column(Text, nullable=False)
+    start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    tech_stack_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ProfileAchievement(Base):
+    __tablename__ = "profile_achievements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description_text: Mapped[str] = mapped_column(Text, nullable=False)
+    metric: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    achieved_at: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    related_experience_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("profile_experiences.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    related_project_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("profile_projects.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ProfileEducation(Base):
+    __tablename__ = "profile_education"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    institution: Mapped[str] = mapped_column(String(255), nullable=False)
+    degree_level: Mapped[str] = mapped_column(String(100), nullable=False)
+    field_of_study: Mapped[str] = mapped_column(String(255), nullable=False)
+    start_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    end_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    description_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    gpa: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ProfileCertificate(Base):
+    __tablename__ = "profile_certificates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    issuer: Mapped[str] = mapped_column(String(255), nullable=False)
+    issued_at: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    expires_at: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ProfileSkill(Base):
+    __tablename__ = "profile_skills"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    name_raw: Mapped[str] = mapped_column(String(255), nullable=False)
+    normalized_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    category: Mapped[str] = mapped_column(String(50), nullable=False)
+    level: Mapped[str] = mapped_column(String(50), nullable=False)
+    years: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    last_used_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    evidence_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ProfileLanguage(Base):
+    __tablename__ = "profile_languages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    language: Mapped[str] = mapped_column(String(100), nullable=False)
+    level: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ProfileLink(Base):
+    __tablename__ = "profile_links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)
+    url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    label: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class VacancyRequirement(Base):
     __tablename__ = "vacancy_requirements"
 
