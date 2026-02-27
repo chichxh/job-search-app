@@ -4,19 +4,10 @@ import re
 
 from app.utils.text_clean import strip_html
 
-VERSION = "hh_sections_v1"
+from .line_classifier import is_section_header
+from .requirement_markers import SECTION_HEADERS
 
-_SECTION_ALIASES: dict[str, tuple[str, ...]] = {
-    "responsibilities": ("обязанности", "задачи", "что делать"),
-    "requirements": (
-        "требования",
-        "мы ожидаем",
-        "ожидания от кандидата",
-        "требования к кандидату",
-    ),
-    "nice_to_have": ("будет плюсом", "желательно", "приветствуется", "nice to have"),
-    "conditions": ("условия", "мы предлагаем", "компенсация", "benefits"),
-}
+VERSION = "hh_sections_v2"
 
 _BULLET_PREFIX_RE = re.compile(
     r"^\s*(?:[-*•●◦▪▫‣∙]+|\d+[\.)]|[a-zа-я]\)|[ivxlcdm]+\))\s+",
@@ -25,8 +16,8 @@ _BULLET_PREFIX_RE = re.compile(
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
-def _normalize_header_candidate(value: str) -> str:
-    return _WHITESPACE_RE.sub(" ", value.strip().lower())
+def _normalize_line(value: str) -> str:
+    return _WHITESPACE_RE.sub(" ", value.strip())
 
 
 def _strip_bullet_prefix(value: str) -> str:
@@ -39,17 +30,43 @@ def _strip_bullet_prefix(value: str) -> str:
     return cleaned
 
 
-def _detect_header(value: str) -> tuple[str | None, str]:
-    normalized = _normalize_header_candidate(value)
-    for section, aliases in _SECTION_ALIASES.items():
-        for alias in aliases:
-            if normalized.rstrip(":-–— ") == alias:
-                return section, ""
+def _header_section_from_prefix(prefix: str) -> str | None:
+    section = is_section_header(prefix)
+    if section:
+        return section
 
-            match = re.match(rf"^{re.escape(alias)}\s*[:\-–—]\s*(.+)$", normalized, flags=re.IGNORECASE)
-            if match:
-                return section, match.group(1).strip()
-    return None, ""
+    normalized_prefix = _normalize_line(prefix).lower().rstrip(":-–—")
+    if not normalized_prefix:
+        return None
+
+    for candidate_section, markers in SECTION_HEADERS.items():
+        for marker in markers:
+            marker_value = _normalize_line(marker).lower().rstrip(":-–—")
+            if marker_value == normalized_prefix:
+                return candidate_section
+    return None
+
+
+def _detect_header(line: str) -> tuple[str | None, str]:
+    cleaned_line = _normalize_line(line)
+    if not cleaned_line:
+        return None, ""
+
+    direct_section = is_section_header(cleaned_line)
+    if direct_section:
+        return direct_section, ""
+
+    separator_match = re.search(r"\s*[:\-–—]\s*", cleaned_line)
+    if not separator_match:
+        return None, ""
+
+    prefix = cleaned_line[: separator_match.start()]
+    section = _header_section_from_prefix(prefix)
+    if not section:
+        return None, ""
+
+    remainder = cleaned_line[separator_match.end() :]
+    return section, remainder
 
 
 def _section_payload(lines: list[str]) -> dict[str, list[str] | str]:
@@ -67,27 +84,26 @@ def parse_hh_description(html: str) -> dict:
         "other": [],
     }
 
-    current_section: str | None = None
+    current_section = "other"
 
     for raw_line in plain_text.splitlines():
-        line = _strip_bullet_prefix(raw_line)
+        line = _normalize_line(_strip_bullet_prefix(raw_line))
         if not line:
             continue
 
         detected_section, remainder = _detect_header(line)
         if detected_section:
             current_section = detected_section
-            remainder = _strip_bullet_prefix(remainder)
+            remainder = _normalize_line(_strip_bullet_prefix(remainder))
             if remainder:
                 sections[detected_section].append(remainder)
             continue
 
-        target = current_section or "other"
-        sections[target].append(line)
+        sections[current_section].append(line)
 
     quality_score = 0.0
     if len(sections["requirements"]) >= 3:
-        quality_score += 0.35
+        quality_score += 0.45
     if len(sections["responsibilities"]) >= 1:
         quality_score += 0.15
     if len(sections["conditions"]) >= 1:
@@ -99,12 +115,15 @@ def parse_hh_description(html: str) -> dict:
     if total_lines >= 8:
         quality_score += 0.20
 
+    if total_lines > 0 and len(sections["other"]) == total_lines:
+        quality_score -= 0.25
+
     result_sections = {name: _section_payload(lines) for name, lines in sections.items()}
 
     return {
         "plain_text": plain_text,
         "sections": result_sections,
-        "quality_score": min(1.0, round(quality_score, 4)),
+        "quality_score": max(0.0, min(1.0, round(quality_score, 4))),
         "version": VERSION,
     }
 
