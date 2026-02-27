@@ -84,12 +84,17 @@ class MatchingService:
         )
         hard_coverage = coverage["hard"]
         nice_coverage = coverage["nice"]
+        skill_requirements_count = len(requirements)
 
         semantic_score = self._compute_layer2(profile_id=profile_id, vacancy_id=vacancy_id)
 
         hard_missing = ats["keywords_missing_must"]
         reasons_failed: list[str] = []
         warnings: list[str] = []
+        explanation_warnings: list[str] = []
+
+        if skill_requirements_count == 0:
+            explanation_warnings.append("no_skill_requirements_extracted")
 
         if hard_missing:
             reasons_failed.append("missing_required_skills")
@@ -116,31 +121,37 @@ class MatchingService:
         eligibility_ok = len(reasons_failed) == 0
 
         penalties: list[str] = []
-        final_score = 0.45 * semantic_score + 0.35 * hard_coverage + 0.20 * nice_coverage
+        raw_score = 0.45 * semantic_score + 0.35 * hard_coverage + 0.20 * nice_coverage
 
         if overqualified:
-            final_score *= 0.9
+            raw_score *= 0.9
             penalties.append("overqualified")
 
         has_salary_warning = any("зарплаты" in warning for warning in warnings)
         if has_salary_warning:
-            final_score *= 0.95
+            raw_score *= 0.95
             penalties.append("salary_warning")
 
-        final_score = float(max(0.0, min(1.0, final_score)))
+        if skill_requirements_count == 0:
+            raw_score = min(raw_score, 0.65)
+            penalties.append("no_skill_requirements_cap")
+
+        raw_score = float(max(0.0, min(1.0, raw_score)))
+        final_score = 0.0 if not eligibility_ok else raw_score
 
         if not eligibility_ok:
             verdict = "reject"
-        elif final_score >= 0.75:
+        elif raw_score >= 0.75:
             verdict = "strong"
-        elif final_score >= 0.50:
+        elif raw_score >= 0.50:
             verdict = "ok"
-        elif final_score >= 0.30:
+        elif raw_score >= 0.30:
             verdict = "weak"
         else:
             verdict = "reject"
 
         explanation = {
+            "warnings": self._unique(explanation_warnings),
             "eligibility": {
                 "ok": eligibility_ok,
                 "reasons_failed": self._unique(reasons_failed),
@@ -150,6 +161,7 @@ class MatchingService:
             "semantic": {"score": semantic_score},
             "final": {
                 "score": final_score,
+                "raw_score": raw_score,
                 "verdict": verdict,
                 "components": {
                     "semantic": semantic_score,
@@ -308,8 +320,8 @@ class MatchingService:
                 if has_uncertain_match(profile_tokens, normalized_needle):
                     keywords_uncertain.append(req.raw_text)
 
-        hard_coverage = (matched_hard_weight / total_hard_weight) if total_hard_weight > 0 else 1.0
-        nice_coverage = (matched_nice_weight / total_nice_weight) if total_nice_weight > 0 else 1.0
+        hard_coverage = (matched_hard_weight / total_hard_weight) if total_hard_weight > 0 else 0.0
+        nice_coverage = (matched_nice_weight / total_nice_weight) if total_nice_weight > 0 else 0.0
 
         ats = {
             "keywords_present": self._unique(keywords_present),
