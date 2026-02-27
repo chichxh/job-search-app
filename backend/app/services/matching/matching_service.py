@@ -16,6 +16,7 @@ Example:
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -41,6 +42,7 @@ from app.services.matching.utils import (
     normalize_skill,
     tokenize,
 )
+from app.services.vacancy_parsing.requirement_markers import EXCEPTIONS
 from app.utils.text_clean import strip_html
 
 
@@ -400,8 +402,23 @@ class MatchingService:
 
         vacancy_plain_text = self._get_vacancy_plain_text(vacancy.id)
         description = (vacancy_plain_text or strip_html(vacancy.description or "")).lower()
-        relocation_tokens = ("релокац", "переезд", "республика татарстан")
-        return any(token in description for token in relocation_tokens)
+
+        not_relocation_patterns = EXCEPTIONS.get("not_relocation_patterns", [])
+        if any(re.search(pattern, description) for pattern in not_relocation_patterns):
+            return False
+
+        relocation_markers = (
+            "релокац",
+            "переезд в",
+            "готовность к переезду",
+            "обязателен переезд",
+            "relocation",
+        )
+
+        # Self-check examples:
+        # "переезд на Go" -> relocation_required=False
+        # "релокация в Республику Татарстан" -> relocation_required=True
+        return any(marker in description for marker in relocation_markers)
 
     def _is_remote_vacancy(self, vacancy: Vacancy) -> bool:
         vacancy_plain_text = self._get_vacancy_plain_text(vacancy.id)
