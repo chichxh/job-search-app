@@ -1,10 +1,11 @@
 import os
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Optional
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -89,7 +90,35 @@ class Profile(Base):
     remote_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true", default=True)
     relocation_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false", default=False)
     salary_min: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    telegram: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    city: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    country: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    metro: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    citizenship: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    work_authorization_country: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    needs_sponsorship: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false", default=False)
+    available_from: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    notice_period_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    preferred_employment: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    preferred_schedule: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    preferred_industries: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    preferred_company_types: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    interest_tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    preferred_tech: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    excluded_tech: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    team_preferences_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    summary_about: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    seniority_level: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    years_total: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
 
 class VacancyRequirement(Base):
