@@ -50,3 +50,20 @@ VITE_API_PROXY_TARGET=http://127.0.0.1:8000 npm run dev
 cd frontend
 VITE_API_BASE_URL=http://127.0.0.1:8000 npm run dev
 ```
+
+## LLM configuration (env)
+
+- `LLM_PROVIDER`: `gigachat` | `openai` (default `gigachat`).
+- `LLM_MODEL`: model name (default `GigaChat`).
+- `LLM_TEMPERATURE`: float (default `0.2`).
+- `LLM_MAX_TOKENS`: int (default `1200`).
+- `GIGACHAT_AUTH_KEY`: required when `LLM_PROVIDER=gigachat`.
+- `GIGACHAT_SCOPE`: default `GIGACHAT_API_PERS`.
+- `GIGACHAT_OAUTH_URL`: default `https://ngw.devices.sberbank.ru:9443/api/v2/oauth`.
+- `GIGACHAT_API_BASE`: default `https://gigachat.devices.sberbank.ru`.
+- `GIGACHAT_VERIFY_SSL`: bool, default `true`.
+
+Validation helper: `app.core.config.validate_llm_settings()`.
+
+- App startup does **not** require `GIGACHAT_AUTH_KEY`.
+- Clear error is raised only when LLM settings are validated/used and required key is missing.
