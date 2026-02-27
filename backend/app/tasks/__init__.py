@@ -8,6 +8,7 @@ from app.tasks.embedding_tasks import (
 )
 from app.tasks.hh_import_tasks import import_hh_vacancies_task, sync_saved_search_task
 from app.tasks.matching_tasks import compute_profile_recommendations
+from app.tasks.profile_backfill_tasks import backfill_profile
 from app.tasks.vacancy_parsing_tasks import backfill_hh_parsed
 
 __all__ = [
@@ -18,5 +19,6 @@ __all__ = [
     "rebuild_vacancy_embeddings",
     "rebuild_profile_embeddings",
     "compute_profile_recommendations",
+    "backfill_profile",
     "backfill_hh_parsed",
 ]
