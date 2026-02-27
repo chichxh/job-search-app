@@ -8,6 +8,7 @@ from .base import (
     LLMResponse,
     LLMUpstreamError,
 )
+from .providers import GigaChatClient
 
 __all__ = [
     "LLMAuthError",
@@ -18,4 +19,5 @@ __all__ = [
     "LLMRequest",
     "LLMResponse",
     "LLMUpstreamError",
+    "GigaChatClient",
 ]
