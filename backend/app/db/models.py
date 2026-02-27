@@ -121,6 +121,40 @@ class Profile(Base):
     )
 
 
+class ResumeVersion(Base):
+    __tablename__ = "resume_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    vacancy_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("vacancies.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    content_text: Mapped[str] = mapped_column(Text, nullable=False)
+    format: Mapped[str] = mapped_column(String(20), nullable=False, default="plain", server_default="plain")
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="user", server_default="user")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft", server_default="draft")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CoverLetterVersion(Base):
+    __tablename__ = "cover_letter_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    vacancy_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("vacancies.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    subject: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    content_text: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="user", server_default="user")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft", server_default="draft")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class ProfileExperience(Base):
     __tablename__ = "profile_experiences"
 
