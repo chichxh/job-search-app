@@ -12,3 +12,7 @@ class TaskStatusResponse(BaseModel):
 
 class TaskEnqueueResponse(BaseModel):
     task_id: str
+
+
+class RecomputeAllTasksResponse(BaseModel):
+    task_ids: dict[str, str]
