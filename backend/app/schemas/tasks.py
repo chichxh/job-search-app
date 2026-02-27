@@ -8,3 +8,7 @@ class TaskStatusResponse(BaseModel):
     state: str
     result: Optional[Any] = None
     error: Optional[str] = None
+
+
+class TaskEnqueueResponse(BaseModel):
+    task_id: str
