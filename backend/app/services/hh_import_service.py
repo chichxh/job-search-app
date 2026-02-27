@@ -122,24 +122,28 @@ class HHImportService:
                         details = await self.hh_client.get_vacancy_details(str(item.get("id")))
 
                     values = self._map_to_vacancy_values(item, details)
-                    html_description = values.get("description") or ""
-                    parsed = parse_hh_description(html_description)
-                    clean_description = parsed["plain_text"]
-
                     if html_log_count < 3:
                         logger.debug(
-                            "HH vacancy description lengths | external_id=%s html_len=%s clean_len=%s",
+                            "HH vacancy description lengths | external_id=%s html_len=%s",
                             values["external_id"],
                             len(values.get("description") or ""),
-                            len(clean_description),
                         )
                         html_log_count += 1
 
                     is_existing = self._vacancy_exists(values["source"], values["external_id"])
                     vacancy_id = self._upsert_vacancy(values)
+
+                    parsed = parse_hh_description(values.get("description") or "")
+                    section_requirements = extract_requirements_from_sections(parsed.get("sections") or {})
+                    self._apply_low_quality_guard(
+                        vacancy_id=vacancy_id,
+                        external_id=values["external_id"],
+                        parsed=parsed,
+                        section_requirements=section_requirements,
+                    )
                     self._upsert_vacancy_parsed(vacancy_id, parsed)
 
-                    self._replace_generated_requirements(vacancy_id, details, parsed)
+                    self._replace_generated_requirements(vacancy_id, details, parsed, section_requirements)
 
                     page_embedding_ids.add(vacancy_id)
 
@@ -267,6 +271,7 @@ class HHImportService:
         vacancy_id: int,
         details: Optional[dict[str, Any]],
         parsed: dict[str, Any],
+        section_requirements: list[dict[str, Any]],
     ) -> None:
         self.db.execute(
             delete(VacancyRequirement).where(
@@ -278,7 +283,7 @@ class HHImportService:
         requirements: list[VacancyRequirement] = []
         seen: set[tuple[str, str]] = set()
 
-        generated_skill_requirements = self._build_skill_requirements(details, parsed)
+        generated_skill_requirements = self._build_skill_requirements(details, parsed, section_requirements)
         for requirement in generated_skill_requirements:
             normalized = requirement["normalized_key"]
             dedupe_key = ("skill", normalized or requirement["raw_text"])
@@ -333,9 +338,8 @@ class HHImportService:
         self,
         details: Optional[dict[str, Any]],
         parsed: dict[str, Any],
+        section_requirements: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        sections = parsed.get("sections") or {}
-
         skill_requirements: dict[str, dict[str, Any]] = {}
 
         def upsert_requirement(requirement: dict[str, Any]) -> None:
@@ -349,7 +353,7 @@ class HHImportService:
                     "weight": requirement["weight"],
                 }
 
-        for requirement in extract_requirements_from_sections(sections):
+        for requirement in section_requirements:
             upsert_requirement(requirement)
 
         clean_description = parsed.get("plain_text") or ""
@@ -369,6 +373,34 @@ class HHImportService:
             )
 
         return list(skill_requirements.values())
+
+    def _apply_low_quality_guard(
+        self,
+        *,
+        vacancy_id: int,
+        external_id: str,
+        parsed: dict[str, Any],
+        section_requirements: list[dict[str, Any]],
+    ) -> None:
+        quality_score = float(parsed.get("quality_score") or 0.0)
+        skills_count = len(section_requirements)
+
+        if quality_score >= 0.35 or skills_count >= 3:
+            return
+
+        sections_json = dict(parsed.get("sections") or {})
+        meta = dict(sections_json.get("meta") or {})
+        meta["low_quality"] = True
+        sections_json["meta"] = meta
+        parsed["sections"] = sections_json
+
+        logger.warning(
+            "HH parsed description quality guard triggered | vacancy_id=%s external_id=%s quality_score=%.4f skills_count=%s",
+            vacancy_id,
+            external_id,
+            quality_score,
+            skills_count,
+        )
 
     def _upsert_vacancy_parsed(self, vacancy_id: int, parsed: dict[str, Any]) -> None:
         now_utc = datetime.now(timezone.utc)
