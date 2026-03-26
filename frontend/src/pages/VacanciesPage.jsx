@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { getTask, getVacancies, startHhImport } from '../api/endpoints.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
@@ -177,6 +178,14 @@ export default function VacanciesPage() {
         {isImporting ? <p className="vacancies-toolbar__status">Задача {importTaskId}: {importState}</p> : null}
         {!isImporting && importSuccess ? <p className="vacancies-toolbar__status">{importSuccess}</p> : null}
       </div>
+
+      {!isImporting && importSuccess ? (
+        <p className="flow-hint">
+          Далее: перейдите в{' '}
+          <Link className="vacancy-details__link" to="/recommendations">Recommendations</Link>
+          {' '}и запустите пересчёт.
+        </p>
+      ) : null}
 
       {importError ? <ErrorBanner message={importError} /> : null}
 

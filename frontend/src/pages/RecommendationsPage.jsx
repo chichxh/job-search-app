@@ -178,6 +178,12 @@ export default function RecommendationsPage() {
         <p className="loading">Рекомендации пересчитаны.</p>
       ) : null}
 
+      {taskState === 'SUCCESS' && !taskId ? (
+        <p className="flow-hint">
+          Следующий шаг: откройте карточку вакансии, проверьте tailoring и сгенерируйте draft-документы.
+        </p>
+      ) : null}
+
       {taskError ? <ErrorBanner message={taskError} /> : null}
 
       {loading ? <Loading message="Loading recommendations..." /> : null}
@@ -215,6 +221,12 @@ export default function RecommendationsPage() {
               : 'Нет рекомендаций по текущим фильтрам. Попробуйте отключить фильтр weak/reject.'}
           </p>
         )
+      ) : null}
+
+      {!loading && !error && visibleRecommendations.length > 0 ? (
+        <p className="flow-hint">
+          Откройте любую вакансию из списка, чтобы перейти к tailoring → generate → approve.
+        </p>
       ) : null}
     </section>
   );

@@ -258,7 +258,8 @@
 }
 
 .vacancy-details,
-.vacancy-details__matching {
+.vacancy-details__matching,
+.vacancy-details__documents {
   background: #ffffff;
   border: 1px solid #dbe4f0;
   border-radius: 12px;
@@ -307,6 +308,59 @@
   gap: 0.6rem;
 }
 
+.vacancy-details__docgen-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.vacancy-details__docgen-success {
+  margin: 0 0 0.5rem;
+  color: #166534;
+}
+
+.vacancy-details__docgen-result {
+  border: 1px solid #dbe4f0;
+  border-radius: 10px;
+  padding: 0.8rem;
+  margin-bottom: 0.75rem;
+}
+
+.vacancy-details__docgen-result p {
+  margin: 0.2rem 0;
+}
+
+.vacancy-details__docgen-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 0.75rem;
+}
+
+.vacancy-details__doc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.vacancy-details__doc-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.7rem;
+}
+
+.vacancy-details__doc-approved {
+  margin: 0.35rem 0 0;
+  color: #166534;
+}
+
+.vacancy-details__hint-text {
+  margin: 0.35rem 0 0;
+}
+
 .vacancy-details__score {
   margin: 0;
 }
@@ -318,6 +372,12 @@
 .vacancy-details__link {
   color: #1d4ed8;
   text-decoration: underline;
+}
+
+.flow-hint {
+  margin: 0.2rem 0 0.6rem;
+  color: #334155;
+  font-size: 0.95rem;
 }
 
 .recommendations-toolbar__button--secondary {
