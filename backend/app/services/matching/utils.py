@@ -10,13 +10,25 @@ TOKEN_RE = re.compile(r"[^\W_]+(?:[.+#-][^\W_]+|[+#]+)*", re.UNICODE)
 # Alias graph. Every entry is expanded bidirectionally.
 _ALIAS_GROUPS: tuple[set[str], ...] = (
     {"react", "reactjs"},
+    {"vue", "vue.js", "vuejs"},
     {"postgres", "postgresql"},
+    {"mysql", "my sql"},
+    {"ms sql", "mssql", "ms sql server", "microsoft sql server"},
     {"node", "node.js", "nodejs"},
+    {"c#", "c sharp", "c-sharp"},
+    {".net", "dotnet", "dot net"},
+    {"asp.net", "asp net", "aspnet"},
     {"javascript", "js"},
     {"typescript", "ts"},
+    {"rest api", "rest"},
+    {"ci/cd", "ci cd"},
+    {"kubernetes", "k8s"},
+    {"gitlab ci", "gitlab-ci"},
+    {"aws", "amazon web services"},
+    {"gcp", "google cloud", "google cloud platform"},
+    {"docker compose", "docker-compose"},
     {"drf", "django rest framework", "django-rest-framework"},
     {"oop", "ооп"},
-    {"docker compose", "docker-compose"},
     {"grpc", "gRPC".lower()},
 )
 

@@ -26,6 +26,8 @@ def is_section_header(line: str) -> str | None:
             marker_norm = normalize_line(marker).rstrip(":")
             if normalized == marker_norm:
                 return section
+            if normalized.startswith(f"{marker_norm} "):
+                return section
 
     return None
 
