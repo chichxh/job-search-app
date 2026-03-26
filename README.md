@@ -7,6 +7,7 @@
 Минимальный backend smoke/integration suite и инструкции запуска: `TESTING.md`.
 Операционная памятка по наблюдаемости фоновых задач: `backend/docs/background_tasks_observability.md`.
 Короткий reproducible runbook запуска/health/smoke: `backend/docs/operational_runbook.md`.
+Документация по Auth MVP (JWT + user↔profile ownership): `backend/docs/auth_mvp.md`.
 
 Минимальный воспроизводимый smoke-check для базовой версии: `verification-checklist.md`.
 Для reproducible проверки parsing+matching quality: `backend/docs/matching_diagnostics_verification.md`.
@@ -46,6 +47,16 @@ Current end-to-end flow that is supported by existing API/backend logic:
 6. Generate draft resume and draft cover letter via:
    - `POST /api/v1/profiles/{profile_id}/vacancies/{vacancy_id}/resume/generate`
    - `POST /api/v1/profiles/{profile_id}/vacancies/{vacancy_id}/cover-letter/generate`
+
+## Auth MVP
+
+- JWT bearer auth добавлен как минимальный MVP.
+- Новые endpoints:
+  - `POST /api/v1/auth/register`
+  - `POST /api/v1/auth/login`
+  - `GET /api/v1/auth/me`
+- При регистрации автоматически создаётся `profile` для нового пользователя.
+- `profiles` теперь имеют `user_id` и привязаны к `users`.
 
 ## Applications funnel MVP
 

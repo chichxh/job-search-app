@@ -3,7 +3,8 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.db.models import Profile
+from app.core.security import hash_password
+from app.db.models import Profile, User
 from app.db.session import get_db
 from app.schemas.profile import ProfileCreate, ProfileRead, ProfileUpdate
 from app.tasks.embedding_tasks import build_profile_embedding
@@ -11,9 +12,26 @@ from app.tasks.embedding_tasks import build_profile_embedding
 router = APIRouter(prefix="/profiles", tags=["profiles"])
 
 
+def _get_or_create_default_user(db: Session) -> User:
+    user = db.query(User).order_by(User.id.asc()).first()
+    if user is not None:
+        return user
+
+    user = User(
+        email="demo@example.local",
+        password_hash=hash_password("demo-password-change-me"),
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 @router.post("", response_model=ProfileRead, status_code=status.HTTP_201_CREATED)
 def create_profile(payload: ProfileCreate, db: Session = Depends(get_db)):
-    profile = Profile(**payload.model_dump())
+    default_user = _get_or_create_default_user(db)
+    profile = Profile(user_id=default_user.id, **payload.model_dump())
     db.add(profile)
     db.commit()
     db.refresh(profile)

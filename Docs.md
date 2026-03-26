@@ -400,7 +400,7 @@
 
 - **Base URL:** `http://localhost:8000/api/v1`
 - **Формат:** JSON
-- **Авторизация:** **[NOW] отсутствует**, демо-режим. На фронте используется `profile_id=1` по умолчанию.
+- **Авторизация:** JWT Bearer Auth MVP (`/auth/register`, `/auth/login`, `/auth/me`), с ownership связью `users -> profiles`.
 
 ### 1.1 Ошибки
 
