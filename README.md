@@ -6,10 +6,17 @@
 
 Минимальный backend smoke/integration suite и инструкции запуска: `TESTING.md`.
 Операционная памятка по наблюдаемости фоновых задач: `backend/docs/background_tasks_observability.md`.
+Короткий reproducible runbook запуска/health/smoke: `backend/docs/operational_runbook.md`.
 
 Минимальный воспроизводимый smoke-check для базовой версии: `verification-checklist.md`.
 Для reproducible проверки parsing+matching quality: `backend/docs/matching_diagnostics_verification.md`.
 Для ручной калибровки score/thresholds: `backend/docs/matching_calibration_note.md`.
+
+## Logging hygiene
+
+- В operational логах сохраняем только технический контекст: `task`, `profile_id`, `vacancy_id`, тайминги, provider/model, counters.
+- Не логируем raw-тексты (`resume_text`, `content_text`), `email`, `phone`, raw provider responses и токены.
+- Для HH import в логах используется безопасная сводка параметров (например, `text_len`, `extra_params_keys`) вместо полного payload.
 
 ## Current status (implemented vs planned)
 

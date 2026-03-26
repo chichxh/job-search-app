@@ -6,6 +6,8 @@ from typing import Any
 
 from celery.app.task import Task
 
+from app.utils.log_safety import safe_error_summary
+
 
 def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -43,4 +45,4 @@ def success_meta(name: str, started_at: str, timer_started: float, message: str)
 
 
 def failure_summary(exc: Exception) -> str:
-    return f"{exc.__class__.__name__}: {exc}"
+    return safe_error_summary(exc)

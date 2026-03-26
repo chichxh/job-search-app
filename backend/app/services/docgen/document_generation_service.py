@@ -33,6 +33,7 @@ from app.llm import (
 )
 from app.services.docgen.prompt_builders import build_cover_letter_prompt, build_resume_prompt
 from app.services.matching.matching_service import MatchingService
+from app.utils.log_safety import safe_error_summary
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ class DocumentGenerationService:
         self._validate_prerequisites(document_type="resume", profile_facts=profile_facts)
 
         messages = build_resume_prompt(profile_facts, vacancy_facts, tailoring)
-        response = self._generate_llm_response(messages)
+        response = self._generate_llm_response(messages, profile_id=profile_id, vacancy_id=vacancy_id)
         content_text = self._validate_generated_text(response.text, document_type="resume")
 
         metadata = self._build_generation_metadata(
@@ -113,7 +114,7 @@ class DocumentGenerationService:
         self._validate_prerequisites(document_type="cover_letter", profile_facts=profile_facts)
 
         messages = build_cover_letter_prompt(profile_facts, vacancy_facts, tailoring)
-        response = self._generate_llm_response(messages)
+        response = self._generate_llm_response(messages, profile_id=profile_id, vacancy_id=vacancy_id)
         content_text = self._validate_generated_text(response.text, document_type="cover_letter")
 
         metadata = self._build_generation_metadata(
@@ -144,7 +145,13 @@ class DocumentGenerationService:
         self.db.refresh(draft)
         return draft
 
-    def _generate_llm_response(self, messages: list[LLMMessage]):
+    def _generate_llm_response(
+        self,
+        messages: list[LLMMessage],
+        *,
+        profile_id: int | None = None,
+        vacancy_id: int | None = None,
+    ):
         try:
             settings = get_llm_settings()
             client = get_llm_client()
@@ -157,12 +164,22 @@ class DocumentGenerationService:
                 )
             )
         except (LLMRateLimitError, LLMUpstreamError) as exc:
-            logger.exception("docgen provider temporary failure")
+            logger.warning(
+                "docgen provider temporary failure | profile_id=%s vacancy_id=%s error=%s",
+                profile_id,
+                vacancy_id,
+                safe_error_summary(exc),
+            )
             raise DocgenProviderUnavailableError(
                 "Generation provider is temporarily unavailable. Please try again shortly."
             ) from exc
         except (NotImplementedError, ValueError, LLMAuthError) as exc:
-            logger.exception("docgen provider misconfiguration")
+            logger.error(
+                "docgen provider misconfiguration | profile_id=%s vacancy_id=%s error=%s",
+                profile_id,
+                vacancy_id,
+                safe_error_summary(exc),
+            )
             raise DocgenMisconfigurationError(
                 "Generation provider is not configured correctly. Please contact support."
             ) from exc

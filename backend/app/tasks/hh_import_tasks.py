@@ -11,6 +11,7 @@ from app.db.session import SessionLocal
 from app.integrations.hh_client import HHClient
 from app.services.hh_import_service import HHImportFilters, HHImportService
 from app.tasks.observability import failure_summary, mark_task_started, success_meta, task_name
+from app.utils.log_safety import sanitize_for_log, summarize_hh_import_params
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ def import_hh_vacancies_task(self, params: dict[str, Any]) -> dict[str, Any]:
         message="HH import in progress",
         extra={"flow": "hh_import"},
     )
-    logger.info("Task started | task=%s params=%s", current_task_name, params)
+    logger.info("Task started | task=%s params=%s", current_task_name, summarize_hh_import_params(params))
     db = SessionLocal()
     try:
         result = asyncio.run(_run_import(db, params))
@@ -45,13 +46,13 @@ def import_hh_vacancies_task(self, params: dict[str, Any]) -> dict[str, Any]:
                 message="HH import finished",
             )
         )
-        logger.info("Task finished | task=%s result=%s", current_task_name, payload)
+        logger.info("Task finished | task=%s result=%s", current_task_name, sanitize_for_log(payload))
         return payload
     except Exception as exc:  # noqa: BLE001
         logger.exception(
             "Task failed | task=%s params=%s summary=%s",
             current_task_name,
-            params,
+            summarize_hh_import_params(params),
             failure_summary(exc),
         )
         raise
@@ -119,7 +120,7 @@ def sync_saved_search_task(self, saved_search_id: int) -> dict[str, Any]:
                 message="Saved search sync finished",
             )
         )
-        logger.info("Task finished | task=%s payload=%s", current_task_name, payload)
+        logger.info("Task finished | task=%s payload=%s", current_task_name, sanitize_for_log(payload))
         return payload
     except Exception as exc:  # noqa: BLE001
         logger.exception(
