@@ -1,5 +1,38 @@
 # job-search-app
 
+## Verification
+
+Минимальный воспроизводимый smoke-check для базовой версии: `verification-checklist.md`.
+
+## Current status (implemented vs planned)
+
+### LLM providers
+
+- ✅ `gigachat` — implemented and used by document generation/tailoring flows.
+- 🟡 `openai` — **planned, not implemented**. In current code path this provider raises `NotImplementedError`.
+
+### Embedding providers
+
+- ✅ `fastembed` — implemented (CPU ONNX).
+- ✅ `localhash` — implemented (lightweight hashing baseline).
+- 🟡 `openai` — **planned, not implemented** (stub).
+- 🟡 `gigachat` — **planned, not implemented** (stub).
+
+Planned directions remain in repository, but only providers marked as implemented above are production-ready today.
+
+## Demo-ready / supported flow
+
+Current end-to-end flow that is supported by existing API/backend logic:
+
+1. Create/update a profile (`/api/v1/profiles`, plus profile data CRUD).
+2. Import vacancies from HH (`/api/v1/import/hh`).
+3. Run parsing/embeddings/matching pipeline (background tasks + recommendations endpoints).
+4. Fetch recommendations and vacancy matching details.
+5. Fetch tailoring output for profile-vacancy pair.
+6. Generate draft resume and draft cover letter via:
+   - `POST /api/v1/profiles/{profile_id}/vacancies/{vacancy_id}/resume/generate`
+   - `POST /api/v1/profiles/{profile_id}/vacancies/{vacancy_id}/cover-letter/generate`
+
 ## HH clusters and extra params
 
 - To preview HH facets (clusters), call `POST /api/v1/import/hh/clusters` with the same body as `/api/v1/import/hh` (`text` is required, plus optional `area`, etc.).
@@ -53,7 +86,9 @@ VITE_API_BASE_URL=http://127.0.0.1:8000 npm run dev
 
 ## LLM configuration (env)
 
-- `LLM_PROVIDER`: `gigachat` | `openai` (default `gigachat`). Для GigaChat выставьте `LLM_PROVIDER=gigachat`.
+- `LLM_PROVIDER`: `gigachat` | `openai` (default `gigachat`).
+  - `gigachat` — implemented.
+  - `openai` — planned / not implemented yet.
 - `LLM_MODEL`: model name (default `GigaChat`), например `GigaChat` или `GigaChat-Pro`.
 - `LLM_TEMPERATURE`: float (default `0.2`).
 - `LLM_MAX_TOKENS`: int (default `1200`).
