@@ -15,6 +15,7 @@ from app.services.requirements_extractor import (
     extract_requirements_from_sections,
 )
 from app.services.vacancy_parsing import parse_hh_description
+from app.utils.log_safety import sanitize_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -61,17 +62,22 @@ class HHImportService:
         result = HHImportResult()
 
         logger.info(
-            "HH import started | text=%s area=%s schedule=%s experience=%s salary_from=%s salary_to=%s currency=%s per_page=%s pages_limit=%s include_details=%s start_page=%s cutoff=%s",
-            filters.text,
-            filters.area,
-            filters.schedule,
-            filters.experience,
-            filters.salary_from,
-            filters.salary_to,
-            filters.currency,
-            filters.per_page,
-            filters.pages_limit,
-            filters.include_details,
+            "HH import started | filters=%s start_page=%s cutoff=%s",
+            sanitize_for_log(
+                {
+                    "text_len": len(filters.text or ""),
+                    "area": filters.area,
+                    "schedule": filters.schedule,
+                    "experience": filters.experience,
+                    "salary_from": filters.salary_from,
+                    "salary_to": filters.salary_to,
+                    "currency": filters.currency,
+                    "per_page": filters.per_page,
+                    "pages_limit": filters.pages_limit,
+                    "include_details": filters.include_details,
+                    "extra_params_keys": sorted(list((filters.extra_params or {}).keys()))[:20],
+                }
+            ),
             start_page,
             cutoff_published_at,
         )
