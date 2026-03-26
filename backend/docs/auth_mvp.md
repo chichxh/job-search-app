@@ -20,12 +20,14 @@
   - требует Bearer token;
   - возвращает текущего пользователя и `profile_id`, принадлежащий этому пользователю.
 
-## Ownership foundation
+## Ownership enforcement (profile-scoped API)
 
-- Для проверок добавлены dependencies:
-  - `get_current_user` — валидация Bearer JWT + блокировка неактивных пользователей;
-  - `get_current_profile` — безопасное получение профиля текущего пользователя.
-- Полный ownership-refactor всех routers **не входит** в этот PR; dependencies и схема уже готовы для поэтапного внедрения.
+- Profile-scoped роуты переведены на ownership-aware поведение и теперь требуют `Bearer` token.
+- Доступ к профилю и связанным сущностям (profile data, applications, recommendations/tailoring, docgen) разрешён только владельцу профиля.
+- Введена единая deny policy: при попытке обратиться к чужому `profile_id` или чужому profile-bound ресурсу API возвращает `404 Resource not found` (чтобы не раскрывать наличие чужих данных).
+- Для реализации добавлены helpers:
+  - `get_owned_profile(...)`;
+  - `get_owned_profile_resource(...)`.
 
 ## Миграция и demo bootstrap
 

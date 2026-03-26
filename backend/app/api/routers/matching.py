@@ -2,7 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Profile, ResumeEvidence, Vacancy, VacancyScore
+from app.api.dependencies.auth import get_current_user
+from app.api.dependencies.ownership import get_owned_profile
+from app.db.models import Profile, ResumeEvidence, User, Vacancy, VacancyScore
 from app.db.session import get_db
 from app.schemas.matching import (
     RecommendationItem,
@@ -13,7 +15,12 @@ from app.schemas.matching import (
 from app.services.matching.matching_service import MatchingService
 from app.tasks.matching_tasks import compute_profile_recommendations
 
-router = APIRouter(prefix="/profiles", tags=["matching"])
+router = APIRouter(prefix="/profiles", tags=["matching"], dependencies=[Depends(get_current_user)])
+
+
+def _owned_profile_id(db: Session, profile_id: int, current_user: User) -> int:
+    profile = get_owned_profile(db, profile_id=profile_id, current_user=current_user)
+    return profile.id
 
 
 @router.get("/{profile_id}/recommendations", response_model=RecommendationsResponse)
@@ -21,10 +28,9 @@ def get_recommendations(
     profile_id: int,
     limit: int = Query(default=50, ge=1, le=500),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    profile = db.get(Profile, profile_id)
-    if profile is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+    profile_id = _owned_profile_id(db, profile_id, current_user)
 
     rows = db.execute(
         select(VacancyScore, Vacancy)
@@ -55,11 +61,9 @@ def recompute_recommendations(
     profile_id: int,
     limit: int = Query(default=50, ge=1, le=500),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    profile = db.get(Profile, profile_id)
-    if profile is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
-
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     task = compute_profile_recommendations.delay(profile_id, limit)
     return RecomputeTaskResponse(task_id=task.id)
 
@@ -69,7 +73,9 @@ def get_tailoring(
     profile_id: int,
     vacancy_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     service = MatchingService(db)
 
     score = db.execute(

@@ -4,12 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.auth import get_current_user
+from app.api.dependencies.ownership import get_owned_profile, get_owned_profile_resource
 from app.db.models import (
     Application,
     ApplicationStatusHistory,
     CoverLetterVersion,
-    Profile,
     ResumeVersion,
+    User,
     Vacancy,
 )
 from app.db.session import get_db
@@ -21,19 +23,21 @@ from app.schemas.application import (
     ApplicationUpdate,
 )
 
-router = APIRouter(prefix="/profiles", tags=["applications"])
+router = APIRouter(prefix="/profiles", tags=["applications"], dependencies=[Depends(get_current_user)])
 
 
-def _ensure_profile(db: Session, profile_id: int) -> None:
-    if db.get(Profile, profile_id) is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+def _owned_profile_id(db: Session, profile_id: int, current_user: User) -> int:
+    return get_owned_profile(db, profile_id=profile_id, current_user=current_user).id
 
 
 def _get_application_or_404(db: Session, profile_id: int, application_id: int) -> Application:
-    item = db.get(Application, application_id)
-    if item is None or item.profile_id != profile_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    return item
+    return get_owned_profile_resource(
+        db,
+        model=Application,
+        resource_id=application_id,
+        profile_id=profile_id,
+        detail="Application not found",
+    )
 
 
 def _validate_resume_version(
@@ -73,8 +77,8 @@ def _validate_cover_letter_version(
 
 
 @router.get("/{profile_id}/applications", response_model=list[ApplicationRead])
-def list_applications(profile_id: int, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def list_applications(profile_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     return (
         db.query(Application)
         .filter(Application.profile_id == profile_id)
@@ -84,8 +88,13 @@ def list_applications(profile_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{profile_id}/applications", response_model=ApplicationRead, status_code=status.HTTP_201_CREATED)
-def create_application(profile_id: int, payload: ApplicationCreate, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def create_application(
+    profile_id: int,
+    payload: ApplicationCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
 
     vacancy = db.get(Vacancy, payload.vacancy_id)
     if vacancy is None:
@@ -132,12 +141,25 @@ def create_application(profile_id: int, payload: ApplicationCreate, db: Session 
 
 
 @router.get("/{profile_id}/applications/{application_id}", response_model=ApplicationRead)
-def get_application(profile_id: int, application_id: int, db: Session = Depends(get_db)):
+def get_application(
+    profile_id: int,
+    application_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     return _get_application_or_404(db, profile_id, application_id)
 
 
 @router.put("/{profile_id}/applications/{application_id}", response_model=ApplicationRead)
-def update_application(profile_id: int, application_id: int, payload: ApplicationUpdate, db: Session = Depends(get_db)):
+def update_application(
+    profile_id: int,
+    application_id: int,
+    payload: ApplicationUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_application_or_404(db, profile_id, application_id)
 
     updates = payload.model_dump(exclude_unset=True)
@@ -172,7 +194,9 @@ def change_application_status(
     application_id: int,
     payload: ApplicationStatusChange,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_application_or_404(db, profile_id, application_id)
     from_status = item.status
 
@@ -195,7 +219,13 @@ def change_application_status(
 
 
 @router.get("/{profile_id}/applications/{application_id}/history", response_model=list[ApplicationStatusHistoryRead])
-def list_application_history(profile_id: int, application_id: int, db: Session = Depends(get_db)):
+def list_application_history(
+    profile_id: int,
+    application_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     _get_application_or_404(db, profile_id, application_id)
     return (
         db.query(ApplicationStatusHistory)
@@ -206,7 +236,13 @@ def list_application_history(profile_id: int, application_id: int, db: Session =
 
 
 @router.delete("/{profile_id}/applications/{application_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_application(profile_id: int, application_id: int, db: Session = Depends(get_db)):
+def delete_application(
+    profile_id: int,
+    application_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_application_or_404(db, profile_id, application_id)
     db.delete(item)
     db.commit()
