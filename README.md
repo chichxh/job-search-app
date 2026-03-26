@@ -47,6 +47,53 @@ Current end-to-end flow that is supported by existing API/backend logic:
    - `POST /api/v1/profiles/{profile_id}/vacancies/{vacancy_id}/resume/generate`
    - `POST /api/v1/profiles/{profile_id}/vacancies/{vacancy_id}/cover-letter/generate`
 
+## Applications funnel MVP
+
+Applications funnel добавляет tracking-слой поверх рекомендаций и docgen:
+
+- текущий pipeline остаётся прежним (matching/docgen не менялись);
+- добавлены сущности `applications` и `application_status_history`;
+- в `applications` можно хранить текущий статус, short note и привязки к `resume_version_id`/`cover_letter_version_id`.
+
+Поддерживаемые статусы MVP:
+
+- `saved`
+- `planned`
+- `applied`
+- `hr_screen`
+- `tech_interview`
+- `test_task`
+- `offer`
+- `rejected`
+- `archived`
+
+Новые endpoints:
+
+- `GET /api/v1/profiles/{profile_id}/applications`
+- `POST /api/v1/profiles/{profile_id}/applications`
+- `GET /api/v1/profiles/{profile_id}/applications/{application_id}`
+- `PUT /api/v1/profiles/{profile_id}/applications/{application_id}`
+- `POST /api/v1/profiles/{profile_id}/applications/{application_id}/status`
+- `GET /api/v1/profiles/{profile_id}/applications/{application_id}/history`
+- `DELETE /api/v1/profiles/{profile_id}/applications/{application_id}`
+
+Validation и duplicate policy:
+
+- `vacancy_id` должен существовать;
+- application обязательно принадлежит тому же `profile_id`, что и path-параметр;
+- `resume_version_id` / `cover_letter_version_id` должны принадлежать этому же профилю;
+- их `vacancy_id` должен быть `null` или равен `application.vacancy_id`;
+- повторное создание application для пары `(profile_id, vacancy_id)` возвращает `409 Conflict`.
+
+Manual сценарий MVP:
+
+1. Открыть `/vacancies/:vacancyId`.
+2. Нажать `Track application` (появится успех + ссылка на `/applications`).
+3. Перейти на `/applications` и проверить карточку в колонке статуса.
+4. Сменить статус (quick select или в details).
+5. Открыть `Edit`, отредактировать note и прикрепить resume/cover letter versions.
+6. Проверить `Status history` для application.
+
 ## Demo flow (manual, UI)
 
 Ниже — актуальный ручной сценарий проверки demo-flow в текущем UI:

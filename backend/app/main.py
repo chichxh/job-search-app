@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routers.dev import router as dev_router
 from app.api.routers.docgen import router as docgen_router
+from app.api.routers.applications import router as applications_router
 from app.api.routers.embeddings import router as embeddings_router
 from app.api.routers.imports import router as imports_router
 from app.api.routers.saved_searches import router as saved_searches_router
@@ -60,6 +61,7 @@ app.include_router(saved_searches_router, prefix="/api/v1")
 
 app.include_router(profiles_router, prefix="/api/v1")
 app.include_router(profile_data_router, prefix="/api/v1")
+app.include_router(applications_router, prefix="/api/v1")
 app.include_router(embeddings_router, prefix="/api/v1")
 
 app.include_router(matching_router, prefix="/api/v1")

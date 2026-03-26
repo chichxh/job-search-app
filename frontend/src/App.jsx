@@ -4,6 +4,7 @@ import './App.css';
 import Layout from './components/Layout.jsx';
 import RecommendationsPage from './pages/RecommendationsPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
+import ApplicationsPage from './pages/ApplicationsPage.jsx';
 import VacanciesPage from './pages/VacanciesPage.jsx';
 import VacancyDetailsPage from './pages/VacancyDetailsPage.jsx';
 
@@ -15,6 +16,7 @@ export default function App() {
         <Route path="/vacancies" element={<VacanciesPage />} />
         <Route path="/vacancies/:vacancyId" element={<VacancyDetailsPage />} />
         <Route path="/recommendations" element={<RecommendationsPage />} />
+        <Route path="/applications" element={<ApplicationsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>

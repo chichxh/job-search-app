@@ -157,6 +157,40 @@ class CoverLetterVersion(Base):
     generation_metadata: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
 
 
+class Application(Base):
+    __tablename__ = "applications"
+    __table_args__ = (UniqueConstraint("profile_id", "vacancy_id", name="uq_applications_profile_vacancy"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    vacancy_id: Mapped[int] = mapped_column(ForeignKey("vacancies.id", ondelete="CASCADE"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="saved", server_default="saved")
+    note: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    resume_version_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("resume_versions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    cover_letter_version_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("cover_letter_versions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ApplicationStatusHistory(Base):
+    __tablename__ = "application_status_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    from_status: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    note: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class ProfileExperience(Base):
     __tablename__ = "profile_experiences"
 

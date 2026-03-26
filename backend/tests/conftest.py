@@ -68,6 +68,9 @@ class FakeDB:
     def commit(self):
         return None
 
+    def rollback(self):
+        return None
+
     def refresh(self, _item: Any):
         return None
 

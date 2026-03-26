@@ -131,6 +131,34 @@ export const approveCoverLetterVersion = (profileId = DEFAULT_PROFILE_ID, id) =>
 export const deleteCoverLetterVersion = (profileId = DEFAULT_PROFILE_ID, id) =>
   deleteProfileResource(profileId, 'cover-letter-versions', id);
 
+export const listApplications = (profileId = DEFAULT_PROFILE_ID) => listProfileResource(profileId, 'applications');
+export const createApplication = (profileId = DEFAULT_PROFILE_ID, payload) =>
+  createProfileResource(profileId, 'applications', payload);
+export const getApplication = (profileId = DEFAULT_PROFILE_ID, applicationId) =>
+  apiFetch(`/profiles/${profileId}/applications/${applicationId}`);
+export const updateApplication = (profileId = DEFAULT_PROFILE_ID, applicationId, payload) =>
+  apiFetch(`/profiles/${profileId}/applications/${applicationId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+export const changeApplicationStatus = (profileId = DEFAULT_PROFILE_ID, applicationId, payload) =>
+  apiFetch(`/profiles/${profileId}/applications/${applicationId}/status`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+export const listApplicationHistory = (profileId = DEFAULT_PROFILE_ID, applicationId) =>
+  apiFetch(`/profiles/${profileId}/applications/${applicationId}/history`);
+export const deleteApplication = (profileId = DEFAULT_PROFILE_ID, applicationId) =>
+  apiFetch(`/profiles/${profileId}/applications/${applicationId}`, {
+    method: 'DELETE',
+  });
+
 export function getRecommendations(profileId = DEFAULT_PROFILE_ID, limit = DEFAULT_LIMIT) {
   return apiFetch(`/profiles/${profileId}/recommendations?limit=${limit}`);
 }
