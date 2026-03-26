@@ -1,8 +1,19 @@
 import { API_PREFIX, getApiBaseUrl } from '../config.js';
+import { getAccessToken } from '../utils/auth.js';
 
-export async function apiFetch(path, options) {
+export async function apiFetch(path, options = {}) {
   const baseUrl = getApiBaseUrl();
-  const response = await fetch(`${baseUrl}${API_PREFIX}${path}`, options);
+  const headers = new Headers(options.headers ?? {});
+  const token = getAccessToken();
+
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const response = await fetch(`${baseUrl}${API_PREFIX}${path}`, {
+    ...options,
+    headers,
+  });
   const contentType = response.headers.get('content-type') ?? '';
 
   if (!response.ok) {

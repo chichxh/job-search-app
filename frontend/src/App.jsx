@@ -1,24 +1,64 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
 import './App.css';
+import { useAuth } from './auth/useAuth.js';
 import Layout from './components/Layout.jsx';
 import RecommendationsPage from './pages/RecommendationsPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import ApplicationsPage from './pages/ApplicationsPage.jsx';
 import VacanciesPage from './pages/VacanciesPage.jsx';
 import VacancyDetailsPage from './pages/VacancyDetailsPage.jsx';
+import LoginPage from './pages/LoginPage.jsx';
+import RegisterPage from './pages/RegisterPage.jsx';
+import Loading from './components/Loading.jsx';
+
+function ProtectedRoute() {
+  const { isAuthenticated, isBootstrapping } = useAuth();
+  const location = useLocation();
+
+  if (isBootstrapping) {
+    return <Loading message="Checking auth session..." />;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  return <Outlet />;
+}
+
+function PublicOnlyRoute({ children }) {
+  const { isAuthenticated, isBootstrapping } = useAuth();
+
+  if (isBootstrapping) {
+    return <Loading message="Checking auth session..." />;
+  }
+
+  if (isAuthenticated) {
+    return <Navigate to="/vacancies" replace />;
+  }
+
+  return children;
+}
 
 export default function App() {
   return (
     <Routes>
-      <Route element={<Layout />}>
-        <Route path="/" element={<Navigate to="/vacancies" replace />} />
-        <Route path="/vacancies" element={<VacanciesPage />} />
-        <Route path="/vacancies/:vacancyId" element={<VacancyDetailsPage />} />
-        <Route path="/recommendations" element={<RecommendationsPage />} />
-        <Route path="/applications" element={<ApplicationsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+      <Route path="/login" element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />
+      <Route path="/register" element={<PublicOnlyRoute><RegisterPage /></PublicOnlyRoute>} />
+
+      <Route element={<ProtectedRoute />}>
+        <Route element={<Layout />}>
+          <Route path="/" element={<Navigate to="/vacancies" replace />} />
+          <Route path="/vacancies" element={<VacanciesPage />} />
+          <Route path="/vacancies/:vacancyId" element={<VacancyDetailsPage />} />
+          <Route path="/recommendations" element={<RecommendationsPage />} />
+          <Route path="/applications" element={<ApplicationsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Route>
       </Route>
+
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

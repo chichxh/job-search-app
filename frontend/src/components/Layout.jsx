@@ -1,4 +1,6 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+
+import { useAuth } from '../auth/useAuth.js';
 
 const navItems = [
   { to: '/vacancies', label: 'Vacancies' },
@@ -8,6 +10,14 @@ const navItems = [
 ];
 
 export default function Layout() {
+  const navigate = useNavigate();
+  const { user, profileId, logout } = useAuth();
+
+  function handleLogout() {
+    logout();
+    navigate('/login', { replace: true });
+  }
+
   return (
     <div className="layout">
       <header className="layout__header">
@@ -29,6 +39,10 @@ export default function Layout() {
               ))}
             </ul>
           </nav>
+          <div className="layout__user-box">
+            <p>{user?.email ?? '—'} · profile #{profileId ?? '—'}</p>
+            <button className="layout__logout" type="button" onClick={handleLogout}>Logout</button>
+          </div>
         </div>
       </header>
 

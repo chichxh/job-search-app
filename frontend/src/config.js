@@ -1,5 +1,4 @@
 export const API_PREFIX = '/api/v1';
-export const DEFAULT_PROFILE_ID = 1;
 export const DEFAULT_LIMIT = 50;
 
 export function getApiBaseUrl() {

@@ -14,10 +14,10 @@ import {
   updateCoverLetterVersion,
   updateResumeVersion,
 } from '../api/endpoints.js';
-import { DEFAULT_PROFILE_ID } from '../config.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import Loading from '../components/Loading.jsx';
 import { formatDateTime, formatSalary, getSafeText } from '../utils/formatters.js';
+import { useAuth } from '../auth/useAuth.js';
 
 function toList(value) {
   return Array.isArray(value) ? value : [];
@@ -138,6 +138,7 @@ function GenerationResultBlock({ result, onRegenerate }) {
 }
 
 export default function VacancyDetailsPage() {
+  const { profileId } = useAuth();
   const { vacancyId } = useParams();
   const isMountedRef = useRef(true);
 
@@ -219,8 +220,8 @@ export default function VacancyDetailsPage() {
 
     try {
       const updated = type === 'resume'
-        ? await updateResumeVersion(DEFAULT_PROFILE_ID, id, payload)
-        : await updateCoverLetterVersion(DEFAULT_PROFILE_ID, id, payload);
+        ? await updateResumeVersion(profileId, id, payload)
+        : await updateCoverLetterVersion(profileId, id, payload);
 
       applyUpdatedDocument(type, updated);
       setEditSuccess(`${getDocumentTypeLabel(type)} draft saved.`);
@@ -230,19 +231,19 @@ export default function VacancyDetailsPage() {
     } finally {
       setSavingEditByKey((current) => ({ ...current, [key]: false }));
     }
-  }, [applyUpdatedDocument, editDraft.content_text, editDraft.title]);
+  }, [applyUpdatedDocument, editDraft.content_text, editDraft.title, profileId]);
 
   const loadTailoring = useCallback(async () => {
     setTailoringError('');
 
     try {
-      const tailoringResponse = await getTailoring(DEFAULT_PROFILE_ID, vacancyId);
+      const tailoringResponse = await getTailoring(profileId, vacancyId);
       setTailoring(tailoringResponse);
     } catch (requestError) {
       setTailoring(null);
       setTailoringError(getUserFacingError(requestError, 'Не удалось загрузить мэтчинг.'));
     }
-  }, [vacancyId]);
+  }, [profileId, vacancyId]);
 
   const refreshTailoring = useCallback(async () => {
     setIsRefreshingTailoring(true);
@@ -262,8 +263,8 @@ export default function VacancyDetailsPage() {
 
     try {
       const [resumeResponse, coverLetterResponse] = await Promise.all([
-        listResumeVersions(DEFAULT_PROFILE_ID),
-        listCoverLetterVersions(DEFAULT_PROFILE_ID),
+        listResumeVersions(profileId),
+        listCoverLetterVersions(profileId),
       ]);
       if (!isMountedRef.current) {
         return;
@@ -290,7 +291,7 @@ export default function VacancyDetailsPage() {
         }
       }
     }
-  }, [vacancyId]);
+  }, [profileId, vacancyId]);
 
   const refreshDocuments = useCallback(async () => {
     await loadDocuments({ silent: true });
@@ -304,14 +305,14 @@ export default function VacancyDetailsPage() {
     setTrackError('');
     setIsTrackingApplication(true);
     try {
-      await createApplication(DEFAULT_PROFILE_ID, { vacancy_id: Number(vacancyId) });
+      await createApplication(profileId, { vacancy_id: Number(vacancyId) });
       setTrackSuccess('Vacancy added to applications funnel.');
     } catch (requestError) {
       setTrackError(getUserFacingError(requestError, 'Failed to track application for this vacancy.'));
     } finally {
       setIsTrackingApplication(false);
     }
-  }, [vacancyId]);
+  }, [profileId, vacancyId]);
 
   const handleResumeGeneration = useCallback(async () => {
     setIsGeneratingResume(true);
@@ -320,7 +321,7 @@ export default function VacancyDetailsPage() {
     setLastGeneratedResult(null);
 
     try {
-      const createdDraft = await generateResumeDraft(DEFAULT_PROFILE_ID, vacancyId);
+      const createdDraft = await generateResumeDraft(profileId, vacancyId);
       setLastGeneratedResult({ type: 'resume', document: createdDraft });
       await loadDocuments({ silent: true });
     } catch (requestError) {
@@ -328,7 +329,7 @@ export default function VacancyDetailsPage() {
     } finally {
       setIsGeneratingResume(false);
     }
-  }, [loadDocuments, vacancyId]);
+  }, [loadDocuments, profileId, vacancyId]);
 
   const handleCoverLetterGeneration = useCallback(async () => {
     setIsGeneratingCoverLetter(true);
@@ -337,7 +338,7 @@ export default function VacancyDetailsPage() {
     setLastGeneratedResult(null);
 
     try {
-      const createdDraft = await generateCoverLetterDraft(DEFAULT_PROFILE_ID, vacancyId);
+      const createdDraft = await generateCoverLetterDraft(profileId, vacancyId);
       setLastGeneratedResult({ type: 'cover_letter', document: createdDraft });
       await loadDocuments({ silent: true });
     } catch (requestError) {
@@ -345,7 +346,7 @@ export default function VacancyDetailsPage() {
     } finally {
       setIsGeneratingCoverLetter(false);
     }
-  }, [loadDocuments, vacancyId]);
+  }, [loadDocuments, profileId, vacancyId]);
 
   const handleRegenerate = useCallback((type) => {
     if (type === 'resume') {
@@ -363,14 +364,14 @@ export default function VacancyDetailsPage() {
     setApprovingResumeById((current) => ({ ...current, [id]: true }));
 
     try {
-      const approved = await approveResumeVersion(DEFAULT_PROFILE_ID, id);
+      const approved = await approveResumeVersion(profileId, id);
       setResumeDocuments((current) => current.map((item) => (item.id === id ? approved : item)));
     } catch (requestError) {
       setApproveError(getUserFacingError(requestError, 'Failed to approve resume draft.'));
     } finally {
       setApprovingResumeById((current) => ({ ...current, [id]: false }));
     }
-  }, []);
+  }, [profileId]);
 
   const handleApproveCoverLetter = useCallback(async (id) => {
     setApproveError('');
@@ -379,14 +380,14 @@ export default function VacancyDetailsPage() {
     setApprovingCoverLetterById((current) => ({ ...current, [id]: true }));
 
     try {
-      const approved = await approveCoverLetterVersion(DEFAULT_PROFILE_ID, id);
+      const approved = await approveCoverLetterVersion(profileId, id);
       setCoverLetterDocuments((current) => current.map((item) => (item.id === id ? approved : item)));
     } catch (requestError) {
       setApproveError(getUserFacingError(requestError, 'Failed to approve cover letter draft.'));
     } finally {
       setApprovingCoverLetterById((current) => ({ ...current, [id]: false }));
     }
-  }, []);
+  }, [profileId]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -400,7 +401,7 @@ export default function VacancyDetailsPage() {
       try {
         const [vacancyResponse, tailoringResponse] = await Promise.all([
           getVacancyById(vacancyId),
-          getTailoring(DEFAULT_PROFILE_ID, vacancyId),
+          getTailoring(profileId, vacancyId),
         ]);
 
         if (!isActive) {
@@ -427,7 +428,7 @@ export default function VacancyDetailsPage() {
         }
 
         try {
-          const tailoringResponse = await getTailoring(DEFAULT_PROFILE_ID, vacancyId);
+          const tailoringResponse = await getTailoring(profileId, vacancyId);
           if (isActive) {
             setTailoring(tailoringResponse);
           }
@@ -452,7 +453,7 @@ export default function VacancyDetailsPage() {
       isActive = false;
       isMountedRef.current = false;
     };
-  }, [clearActionFeedback, loadDocuments, vacancyId]);
+  }, [clearActionFeedback, loadDocuments, profileId, vacancyId]);
 
   const explanation = tailoring?.explanation;
   const evidenceItems = useMemo(() => {

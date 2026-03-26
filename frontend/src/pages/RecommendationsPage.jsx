@@ -5,12 +5,12 @@ import {
   getTask,
   recomputeRecommendations,
 } from '../api/endpoints.js';
-import { DEFAULT_PROFILE_ID } from '../config.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import Loading from '../components/Loading.jsx';
 import VacancyCard from '../components/VacancyCard.jsx';
 import { formatDateTime, getSafeText } from '../utils/formatters.js';
 import { loadJobSearchSettings } from '../utils/settings.js';
+import { useAuth } from '../auth/useAuth.js';
 
 function formatScore(score) {
   if (score == null || Number.isNaN(Number(score))) {
@@ -21,6 +21,7 @@ function formatScore(score) {
 }
 
 export default function RecommendationsPage() {
+  const { profileId } = useAuth();
   const [recommendations, setRecommendations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -36,7 +37,7 @@ export default function RecommendationsPage() {
 
     try {
       const response = await getRecommendations(
-        DEFAULT_PROFILE_ID,
+        profileId,
         settings.recommendationsLimit,
       );
       setRecommendations(response.items ?? []);
@@ -45,7 +46,7 @@ export default function RecommendationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [settings.recommendationsLimit]);
+  }, [profileId, settings.recommendationsLimit]);
 
   useEffect(() => {
     loadRecommendations();
@@ -120,7 +121,7 @@ export default function RecommendationsPage() {
 
     try {
       const response = await recomputeRecommendations(
-        DEFAULT_PROFILE_ID,
+        profileId,
         settings.recommendationsLimit,
       );
       setTaskId(response.task_id);
