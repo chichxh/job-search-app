@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
@@ -53,16 +54,76 @@ from app.utils.text_clean import strip_html
 logger = logging.getLogger(__name__)
 
 MIN_RESUME_TEXT_LEN = 280
-SALARY_HARD_MISMATCH_RATIO = 0.85
-SALARY_FROM_SEVERE_RATIO = 0.70
-QUALITY_SCORE_LOW_THRESHOLD = 0.45
-QUALITY_SCORE_VERY_LOW_THRESHOLD = 0.30
-QUALITY_CAP_LOW = 0.74
-QUALITY_CAP_VERY_LOW = 0.64
-QUALITY_CAP_SPARSE_REQUIREMENTS = 0.72
-MIN_RELIABLE_SKILL_REQUIREMENTS = 2
-EXPERIENCE_FAIL_TOLERANCE_YEARS = 0.75
-EXPERIENCE_WARNING_TOLERANCE_YEARS = 0.0
+
+
+@dataclass(frozen=True)
+class ScoreWeights:
+    semantic: float = 0.45
+    hard_coverage: float = 0.35
+    nice_coverage: float = 0.20
+
+
+@dataclass(frozen=True)
+class VerdictThresholds:
+    strong_min: float = 0.75
+    ok_min: float = 0.50
+    weak_min: float = 0.30
+
+
+@dataclass(frozen=True)
+class PenaltyMultipliers:
+    overqualified: float = 0.90
+    salary_warning: float = 0.95
+
+
+@dataclass(frozen=True)
+class SalaryRules:
+    hard_mismatch_ratio: float = 0.85
+    severe_from_ratio: float = 0.70
+
+
+@dataclass(frozen=True)
+class QualityGuardRules:
+    low_threshold: float = 0.45
+    very_low_threshold: float = 0.30
+    low_cap: float = 0.74
+    very_low_cap: float = 0.64
+    sparse_requirements_cap: float = 0.72
+    min_reliable_skill_requirements: int = 2
+
+
+@dataclass(frozen=True)
+class ExperienceRules:
+    fail_tolerance_years: float = 0.75
+    warning_tolerance_years: float = 0.0
+
+
+@dataclass(frozen=True)
+class MatchingScoringConfig:
+    weights: ScoreWeights = field(default_factory=ScoreWeights)
+    verdicts: VerdictThresholds = field(default_factory=VerdictThresholds)
+    penalties: PenaltyMultipliers = field(default_factory=PenaltyMultipliers)
+    salary: SalaryRules = field(default_factory=SalaryRules)
+    quality_guard: QualityGuardRules = field(default_factory=QualityGuardRules)
+    experience: ExperienceRules = field(default_factory=ExperienceRules)
+
+
+DEFAULT_SCORING_CONFIG = MatchingScoringConfig()
+
+
+def build_scoring_config(overrides: dict[str, Any] | None = None) -> MatchingScoringConfig:
+    if not overrides:
+        return DEFAULT_SCORING_CONFIG
+
+    base = DEFAULT_SCORING_CONFIG
+    return MatchingScoringConfig(
+        weights=ScoreWeights(**{**base.weights.__dict__, **overrides.get("weights", {})}),
+        verdicts=VerdictThresholds(**{**base.verdicts.__dict__, **overrides.get("verdict_thresholds", {})}),
+        penalties=PenaltyMultipliers(**{**base.penalties.__dict__, **overrides.get("penalties", {})}),
+        salary=SalaryRules(**{**base.salary.__dict__, **overrides.get("salary_rules", {})}),
+        quality_guard=QualityGuardRules(**{**base.quality_guard.__dict__, **overrides.get("quality_guard", {})}),
+        experience=ExperienceRules(**{**base.experience.__dict__, **overrides.get("experience_rules", {})}),
+    )
 
 REMOTE_MARKERS = ("удален", "remote", "дистанцион", "work from home", "wfh")
 OFFICE_REQUIRED_PATTERNS = (
@@ -83,8 +144,9 @@ MIN_EXPERIENCE_PATTERNS = (
 class MatchingService:
     """Computes layered matching score for profile-vacancy pair."""
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, scoring_config: MatchingScoringConfig | None = None):
         self.db = db
+        self.scoring_config = scoring_config or DEFAULT_SCORING_CONFIG
 
     def compute_for_pair(self, profile_id: int, vacancy_id: int) -> VacancyScore:
         """Compute layer1/layer2/final score, persist VacancyScore and ResumeEvidence."""
@@ -182,17 +244,15 @@ class MatchingService:
 
         eligibility_ok = len(reasons_failed) == 0
 
-        penalties: list[str] = []
-        raw_score = 0.45 * semantic_score + 0.35 * hard_coverage + 0.20 * nice_coverage
-
-        if overqualified:
-            raw_score *= 0.9
-            penalties.append("overqualified")
-
-        has_salary_warning = any("зарплаты" in warning for warning in warnings)
-        if has_salary_warning:
-            raw_score *= 0.95
-            penalties.append("salary_warning")
+        scoring_eval = self._evaluate_final_score(
+            semantic_score=semantic_score,
+            hard_coverage=hard_coverage,
+            nice_coverage=nice_coverage,
+            overqualified=overqualified,
+            warnings=warnings,
+        )
+        penalties = scoring_eval["penalties"]
+        raw_score = scoring_eval["raw_score"]
 
         vacancy_quality_score = self._get_vacancy_quality_score(vacancy_id=vacancy_id)
         quality_eval = self._apply_quality_guard(
@@ -210,16 +270,7 @@ class MatchingService:
         raw_score = float(max(0.0, min(1.0, raw_score)))
         final_score = 0.0 if not eligibility_ok else raw_score
 
-        if not eligibility_ok:
-            verdict = "reject"
-        elif raw_score >= 0.75:
-            verdict = "strong"
-        elif raw_score >= 0.50:
-            verdict = "ok"
-        elif raw_score >= 0.30:
-            verdict = "weak"
-        else:
-            verdict = "reject"
+        verdict = self._resolve_verdict(raw_score=raw_score, eligibility_ok=eligibility_ok)
 
         explanation = {
             "warnings": self._unique(explanation_warnings),
@@ -241,6 +292,7 @@ class MatchingService:
                     "nice": nice_coverage,
                 },
                 "penalties": penalties,
+                "scoring_config": self.get_scoring_config_dict(),
                 "semantic_vs_ats": self._build_semantic_vs_ats_note(
                     semantic_score=semantic_score,
                     hard_coverage=hard_coverage,
@@ -532,6 +584,48 @@ class MatchingService:
 
         return float(max(0.0, min(1.0, score)))
 
+    def _evaluate_final_score(
+        self,
+        semantic_score: float,
+        hard_coverage: float,
+        nice_coverage: float,
+        overqualified: bool,
+        warnings: list[str],
+    ) -> dict[str, Any]:
+        weights = self.scoring_config.weights
+        penalties_cfg = self.scoring_config.penalties
+
+        penalties: list[str] = []
+        raw_score = (
+            weights.semantic * semantic_score
+            + weights.hard_coverage * hard_coverage
+            + weights.nice_coverage * nice_coverage
+        )
+
+        if overqualified:
+            raw_score *= penalties_cfg.overqualified
+            penalties.append("overqualified")
+
+        has_salary_warning = any("зарплаты" in warning for warning in warnings)
+        if has_salary_warning:
+            raw_score *= penalties_cfg.salary_warning
+            penalties.append("salary_warning")
+
+        return {"raw_score": raw_score, "penalties": penalties}
+
+    def _resolve_verdict(self, raw_score: float, eligibility_ok: bool) -> str:
+        if not eligibility_ok:
+            return "reject"
+
+        verdicts = self.scoring_config.verdicts
+        if raw_score >= verdicts.strong_min:
+            return "strong"
+        if raw_score >= verdicts.ok_min:
+            return "ok"
+        if raw_score >= verdicts.weak_min:
+            return "weak"
+        return "reject"
+
     def _refresh_evidence(
         self,
         profile_id: int,
@@ -646,7 +740,7 @@ class MatchingService:
 
         if vacancy.salary_to is not None and vacancy.salary_to < profile.salary_min:
             ratio = vacancy.salary_to / profile.salary_min
-            if ratio < SALARY_HARD_MISMATCH_RATIO:
+            if ratio < self.scoring_config.salary.hard_mismatch_ratio:
                 reasons_failed.append("Ожидания по зарплате сильно выше вилки")
             else:
                 warnings.append("Верхняя граница зарплаты чуть ниже ожиданий")
@@ -654,7 +748,7 @@ class MatchingService:
 
         if vacancy.salary_from is not None and vacancy.salary_from < profile.salary_min:
             ratio_from = vacancy.salary_from / profile.salary_min
-            if ratio_from < SALARY_FROM_SEVERE_RATIO:
+            if ratio_from < self.scoring_config.salary.severe_from_ratio:
                 warnings.append("Нижняя граница зарплаты значительно ниже ожиданий")
             else:
                 warnings.append("Нижняя граница зарплаты ниже ожиданий")
@@ -684,9 +778,9 @@ class MatchingService:
 
         gap = profile.years_total - min_years
         debug_notes.append(f"profile_years_total={profile.years_total}")
-        if gap < -EXPERIENCE_FAIL_TOLERANCE_YEARS:
+        if gap < -self.scoring_config.experience.fail_tolerance_years:
             reasons_failed.append(f"Недостаточно общего опыта: требуется от {min_years:g} лет")
-        elif gap < EXPERIENCE_WARNING_TOLERANCE_YEARS:
+        elif gap < self.scoring_config.experience.warning_tolerance_years:
             warnings.append(f"Опыт близок к нижней границе требования ({min_years:g}+ лет)")
 
         return {"reasons_failed": reasons_failed, "warnings": warnings, "debug_notes": debug_notes}
@@ -724,29 +818,30 @@ class MatchingService:
         penalties: list[str] = []
         warnings: list[str] = []
         applied_caps: list[str] = []
+        quality_cfg = self.scoring_config.quality_guard
 
         if quality_score is not None:
-            if quality_score < QUALITY_SCORE_VERY_LOW_THRESHOLD:
-                score = min(score, QUALITY_CAP_VERY_LOW)
+            if quality_score < quality_cfg.very_low_threshold:
+                score = min(score, quality_cfg.very_low_cap)
                 penalties.append("very_low_parsing_quality_cap")
                 warnings.append("Низкое качество parsing: strong verdict ограничен")
-                applied_caps.append(f"quality_score<{QUALITY_SCORE_VERY_LOW_THRESHOLD}")
-            elif quality_score < QUALITY_SCORE_LOW_THRESHOLD:
-                score = min(score, QUALITY_CAP_LOW)
+                applied_caps.append(f"quality_score<{quality_cfg.very_low_threshold}")
+            elif quality_score < quality_cfg.low_threshold:
+                score = min(score, quality_cfg.low_cap)
                 penalties.append("low_parsing_quality_cap")
                 warnings.append("Пониженное качество parsing: итоговый verdict ограничен")
-                applied_caps.append(f"quality_score<{QUALITY_SCORE_LOW_THRESHOLD}")
+                applied_caps.append(f"quality_score<{quality_cfg.low_threshold}")
 
         if skill_requirements_count == 0:
-            score = min(score, QUALITY_CAP_VERY_LOW)
+            score = min(score, quality_cfg.very_low_cap)
             penalties.append("no_skill_requirements_cap")
             warnings.append("Нет извлеченных skill requirements: ATS-сигнал слабый")
             applied_caps.append("skill_requirements_count==0")
-        elif skill_requirements_count < MIN_RELIABLE_SKILL_REQUIREMENTS:
-            score = min(score, QUALITY_CAP_SPARSE_REQUIREMENTS)
+        elif skill_requirements_count < quality_cfg.min_reliable_skill_requirements:
+            score = min(score, quality_cfg.sparse_requirements_cap)
             penalties.append("sparse_skill_requirements_cap")
             warnings.append("Мало извлеченных skill requirements: semantic сигнал ограничен")
-            applied_caps.append(f"skill_requirements_count<{MIN_RELIABLE_SKILL_REQUIREMENTS}")
+            applied_caps.append(f"skill_requirements_count<{quality_cfg.min_reliable_skill_requirements}")
 
         return {
             "score": score,
@@ -828,3 +923,38 @@ class MatchingService:
             seen.add(value)
             result.append(value)
         return result
+
+    def get_scoring_config_dict(self) -> dict[str, Any]:
+        cfg = self.scoring_config
+        return {
+            "weights": {
+                "semantic": cfg.weights.semantic,
+                "hard_coverage": cfg.weights.hard_coverage,
+                "nice_coverage": cfg.weights.nice_coverage,
+            },
+            "verdict_thresholds": {
+                "strong_min": cfg.verdicts.strong_min,
+                "ok_min": cfg.verdicts.ok_min,
+                "weak_min": cfg.verdicts.weak_min,
+            },
+            "penalties": {
+                "overqualified_multiplier": cfg.penalties.overqualified,
+                "salary_warning_multiplier": cfg.penalties.salary_warning,
+            },
+            "salary_rules": {
+                "hard_mismatch_ratio": cfg.salary.hard_mismatch_ratio,
+                "severe_from_ratio": cfg.salary.severe_from_ratio,
+            },
+            "quality_guard": {
+                "low_threshold": cfg.quality_guard.low_threshold,
+                "very_low_threshold": cfg.quality_guard.very_low_threshold,
+                "low_cap": cfg.quality_guard.low_cap,
+                "very_low_cap": cfg.quality_guard.very_low_cap,
+                "sparse_requirements_cap": cfg.quality_guard.sparse_requirements_cap,
+                "min_reliable_skill_requirements": cfg.quality_guard.min_reliable_skill_requirements,
+            },
+            "experience_rules": {
+                "fail_tolerance_years": cfg.experience.fail_tolerance_years,
+                "warning_tolerance_years": cfg.experience.warning_tolerance_years,
+            },
+        }
