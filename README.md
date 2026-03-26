@@ -161,6 +161,41 @@ Manual сценарий MVP:
 - Cluster items may include `params` parsed from HH `url`; send them back as `extra_params` in `/api/v1/import/hh` to narrow import results.
 - `extra_params` supports values: `string`, `number`, `boolean`, `list[string|number]`, or `null`.
 
+## HH OAuth profile import MVP
+
+Добавлен минимальный OAuth + import flow для профиля пользователя:
+
+- `POST /api/v1/integrations/hh/connect/start` — генерирует HH authorize URL для текущего user.
+- `GET /api/v1/integrations/hh/callback` — OAuth callback, сохраняет токены и редиректит в frontend settings.
+- `GET /api/v1/integrations/hh/status` — статус подключения (без токенов в ответе).
+- `GET /api/v1/integrations/hh/resumes` — список резюме текущего HH аккаунта.
+- `POST /api/v1/integrations/hh/import` — явный импорт профиля/резюме (требует `consent=true`).
+- `DELETE /api/v1/integrations/hh/connection` — отключение HH интеграции.
+
+Env переменные:
+
+- `HH_OAUTH_CLIENT_ID`
+- `HH_OAUTH_CLIENT_SECRET`
+- `HH_OAUTH_REDIRECT_URI` (должен совпадать с callback URL в HH приложении)
+- `HH_OAUTH_SCOPES` (опционально)
+- `HH_OAUTH_STATE_SECRET` (опционально; иначе fallback на `AUTH_JWT_SECRET`)
+- `HH_OAUTH_FRONTEND_SUCCESS_URL` (опционально; default `http://localhost:5173/settings?hh=connected`)
+- `HH_OAUTH_FRONTEND_ERROR_URL` (опционально; default `http://localhost:5173/settings?hh=connect_failed`)
+
+Импортируемые данные (MVP):
+
+- `profiles`: `full_name`, `title`, `location/city`, `summary_about`, `salary_min`, `remote_ok`, `relocation_ok`, `skills_text`, `resume_text`.
+- `profile_experiences` (полный refresh секции).
+- `profile_skills` (полный refresh секции).
+- `profile_languages` (полный refresh секции).
+- `profile_links` (полный refresh секции).
+
+Import policy (MVP):
+
+- main profile поля обновляются из HH payload;
+- коллекции `experiences/skills/languages/links` работают в режиме controlled replace-per-section (delete + insert из HH);
+- это предотвращает хаотичные дубли и делает поведение предсказуемым.
+
 ## Saved searches with extra HH filters
 
 - Saved searches now store `filters_json` (JSONB) with additional HH query params (for example, `metro`, `professional_role`).
