@@ -13,6 +13,19 @@ from app.tasks.hh_import_tasks import import_hh_vacancies_task
 router = APIRouter(tags=["imports"])
 
 
+def _extract_task_meta(task_result: AsyncResult) -> tuple[str | None, str | None, str | None, str | None]:
+    info = task_result.info if isinstance(task_result.info, dict) else {}
+    result_payload = task_result.result if isinstance(task_result.result, dict) else {}
+    task_meta = result_payload.get("_task") if isinstance(result_payload.get("_task"), dict) else {}
+
+    task_name = info.get("task_name") or task_meta.get("task_name")
+    started_at = info.get("started_at") or task_meta.get("started_at")
+    date_done = getattr(task_result, "date_done", None)
+    finished_at = task_meta.get("finished_at") or (date_done.isoformat() if hasattr(date_done, "isoformat") else date_done)
+    message = info.get("message") or task_meta.get("message")
+    return task_name, started_at, finished_at, message
+
+
 @router.post("/import/hh", response_model=HHImportTaskResponse)
 def start_hh_import(payload: HHImportRequest) -> HHImportTaskResponse:
     task = import_hh_vacancies_task.apply_async(args=[payload.model_dump()])
@@ -68,11 +81,38 @@ async def get_hh_clusters(payload: HHImportRequest) -> dict[str, Any]:
 @router.get("/tasks/{task_id}", response_model=TaskStatusResponse)
 def get_task_status(task_id: str) -> TaskStatusResponse:
     task_result: AsyncResult = celery_app.AsyncResult(task_id)
+    task_name, started_at, finished_at, message = _extract_task_meta(task_result)
 
     if task_result.state == "SUCCESS":
-        return TaskStatusResponse(task_id=task_id, state=task_result.state, result=task_result.result)
+        return TaskStatusResponse(
+            task_id=task_id,
+            state=task_result.state,
+            task_name=task_name,
+            started_at=started_at,
+            finished_at=finished_at,
+            message=message or "Task completed successfully",
+            result=task_result.result,
+        )
 
     if task_result.state == "FAILURE":
-        return TaskStatusResponse(task_id=task_id, state=task_result.state, error=str(task_result.result))
+        error = str(task_result.result)
+        error_summary = error.splitlines()[0] if error else "Task failed"
+        return TaskStatusResponse(
+            task_id=task_id,
+            state=task_result.state,
+            task_name=task_name,
+            started_at=started_at,
+            finished_at=finished_at,
+            message=message or "Task failed",
+            error=error,
+            error_summary=error_summary,
+        )
 
-    return TaskStatusResponse(task_id=task_id, state=task_result.state)
+    return TaskStatusResponse(
+        task_id=task_id,
+        state=task_result.state,
+        task_name=task_name,
+        started_at=started_at,
+        finished_at=finished_at,
+        message=message,
+    )

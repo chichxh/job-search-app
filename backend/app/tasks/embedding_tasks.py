@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime, timezone
+from time import perf_counter
 
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
@@ -9,6 +10,7 @@ from app.db.models import Profile, ProfileEmbedding, Vacancy, VacancyEmbedding, 
 from app.db.session import SessionLocal
 from app.services.embeddings.profile_text_builder import build_profile_document, build_profile_documents
 from app.services.embeddings.provider import get_embedding_provider
+from app.tasks.observability import failure_summary, mark_task_started, success_meta, task_name
 from app.utils.text_clean import strip_html
 
 logger = logging.getLogger(__name__)
@@ -127,8 +129,17 @@ def build_profile_embedding(profile_id: int) -> dict[str, str | int]:
         db.close()
 
 
-@celery_app.task(name="app.tasks.embedding_tasks.rebuild_vacancy_embeddings")
-def rebuild_vacancy_embeddings(limit: int | None = None) -> dict[str, int]:
+@celery_app.task(bind=True, name="app.tasks.embedding_tasks.rebuild_vacancy_embeddings")
+def rebuild_vacancy_embeddings(self, limit: int | None = None) -> dict[str, int | str | dict]:
+    current_task_name = task_name(self, "rebuild_vacancy_embeddings")
+    timer_started = perf_counter()
+    started_at = mark_task_started(
+        self,
+        name=current_task_name,
+        message="Vacancy embeddings rebuild in progress",
+        extra={"flow": "embeddings_rebuild", "kind": "vacancy", "limit": limit},
+    )
+    logger.info("Task started | task=%s limit=%s", current_task_name, limit)
     db = SessionLocal()
     try:
         stmt = select(Vacancy.id).order_by(Vacancy.id.asc())
@@ -171,17 +182,36 @@ def rebuild_vacancy_embeddings(limit: int | None = None) -> dict[str, int]:
                 _upsert_vacancy_embedding(db, vacancy_id=vacancy_id, vector=vector, model_name=provider.name)
 
         db.commit()
-        return {"status": "ok", "processed": len(vacancy_ids)}
-    except Exception:  # noqa: BLE001
+        payload: dict[str, int | str | dict] = {"status": "ok", "processed": len(vacancy_ids)}
+        payload.update(
+            success_meta(
+                current_task_name,
+                started_at=started_at,
+                timer_started=timer_started,
+                message="Vacancy embeddings rebuild finished",
+            )
+        )
+        logger.info("Task finished | task=%s processed=%s", current_task_name, len(vacancy_ids))
+        return payload
+    except Exception as exc:  # noqa: BLE001
         db.rollback()
-        logger.exception("Failed to rebuild vacancy embeddings")
+        logger.exception("Task failed | task=%s summary=%s", current_task_name, failure_summary(exc))
         raise
     finally:
         db.close()
 
 
-@celery_app.task(name="app.tasks.embedding_tasks.rebuild_vacancy_embeddings_for_ids")
-def rebuild_vacancy_embeddings_for_ids(vacancy_ids: list[int]) -> dict[str, int]:
+@celery_app.task(bind=True, name="app.tasks.embedding_tasks.rebuild_vacancy_embeddings_for_ids")
+def rebuild_vacancy_embeddings_for_ids(self, vacancy_ids: list[int]) -> dict[str, int | str | dict]:
+    current_task_name = task_name(self, "rebuild_vacancy_embeddings_for_ids")
+    timer_started = perf_counter()
+    started_at = mark_task_started(
+        self,
+        name=current_task_name,
+        message="Vacancy embeddings rebuild for selected ids in progress",
+        extra={"flow": "embeddings_rebuild", "kind": "vacancy_ids", "input_count": len(vacancy_ids)},
+    )
+    logger.info("Task started | task=%s input_count=%s", current_task_name, len(vacancy_ids))
     db = SessionLocal()
     try:
         unique_ids = sorted(set(vacancy_ids))
@@ -222,17 +252,40 @@ def rebuild_vacancy_embeddings_for_ids(vacancy_ids: list[int]) -> dict[str, int]
                 processed += 1
 
         db.commit()
-        return {"status": "ok", "processed": processed}
-    except Exception:  # noqa: BLE001
+        payload: dict[str, int | str | dict] = {"status": "ok", "processed": processed}
+        payload.update(
+            success_meta(
+                current_task_name,
+                started_at=started_at,
+                timer_started=timer_started,
+                message="Vacancy embeddings rebuild for selected ids finished",
+            )
+        )
+        logger.info("Task finished | task=%s processed=%s", current_task_name, processed)
+        return payload
+    except Exception as exc:  # noqa: BLE001
         db.rollback()
-        logger.exception("Failed to rebuild vacancy embeddings for ids")
+        logger.exception(
+            "Task failed | task=%s summary=%s",
+            task_name(self, "rebuild_vacancy_embeddings_for_ids"),
+            failure_summary(exc),
+        )
         raise
     finally:
         db.close()
 
 
-@celery_app.task(name="app.tasks.embedding_tasks.rebuild_profile_embeddings")
-def rebuild_profile_embeddings(limit: int | None = None) -> dict[str, int]:
+@celery_app.task(bind=True, name="app.tasks.embedding_tasks.rebuild_profile_embeddings")
+def rebuild_profile_embeddings(self, limit: int | None = None) -> dict[str, int | str | dict]:
+    current_task_name = task_name(self, "rebuild_profile_embeddings")
+    timer_started = perf_counter()
+    started_at = mark_task_started(
+        self,
+        name=current_task_name,
+        message="Profile embeddings rebuild in progress",
+        extra={"flow": "embeddings_rebuild", "kind": "profile", "limit": limit},
+    )
+    logger.info("Task started | task=%s limit=%s", current_task_name, limit)
     db = SessionLocal()
     try:
         stmt = select(Profile.id).order_by(Profile.id.asc())
@@ -256,10 +309,20 @@ def rebuild_profile_embeddings(limit: int | None = None) -> dict[str, int]:
                 _upsert_profile_embedding(db, profile_id=profile_id, vector=vector, model_name=provider.name)
 
         db.commit()
-        return {"status": "ok", "processed": len(profile_ids)}
-    except Exception:  # noqa: BLE001
+        payload: dict[str, int | str | dict] = {"status": "ok", "processed": len(profile_ids)}
+        payload.update(
+            success_meta(
+                current_task_name,
+                started_at=started_at,
+                timer_started=timer_started,
+                message="Profile embeddings rebuild finished",
+            )
+        )
+        logger.info("Task finished | task=%s processed=%s", current_task_name, len(profile_ids))
+        return payload
+    except Exception as exc:  # noqa: BLE001
         db.rollback()
-        logger.exception("Failed to rebuild profile embeddings")
+        logger.exception("Task failed | task=%s summary=%s", current_task_name, failure_summary(exc))
         raise
     finally:
         db.close()

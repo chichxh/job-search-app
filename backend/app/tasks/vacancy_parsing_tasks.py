@@ -1,4 +1,5 @@
 import logging
+from time import perf_counter
 from typing import Any, cast
 
 from sqlalchemy import outerjoin, select
@@ -11,6 +12,7 @@ from app.services.requirements_extractor import extract_requirements_from_sectio
 from app.services.vacancy_parsing import parse_hh_description
 from app.services.vacancy_parsing.hh_parser import VERSION as HH_PARSER_VERSION
 from app.tasks.embedding_tasks import rebuild_vacancy_embeddings_for_ids
+from app.tasks.observability import failure_summary, mark_task_started, success_meta, task_name
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +21,9 @@ EMBEDDING_BATCH_SIZE = 256
 RECOMMENDATION_PROFILES = (1, 2)
 
 
-@celery_app.task(name="app.tasks.vacancy_parsing_tasks.backfill_hh_parsed")
+@celery_app.task(bind=True, name="app.tasks.vacancy_parsing_tasks.backfill_hh_parsed")
 def backfill_hh_parsed(
+    self,
     limit: int | None = None,
     only_missing: bool = True,
     schedule_embeddings: bool = True,
@@ -28,6 +31,26 @@ def backfill_hh_parsed(
     embedding_batch_size: int = EMBEDDING_BATCH_SIZE,
     recommendations_limit: int = 50,
 ) -> dict[str, Any]:
+    current_task_name = task_name(self, "backfill_hh_parsed")
+    timer_started = perf_counter()
+    started_at = mark_task_started(
+        self,
+        name=current_task_name,
+        message="HH parsing backfill in progress",
+        extra={
+            "flow": "hh_parsing_backfill",
+            "limit": limit,
+            "only_missing": only_missing,
+        },
+    )
+    logger.info(
+        "Task started | task=%s limit=%s only_missing=%s schedule_embeddings=%s schedule_recommendations=%s",
+        current_task_name,
+        limit,
+        only_missing,
+        schedule_embeddings,
+        schedule_recommendations,
+    )
     db = SessionLocal()
     try:
         stmt = select(Vacancy.id).where(Vacancy.source == "hh").order_by(Vacancy.id.asc())
@@ -108,7 +131,7 @@ def backfill_hh_parsed(
             except Exception:  # noqa: BLE001
                 logger.exception("Failed to enqueue profile recommendations recompute")
 
-        return {
+        payload = {
             "status": "ok",
             "processed": processed,
             "errors": errors,
@@ -124,9 +147,26 @@ def backfill_hh_parsed(
             "embedding_batch_size": max(1, embedding_batch_size),
             "recommendations_limit": recommendations_limit,
         }
-    except Exception:  # noqa: BLE001
+        payload.update(
+            success_meta(
+                current_task_name,
+                started_at=started_at,
+                timer_started=timer_started,
+                message="HH parsing backfill finished",
+            )
+        )
+        logger.info(
+            "Task finished | task=%s processed=%s errors=%s enqueued_embeddings=%s enqueued_recommendations=%s",
+            current_task_name,
+            processed,
+            errors,
+            enqueued_embeddings,
+            enqueued_recommendations,
+        )
+        return payload
+    except Exception as exc:  # noqa: BLE001
         db.rollback()
-        logger.exception("Failed to backfill HH parsed vacancies")
+        logger.exception("Task failed | task=%s summary=%s", current_task_name, failure_summary(exc))
         raise
     finally:
         db.close()
