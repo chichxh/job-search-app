@@ -331,6 +331,28 @@
   margin: 0.2rem 0;
 }
 
+.vacancy-details__created-draft {
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  border-radius: 10px;
+  padding: 0.8rem;
+  margin-bottom: 0.75rem;
+}
+
+.vacancy-details__created-draft p {
+  margin: 0.2rem 0;
+}
+
+.vacancy-details__metadata-list {
+  margin: 0.2rem 0 0.5rem;
+  padding-left: 1rem;
+}
+
+.vacancy-details__doc-meta {
+  color: #334155;
+  font-size: 0.9rem;
+}
+
 .vacancy-details__docgen-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
