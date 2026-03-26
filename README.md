@@ -5,6 +5,7 @@
 ## Testing
 
 Минимальный backend smoke/integration suite и инструкции запуска: `TESTING.md`.
+Операционная памятка по наблюдаемости фоновых задач: `backend/docs/background_tasks_observability.md`.
 
 Минимальный воспроизводимый smoke-check для базовой версии: `verification-checklist.md`.
 Для reproducible проверки parsing+matching quality: `backend/docs/matching_diagnostics_verification.md`.

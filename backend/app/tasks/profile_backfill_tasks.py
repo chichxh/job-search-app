@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
+import logging
+from time import perf_counter
 from typing import Any
 
 from sqlalchemy import select
@@ -10,12 +12,23 @@ from app.celery_app import celery_app
 from app.db.models import Profile, ProfileSkill, ResumeVersion
 from app.db.session import SessionLocal
 from app.services.matching.utils import normalize_skill
+from app.tasks.observability import failure_summary, mark_task_started, success_meta, task_name
 
 _SKILLS_SPLIT_RE = re.compile(r"[;,]")
+logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name="app.tasks.profile_backfill_tasks.backfill_profile")
-def backfill_profile(profile_id: int) -> dict[str, Any]:
+@celery_app.task(bind=True, name="app.tasks.profile_backfill_tasks.backfill_profile")
+def backfill_profile(self, profile_id: int) -> dict[str, Any]:
+    current_task_name = task_name(self, "backfill_profile")
+    timer_started = perf_counter()
+    started_at = mark_task_started(
+        self,
+        name=current_task_name,
+        message="Profile backfill in progress",
+        extra={"flow": "profile_backfill", "profile_id": profile_id},
+    )
+    logger.info("Task started | task=%s profile_id=%s", current_task_name, profile_id)
     db = SessionLocal()
     try:
         profile = db.get(Profile, profile_id)
@@ -69,14 +82,25 @@ def backfill_profile(profile_id: int) -> dict[str, Any]:
 
         db.commit()
 
-        return {
+        payload = {
             "status": "ok",
             "profile_id": profile_id,
             "created_resume_version": created_resume_version,
             "created_skills": created_skills,
         }
-    except Exception:  # noqa: BLE001
+        payload.update(
+            success_meta(
+                current_task_name,
+                started_at=started_at,
+                timer_started=timer_started,
+                message="Profile backfill finished",
+            )
+        )
+        logger.info("Task finished | task=%s profile_id=%s", current_task_name, profile_id)
+        return payload
+    except Exception as exc:  # noqa: BLE001
         db.rollback()
+        logger.exception("Task failed | task=%s profile_id=%s summary=%s", current_task_name, profile_id, failure_summary(exc))
         raise
     finally:
         db.close()

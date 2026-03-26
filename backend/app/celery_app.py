@@ -15,6 +15,9 @@ celery_app = Celery(
     backend=os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/1"),
 )
 
+celery_app.conf.task_track_started = True
+celery_app.conf.task_send_sent_event = True
+
 celery_app.conf.beat_schedule = {
     "schedule-saved-search-sync": {
         "task": "app.tasks.hh_import_tasks.schedule_saved_search_sync",
