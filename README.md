@@ -85,10 +85,34 @@ Current end-to-end flow that is supported by existing API/backend logic:
   - `GET /saved-searches/{id}/clusters`
 - Periodic Celery sync uses `filters_json` from `saved_searches` when requesting HH vacancies.
 
-## Миграции в контейнере
+## Миграции (safe workflow)
 
-- `docker compose exec api alembic revision --autogenerate -m "add matching tables"`
+Применить миграции:
+
 - `docker compose exec api alembic upgrade head`
+
+Проверить состояние миграций (DB доступность + upgrade до head + `current == heads` + контроль множественных head):
+
+- `docker compose exec api python scripts/verify_migrations.py`
+
+Полезные ручные команды:
+
+- `docker compose exec api alembic current`
+- `docker compose exec api alembic heads`
+- `docker compose exec api alembic revision --autogenerate -m "add matching tables"`
+
+Если `current` и `heads` не совпадают:
+
+1. Повторите `alembic upgrade head`.
+2. Если mismatch остаётся — проверьте историю ревизий и наличие branch/divergence.
+3. Если в репозитории случайно несколько head — создайте merge migration (`alembic merge ...`) и зафиксируйте причину в PR.
+
+Когда **не** использовать `alembic stamp head`:
+
+- Когда миграции реально не выполнялись на этой БД.
+- Когда причина mismatch не расследована.
+
+`stamp head` только переписывает отметку версии и может скрыть broken schema state.
 
 ## Embeddings (Celery)
 
