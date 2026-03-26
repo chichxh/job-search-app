@@ -1,7 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
-from app.services.matching.matching_service import MatchingService
+from app.services.matching.matching_service import MatchingService, build_scoring_config
 
 
 class _FakeScalarResult:
@@ -103,6 +103,18 @@ class MatchingServiceLogicTests(unittest.TestCase):
             hard_missing=["Kubernetes"],
         )
         self.assertIn("Kubernetes", note_with_missing)
+
+    def test_build_scoring_config_applies_partial_override(self):
+        config = build_scoring_config(
+            {
+                "weights": {"semantic": 0.55},
+                "verdict_thresholds": {"strong_min": 0.8},
+            }
+        )
+        self.assertEqual(config.weights.semantic, 0.55)
+        self.assertEqual(config.weights.hard_coverage, 0.35)
+        self.assertEqual(config.verdicts.strong_min, 0.8)
+        self.assertEqual(config.verdicts.ok_min, 0.5)
 
 
 if __name__ == "__main__":

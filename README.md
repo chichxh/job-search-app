@@ -4,6 +4,7 @@
 
 Минимальный воспроизводимый smoke-check для базовой версии: `verification-checklist.md`.
 Для reproducible проверки parsing+matching quality: `backend/docs/matching_diagnostics_verification.md`.
+Для ручной калибровки score/thresholds: `backend/docs/matching_calibration_note.md`.
 
 ## Current status (implemented vs planned)
 
