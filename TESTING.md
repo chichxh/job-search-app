@@ -43,3 +43,15 @@ python -m pytest tests
 - отсутствуют реальные запросы в HH/import и в LLM providers
 
 Это intentional: suite проверяет интеграцию API-слоя и контрактов ответов, но не ходит в интернет/внешние провайдеры.
+
+
+## Migration safety check
+
+Лёгкий smoke-check миграций на живой БД (локально/в CI):
+
+```bash
+cd backend
+python scripts/verify_migrations.py
+```
+
+Проверка фейлится, если БД недоступна, миграции не применяются до `head`, `current != heads` или появились неожиданные множественные `heads`.
