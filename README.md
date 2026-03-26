@@ -233,6 +233,23 @@ cd frontend
 VITE_API_BASE_URL=http://127.0.0.1:8000 npm run dev
 ```
 
+
+### Frontend auth flow (updated)
+
+- Frontend теперь работает через JWT auth (`/login` и `/register`) и защищённые маршруты.
+- После login/register UI делает `GET /api/v1/auth/me`, сохраняет `access_token` и `profile_id` в `localStorage` (`jobsearch_auth_session`).
+- Все profile-scoped запросы (`/profiles/{profile_id}/...`) берут `profile_id` из auth session, а не из hardcoded `profile_id=1`.
+- Logout очищает auth session и возвращает пользователя на `/login`.
+- Demo-flow остаётся рабочим через вход под demo-пользователем (`demo@example.local` / `demo-password-change-me`).
+
+Короткая ручная проверка:
+
+1. Запустить backend + frontend.
+2. Открыть `/register`, создать пользователя.
+3. Проверить редирект на защищённые страницы (`/vacancies`), затем открыть `/settings`.
+4. Обновить профиль и убедиться, что CRUD/рекомендации/детали вакансии/applications работают.
+5. Нажать `Logout` и убедиться, что происходит возврат на `/login`.
+
 ## LLM configuration (env)
 
 - `LLM_PROVIDER`: `gigachat` | `openai` (default `gigachat`).

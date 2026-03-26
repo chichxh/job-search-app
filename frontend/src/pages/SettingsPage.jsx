@@ -59,7 +59,8 @@ import SwitchField from '../components/forms/SwitchField.jsx';
 import TagInput from '../components/forms/TagInput.jsx';
 import TextAreaField from '../components/forms/TextAreaField.jsx';
 import TextField from '../components/forms/TextField.jsx';
-import { DEFAULT_LIMIT, DEFAULT_PROFILE_ID } from '../config.js';
+import { DEFAULT_LIMIT } from '../config.js';
+import { useAuth } from '../auth/useAuth.js';
 
 const EMPLOYMENT_OPTIONS = [
   { value: 'full_time', label: 'Full-time' },
@@ -95,6 +96,7 @@ const emptyBySection = {
 };
 
 export default function SettingsPage() {
+  const { profileId } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
@@ -135,17 +137,17 @@ export default function SettingsPage() {
           resumeData,
           letterData,
         ] = await Promise.all([
-          getProfile(DEFAULT_PROFILE_ID),
-          listExperiences(DEFAULT_PROFILE_ID),
-          listProjects(DEFAULT_PROFILE_ID),
-          listAchievements(DEFAULT_PROFILE_ID),
-          listEducation(DEFAULT_PROFILE_ID),
-          listCertificates(DEFAULT_PROFILE_ID),
-          listSkills(DEFAULT_PROFILE_ID),
-          listLanguages(DEFAULT_PROFILE_ID),
-          listLinks(DEFAULT_PROFILE_ID),
-          listResumeVersions(DEFAULT_PROFILE_ID),
-          listCoverLetterVersions(DEFAULT_PROFILE_ID),
+          getProfile(profileId),
+          listExperiences(profileId),
+          listProjects(profileId),
+          listAchievements(profileId),
+          listEducation(profileId),
+          listCertificates(profileId),
+          listSkills(profileId),
+          listLanguages(profileId),
+          listLinks(profileId),
+          listResumeVersions(profileId),
+          listCoverLetterVersions(profileId),
         ]);
         setProfile(profileData);
         setTeamPreferencesText(JSON.stringify(profileData.team_preferences_json ?? {}, null, 2));
@@ -167,7 +169,7 @@ export default function SettingsPage() {
     }
 
     loadData();
-  }, []);
+  }, [profileId]);
 
   function updateProfileField(name, value) {
     setProfile((current) => ({ ...current, [name]: value }));
@@ -190,7 +192,7 @@ export default function SettingsPage() {
 
     try {
       const payload = { ...profile, team_preferences_json: parsedTeamPreferences };
-      const updated = await updateProfile(DEFAULT_PROFILE_ID, payload);
+      const updated = await updateProfile(profileId, payload);
       setProfile(updated);
       setTeamPreferencesText(JSON.stringify(updated.team_preferences_json ?? {}, null, 2));
       setToast('Профиль сохранён.');
@@ -257,7 +259,7 @@ export default function SettingsPage() {
     try {
       const updater = kind === 'resumes' ? approveResumeVersion : approveCoverLetterVersion;
       const setItems = kind === 'resumes' ? setResumes : setLetters;
-      const result = await updater(DEFAULT_PROFILE_ID, id);
+      const result = await updater(profileId, id);
       setItems((current) => current.map((entry) => (entry.id === id ? result : entry)));
       setToast('Версия подтверждена.');
     } catch (requestError) {
@@ -269,10 +271,10 @@ export default function SettingsPage() {
 
   async function runRecomputeAll() {
     try {
-      await recomputeAllProfileData(DEFAULT_PROFILE_ID, DEFAULT_LIMIT);
+      await recomputeAllProfileData(profileId, DEFAULT_LIMIT);
       setToast('Пересчёт всего запущен.');
     } catch {
-      setError('Endpoint /dev/profiles/1/recompute-all недоступен.');
+      setError('Endpoint /dev/profiles/{profile_id}/recompute-all недоступен.');
     }
   }
 
@@ -295,12 +297,12 @@ export default function SettingsPage() {
 
   return (
     <section className="page-stack">
-      <h1>Settings (profile_id=1)</h1>
+      <h1>{`Settings (profile_id=${profileId})`}</h1>
       {error ? <ErrorBanner message={error} /> : null}
       {toast ? <p className="success-banner">{toast}</p> : null}
 
       <div className="recommendations-toolbar">
-        <button className="button" type="button" onClick={() => recomputeRecommendations(DEFAULT_PROFILE_ID, DEFAULT_LIMIT)}>
+        <button className="button" type="button" onClick={() => recomputeRecommendations(profileId, DEFAULT_LIMIT)}>
           Пересчитать рекомендации
         </button>
         <button className="button button--ghost" type="button" onClick={runRecomputeAll}>
@@ -357,9 +359,9 @@ export default function SettingsPage() {
       </Section>
 
       {renderCards('Навыки', 'skills', skills, setSkills, {
-        create: (payload) => createSkill(DEFAULT_PROFILE_ID, payload),
-        update: (id, payload) => updateSkill(DEFAULT_PROFILE_ID, id, payload),
-        remove: (id) => deleteSkill(DEFAULT_PROFILE_ID, id),
+        create: (payload) => createSkill(profileId, payload),
+        update: (id, payload) => updateSkill(profileId, id, payload),
+        remove: (id) => deleteSkill(profileId, id),
       }, (item) => `${item.name_raw || 'Новый навык'} (${item.level || '—'})`, (draft, setDraft) => (
         <div className="settings-grid settings-grid--two">
           <TextField label="Name" value={draft.name_raw ?? ''} onChange={(e) => setDraft({ ...draft, name_raw: e.target.value })} />
@@ -373,9 +375,9 @@ export default function SettingsPage() {
       ), savingByKey, saveItem, removeItem)}
 
       {renderCards('Опыт', 'experiences', experiences, setExperiences, {
-        create: (payload) => createExperience(DEFAULT_PROFILE_ID, payload),
-        update: (id, payload) => updateExperience(DEFAULT_PROFILE_ID, id, payload),
-        remove: (id) => deleteExperience(DEFAULT_PROFILE_ID, id),
+        create: (payload) => createExperience(profileId, payload),
+        update: (id, payload) => updateExperience(profileId, id, payload),
+        remove: (id) => deleteExperience(profileId, id),
       }, (item) => `${item.company_name || 'Новый опыт'} — ${item.position_title || '—'}`, (draft, setDraft) => (
         <div className="settings-grid settings-grid--two">
           <TextField label="Company" value={draft.company_name ?? ''} onChange={(e) => setDraft({ ...draft, company_name: e.target.value })} />
@@ -391,7 +393,7 @@ export default function SettingsPage() {
       ), savingByKey, saveItem, removeItem)}
 
       {renderCards('Проекты', 'projects', projects, setProjects, {
-        create: (payload) => createProject(DEFAULT_PROFILE_ID, payload), update: (id, payload) => updateProject(DEFAULT_PROFILE_ID, id, payload), remove: (id) => deleteProject(DEFAULT_PROFILE_ID, id),
+        create: (payload) => createProject(profileId, payload), update: (id, payload) => updateProject(profileId, id, payload), remove: (id) => deleteProject(profileId, id),
       }, (item) => item.name || 'Новый проект', (draft, setDraft) => (
         <div className="settings-grid settings-grid--two">
           <TextField label="Name" value={draft.name ?? ''} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
@@ -405,7 +407,7 @@ export default function SettingsPage() {
       ), savingByKey, saveItem, removeItem)}
 
       {renderCards('Достижения', 'achievements', achievements, setAchievements, {
-        create: (payload) => createAchievement(DEFAULT_PROFILE_ID, payload), update: (id, payload) => updateAchievement(DEFAULT_PROFILE_ID, id, payload), remove: (id) => deleteAchievement(DEFAULT_PROFILE_ID, id),
+        create: (payload) => createAchievement(profileId, payload), update: (id, payload) => updateAchievement(profileId, id, payload), remove: (id) => deleteAchievement(profileId, id),
       }, (item) => item.title || 'Новое достижение', (draft, setDraft) => (
         <div className="settings-grid settings-grid--two">
           <TextField label="Title" value={draft.title ?? ''} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
@@ -418,7 +420,7 @@ export default function SettingsPage() {
       ), savingByKey, saveItem, removeItem)}
 
       {renderCards('Образование', 'education', education, setEducation, {
-        create: (payload) => createEducation(DEFAULT_PROFILE_ID, payload), update: (id, payload) => updateEducation(DEFAULT_PROFILE_ID, id, payload), remove: (id) => deleteEducation(DEFAULT_PROFILE_ID, id),
+        create: (payload) => createEducation(profileId, payload), update: (id, payload) => updateEducation(profileId, id, payload), remove: (id) => deleteEducation(profileId, id),
       }, (item) => item.institution || 'Новое образование', (draft, setDraft) => (
         <div className="settings-grid settings-grid--two">
           <TextField label="Institution" value={draft.institution ?? ''} onChange={(e) => setDraft({ ...draft, institution: e.target.value })} />
@@ -432,7 +434,7 @@ export default function SettingsPage() {
       ), savingByKey, saveItem, removeItem)}
 
       {renderCards('Сертификаты', 'certificates', certificates, setCertificates, {
-        create: (payload) => createCertificate(DEFAULT_PROFILE_ID, payload), update: (id, payload) => updateCertificate(DEFAULT_PROFILE_ID, id, payload), remove: (id) => deleteCertificate(DEFAULT_PROFILE_ID, id),
+        create: (payload) => createCertificate(profileId, payload), update: (id, payload) => updateCertificate(profileId, id, payload), remove: (id) => deleteCertificate(profileId, id),
       }, (item) => item.name || 'Новый сертификат', (draft, setDraft) => (
         <div className="settings-grid settings-grid--two">
           <TextField label="Name" value={draft.name ?? ''} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
@@ -444,7 +446,7 @@ export default function SettingsPage() {
       ), savingByKey, saveItem, removeItem)}
 
       {renderCards('Языки', 'languages', languages, setLanguages, {
-        create: (payload) => createLanguage(DEFAULT_PROFILE_ID, payload), update: (id, payload) => updateLanguage(DEFAULT_PROFILE_ID, id, payload), remove: (id) => deleteLanguage(DEFAULT_PROFILE_ID, id),
+        create: (payload) => createLanguage(profileId, payload), update: (id, payload) => updateLanguage(profileId, id, payload), remove: (id) => deleteLanguage(profileId, id),
       }, (item) => `${item.language || 'Язык'} (${item.level || '—'})`, (draft, setDraft) => (
         <div className="settings-grid settings-grid--two">
           <TextField label="Language" value={draft.language ?? ''} onChange={(e) => setDraft({ ...draft, language: e.target.value })} />
@@ -453,7 +455,7 @@ export default function SettingsPage() {
       ), savingByKey, saveItem, removeItem)}
 
       {renderCards('Ссылки', 'links', links, setLinks, {
-        create: (payload) => createLink(DEFAULT_PROFILE_ID, payload), update: (id, payload) => updateLink(DEFAULT_PROFILE_ID, id, payload), remove: (id) => deleteLink(DEFAULT_PROFILE_ID, id),
+        create: (payload) => createLink(profileId, payload), update: (id, payload) => updateLink(profileId, id, payload), remove: (id) => deleteLink(profileId, id),
       }, (item) => item.label || item.url || 'Новая ссылка', (draft, setDraft) => (
         <div className="settings-grid settings-grid--two">
           <TextField label="Type" value={draft.type ?? ''} onChange={(e) => setDraft({ ...draft, type: e.target.value })} />
@@ -465,16 +467,16 @@ export default function SettingsPage() {
       <Section title="Документы" defaultOpen>
         <SwitchField label="Только approved резюме" checked={approvedOnlyResume} onChange={(e) => setApprovedOnlyResume(e.target.checked)} />
         {renderDocCards('resumes', visibleResumes, setResumes, {
-          create: (payload) => createResumeVersion(DEFAULT_PROFILE_ID, payload),
-          update: (id, payload) => updateResumeVersion(DEFAULT_PROFILE_ID, id, payload),
-          remove: (id) => deleteResumeVersion(DEFAULT_PROFILE_ID, id),
+          create: (payload) => createResumeVersion(profileId, payload),
+          update: (id, payload) => updateResumeVersion(profileId, id, payload),
+          remove: (id) => deleteResumeVersion(profileId, id),
         }, savingByKey, saveItem, removeItem, approveDoc)}
 
         <SwitchField label="Только approved cover letters" checked={approvedOnlyLetter} onChange={(e) => setApprovedOnlyLetter(e.target.checked)} />
         {renderDocCards('letters', visibleLetters, setLetters, {
-          create: (payload) => createCoverLetterVersion(DEFAULT_PROFILE_ID, payload),
-          update: (id, payload) => updateCoverLetterVersion(DEFAULT_PROFILE_ID, id, payload),
-          remove: (id) => deleteCoverLetterVersion(DEFAULT_PROFILE_ID, id),
+          create: (payload) => createCoverLetterVersion(profileId, payload),
+          update: (id, payload) => updateCoverLetterVersion(profileId, id, payload),
+          remove: (id) => deleteCoverLetterVersion(profileId, id),
         }, savingByKey, saveItem, removeItem, approveDoc)}
       </Section>
     </section>

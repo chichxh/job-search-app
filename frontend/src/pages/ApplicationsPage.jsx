@@ -15,8 +15,8 @@ import {
   listResumeVersions,
   updateApplication,
 } from '../api/endpoints.js';
-import { DEFAULT_PROFILE_ID } from '../config.js';
 import { formatDateTime } from '../utils/formatters.js';
+import { useAuth } from '../auth/useAuth.js';
 
 const STATUSES = [
   'saved',
@@ -55,6 +55,7 @@ function getNotePreview(note) {
 }
 
 export default function ApplicationsPage() {
+  const { profileId } = useAuth();
   const [applications, setApplications] = useState([]);
   const [vacancies, setVacancies] = useState([]);
   const [resumeVersions, setResumeVersions] = useState([]);
@@ -80,10 +81,10 @@ export default function ApplicationsPage() {
     setError('');
     try {
       const [applicationsResponse, vacanciesResponse, resumeResponse, coverResponse] = await Promise.all([
-        listApplications(DEFAULT_PROFILE_ID),
+        listApplications(profileId),
         getVacancies(),
-        listResumeVersions(DEFAULT_PROFILE_ID),
-        listCoverLetterVersions(DEFAULT_PROFILE_ID),
+        listResumeVersions(profileId),
+        listCoverLetterVersions(profileId),
       ]);
       setApplications(applicationsResponse);
       setVacancies(vacanciesResponse);
@@ -94,7 +95,7 @@ export default function ApplicationsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [profileId]);
 
   const vacancyMap = useMemo(() => new Map(vacancies.map((vacancy) => [vacancy.id, vacancy])), [vacancies]);
   const resumeMap = useMemo(() => new Map(resumeVersions.map((item) => [item.id, item])), [resumeVersions]);
@@ -142,7 +143,7 @@ export default function ApplicationsPage() {
 
     setHistoryLoadingIds((current) => [...current, applicationId]);
     try {
-      const history = await listApplicationHistory(DEFAULT_PROFILE_ID, applicationId);
+      const history = await listApplicationHistory(profileId, applicationId);
       setHistoryByApplicationId((current) => ({ ...current, [applicationId]: history }));
       return history;
     } catch (requestError) {
@@ -151,22 +152,22 @@ export default function ApplicationsPage() {
     } finally {
       setHistoryLoadingIds((current) => current.filter((id) => id !== applicationId));
     }
-  }, [historyByApplicationId]);
+  }, [historyByApplicationId, profileId]);
 
   const refreshHistory = useCallback(async (applicationId) => {
     try {
-      const history = await listApplicationHistory(DEFAULT_PROFILE_ID, applicationId);
+      const history = await listApplicationHistory(profileId, applicationId);
       setHistoryByApplicationId((current) => ({ ...current, [applicationId]: history }));
     } catch (requestError) {
       setError(requestError.message || 'Failed to refresh status history');
     }
-  }, []);
+  }, [profileId]);
 
   const openDetails = useCallback(async (applicationId) => {
     setDetailsLoading(true);
     setSelectedApplicationId(applicationId);
     try {
-      const application = await getApplication(DEFAULT_PROFILE_ID, applicationId);
+      const application = await getApplication(profileId, applicationId);
       setSelectedApplication(application);
       setEditForm({
         note: application.note ?? '',
@@ -179,7 +180,7 @@ export default function ApplicationsPage() {
     } finally {
       setDetailsLoading(false);
     }
-  }, [ensureHistoryLoaded]);
+  }, [ensureHistoryLoaded, profileId]);
 
   useEffect(() => {
     loadAll();
@@ -192,7 +193,7 @@ export default function ApplicationsPage() {
     setCreateError('');
     setCreateSuccess('');
     try {
-      const created = await createApplication(DEFAULT_PROFILE_ID, { vacancy_id: Number(selectedVacancyId) });
+      const created = await createApplication(profileId, { vacancy_id: Number(selectedVacancyId) });
       setApplications((current) => [created, ...current]);
       setCreateSuccess('Application added to funnel.');
       setSelectedVacancyId('');
@@ -205,7 +206,7 @@ export default function ApplicationsPage() {
 
   const handleStatusQuickChange = async (applicationId, statusValue) => {
     try {
-      const updated = await changeApplicationStatus(DEFAULT_PROFILE_ID, applicationId, { status: statusValue });
+      const updated = await changeApplicationStatus(profileId, applicationId, { status: statusValue });
       setApplications((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       if (selectedApplicationId === applicationId) {
         setSelectedApplication(updated);
@@ -222,7 +223,7 @@ export default function ApplicationsPage() {
     }
 
     try {
-      const updated = await updateApplication(DEFAULT_PROFILE_ID, selectedApplicationId, {
+      const updated = await updateApplication(profileId, selectedApplicationId, {
         note: editForm.note || null,
         resume_version_id: editForm.resume_version_id ? Number(editForm.resume_version_id) : null,
         cover_letter_version_id: editForm.cover_letter_version_id ? Number(editForm.cover_letter_version_id) : null,
@@ -237,7 +238,7 @@ export default function ApplicationsPage() {
 
   const handleDelete = async (applicationId) => {
     try {
-      await deleteApplication(DEFAULT_PROFILE_ID, applicationId);
+      await deleteApplication(profileId, applicationId);
       setApplications((current) => current.filter((item) => item.id !== applicationId));
       if (selectedApplicationId === applicationId) {
         setSelectedApplicationId(null);
