@@ -200,7 +200,7 @@ def list_application_history(profile_id: int, application_id: int, db: Session =
     return (
         db.query(ApplicationStatusHistory)
         .filter(ApplicationStatusHistory.application_id == application_id)
-        .order_by(ApplicationStatusHistory.id.desc())
+        .order_by(ApplicationStatusHistory.created_at.desc(), ApplicationStatusHistory.id.desc())
         .all()
     )
 

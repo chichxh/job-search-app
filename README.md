@@ -94,6 +94,27 @@ Manual сценарий MVP:
 5. Открыть `Edit`, отредактировать note и прикрепить resume/cover letter versions.
 6. Проверить `Status history` для application.
 
+
+## Applications funnel UX polish
+
+`/applications` теперь работает как компактная board-like воронка без drag-and-drop:
+
+- колонки по всем статусам (`saved` → `archived`) показывают count и компактные карточки;
+- сверху есть summary-блок: `total`, `active` (без `rejected/archived`), `applied`, `interview stage`, `offers`;
+- есть фильтры: `status`, поиск по `vacancy/company`, `hide archived`, сортировка по `updated_at` (по умолчанию newest first);
+- на карточке видны title/company/status/updated/note preview + привязанные resume/cover letter (с меткой approved);
+- история смены статусов доступна из карточки (`Status history`) и в details-блоке;
+- в details можно быстро менять статус кнопками, редактировать note и привязки документов.
+
+Короткий ручной сценарий:
+
+1. Открыть `/vacancies/:vacancyId`.
+2. Нажать `Track application`.
+3. Перейти на `/applications`: новая карточка появится в `saved`.
+4. Через quick status select или details quickbar перевести application между статусами.
+5. Открыть `Status history` (на карточке или в details) и проверить события `from → to`.
+6. В details прикрепить/проверить resume и cover letter, убедиться что `approved` видно в label.
+
 ## Demo flow (manual, UI)
 
 Ниже — актуальный ручной сценарий проверки demo-flow в текущем UI:
