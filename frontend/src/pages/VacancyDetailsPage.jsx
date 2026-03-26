@@ -10,6 +10,8 @@ import {
   getVacancyById,
   listCoverLetterVersions,
   listResumeVersions,
+  updateCoverLetterVersion,
+  updateResumeVersion,
 } from '../api/endpoints.js';
 import { DEFAULT_PROFILE_ID } from '../config.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
@@ -155,13 +157,76 @@ export default function VacancyDetailsPage() {
   const [coverLetterDocuments, setCoverLetterDocuments] = useState([]);
   const [approvingResumeById, setApprovingResumeById] = useState({});
   const [approvingCoverLetterById, setApprovingCoverLetterById] = useState({});
+  const [editingDocumentKey, setEditingDocumentKey] = useState('');
+  const [editDraft, setEditDraft] = useState({ title: '', content_text: '' });
+  const [savingEditByKey, setSavingEditByKey] = useState({});
+  const [editError, setEditError] = useState('');
+  const [editSuccess, setEditSuccess] = useState('');
   const [lastGeneratedResult, setLastGeneratedResult] = useState(null);
 
   const clearActionFeedback = useCallback(() => {
     setGenerateError('');
     setApproveError('');
+    setEditError('');
+    setEditSuccess('');
     setLastGeneratedResult(null);
   }, []);
+
+  const startEditingDocument = useCallback((type, item) => {
+    setEditError('');
+    setEditSuccess('');
+    setEditingDocumentKey(`${type}:${item.id}`);
+    setEditDraft({
+      title: item.title ?? '',
+      content_text: item.content_text ?? '',
+    });
+  }, []);
+
+  const cancelEditingDocument = useCallback(() => {
+    setEditingDocumentKey('');
+    setEditDraft({ title: '', content_text: '' });
+  }, []);
+
+  const applyUpdatedDocument = useCallback((type, updated) => {
+    if (type === 'resume') {
+      setResumeDocuments((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    } else {
+      setCoverLetterDocuments((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    }
+
+    setLastGeneratedResult((current) => {
+      if (!current?.document || current.type !== type || current.document.id !== updated.id) {
+        return current;
+      }
+      return { ...current, document: updated };
+    });
+  }, []);
+
+  const saveEditingDocument = useCallback(async (type, id) => {
+    const key = `${type}:${id}`;
+    setEditError('');
+    setEditSuccess('');
+    setSavingEditByKey((current) => ({ ...current, [key]: true }));
+
+    const payload = {
+      title: editDraft.title.trim() || null,
+      content_text: editDraft.content_text,
+    };
+
+    try {
+      const updated = type === 'resume'
+        ? await updateResumeVersion(DEFAULT_PROFILE_ID, id, payload)
+        : await updateCoverLetterVersion(DEFAULT_PROFILE_ID, id, payload);
+
+      applyUpdatedDocument(type, updated);
+      setEditSuccess(`${getDocumentTypeLabel(type)} draft saved.`);
+      setEditingDocumentKey('');
+    } catch (requestError) {
+      setEditError(getUserFacingError(requestError, `Failed to save ${getDocumentTypeLabel(type).toLowerCase()} draft.`));
+    } finally {
+      setSavingEditByKey((current) => ({ ...current, [key]: false }));
+    }
+  }, [applyUpdatedDocument, editDraft.content_text, editDraft.title]);
 
   const loadTailoring = useCallback(async () => {
     setTailoringError('');
@@ -545,7 +610,9 @@ export default function VacancyDetailsPage() {
 
         {generateError ? <ErrorBanner message={`Generate action: ${generateError}`} /> : null}
         {approveError ? <ErrorBanner message={`Approve action: ${approveError}`} /> : null}
+        {editError ? <ErrorBanner message={`Edit action: ${editError}`} /> : null}
         {documentsError ? <ErrorBanner message={`Load documents: ${documentsError}`} /> : null}
+        {editSuccess ? <p className="vacancy-details__docgen-success">{editSuccess}</p> : null}
 
         <div className="vacancy-details__docgen-actions">
           <button
@@ -596,6 +663,55 @@ export default function VacancyDetailsPage() {
                       <pre className="vacancy-details__description">{toPreviewText(item.content_text)}</pre>
                       {item.status === 'draft' ? (
                         <button
+                          className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
+                          type="button"
+                          onClick={() => startEditingDocument('resume', item)}
+                        >
+                          Edit
+                        </button>
+                      ) : null}
+                      {editingDocumentKey === `resume:${item.id}` ? (
+                        <div className="vacancy-details__edit-panel">
+                          <label className="field-label" htmlFor={`resume-title-${item.id}`}>Title</label>
+                          <input
+                            id={`resume-title-${item.id}`}
+                            className="input"
+                            value={editDraft.title}
+                            onChange={(event) => setEditDraft((current) => ({ ...current, title: event.target.value }))}
+                          />
+                          <label className="field-label" htmlFor={`resume-content-${item.id}`}>Content text</label>
+                          <textarea
+                            id={`resume-content-${item.id}`}
+                            className="textarea"
+                            rows={8}
+                            value={editDraft.content_text}
+                            onChange={(event) => setEditDraft((current) => ({ ...current, content_text: event.target.value }))}
+                          />
+                          {(editDraft.title !== (item.title ?? '') || editDraft.content_text !== (item.content_text ?? '')) ? (
+                            <p className="vacancy-details__edit-warning">You have unsaved changes.</p>
+                          ) : null}
+                          <div className="vacancy-details__edit-actions">
+                            <button
+                              className="recommendations-toolbar__button"
+                              type="button"
+                              onClick={() => saveEditingDocument('resume', item.id)}
+                              disabled={Boolean(savingEditByKey[`resume:${item.id}`])}
+                            >
+                              {savingEditByKey[`resume:${item.id}`] ? 'Saving...' : 'Save'}
+                            </button>
+                            <button
+                              className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
+                              type="button"
+                              onClick={cancelEditingDocument}
+                              disabled={Boolean(savingEditByKey[`resume:${item.id}`])}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                      {item.status === 'draft' ? (
+                        <button
                           className="recommendations-toolbar__button"
                           type="button"
                           onClick={() => handleApproveResume(item.id)}
@@ -628,6 +744,55 @@ export default function VacancyDetailsPage() {
                       <p className="vacancy-details__doc-meta"><strong>generation:</strong> {renderMetadataCompact(item.generation_metadata)}</p>
                       <h4 className="vacancy-details__section-title">content_text preview</h4>
                       <pre className="vacancy-details__description">{toPreviewText(item.content_text)}</pre>
+                      {item.status === 'draft' ? (
+                        <button
+                          className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
+                          type="button"
+                          onClick={() => startEditingDocument('cover_letter', item)}
+                        >
+                          Edit
+                        </button>
+                      ) : null}
+                      {editingDocumentKey === `cover_letter:${item.id}` ? (
+                        <div className="vacancy-details__edit-panel">
+                          <label className="field-label" htmlFor={`letter-title-${item.id}`}>Title</label>
+                          <input
+                            id={`letter-title-${item.id}`}
+                            className="input"
+                            value={editDraft.title}
+                            onChange={(event) => setEditDraft((current) => ({ ...current, title: event.target.value }))}
+                          />
+                          <label className="field-label" htmlFor={`letter-content-${item.id}`}>Content text</label>
+                          <textarea
+                            id={`letter-content-${item.id}`}
+                            className="textarea"
+                            rows={8}
+                            value={editDraft.content_text}
+                            onChange={(event) => setEditDraft((current) => ({ ...current, content_text: event.target.value }))}
+                          />
+                          {(editDraft.title !== (item.title ?? '') || editDraft.content_text !== (item.content_text ?? '')) ? (
+                            <p className="vacancy-details__edit-warning">You have unsaved changes.</p>
+                          ) : null}
+                          <div className="vacancy-details__edit-actions">
+                            <button
+                              className="recommendations-toolbar__button"
+                              type="button"
+                              onClick={() => saveEditingDocument('cover_letter', item.id)}
+                              disabled={Boolean(savingEditByKey[`cover_letter:${item.id}`])}
+                            >
+                              {savingEditByKey[`cover_letter:${item.id}`] ? 'Saving...' : 'Save'}
+                            </button>
+                            <button
+                              className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
+                              type="button"
+                              onClick={cancelEditingDocument}
+                              disabled={Boolean(savingEditByKey[`cover_letter:${item.id}`])}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
                       {item.status === 'draft' ? (
                         <button
                           className="recommendations-toolbar__button"
