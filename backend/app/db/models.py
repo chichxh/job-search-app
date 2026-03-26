@@ -136,6 +136,7 @@ class ResumeVersion(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft", server_default="draft")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    generation_metadata: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
 
 
 class CoverLetterVersion(Base):
@@ -153,6 +154,7 @@ class CoverLetterVersion(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft", server_default="draft")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    generation_metadata: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
 
 
 class ProfileExperience(Base):

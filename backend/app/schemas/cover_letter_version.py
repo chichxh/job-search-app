@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -33,5 +33,6 @@ class CoverLetterVersionRead(BaseModel):
     status: str
     created_at: datetime
     approved_at: Optional[datetime] = None
+    generation_metadata: Optional[dict[str, Any]] = None
 
     model_config = ConfigDict(from_attributes=True)

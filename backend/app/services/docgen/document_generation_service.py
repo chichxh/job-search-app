@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -21,9 +23,44 @@ from app.db.models import (
     VacancyParsed,
     VacancyScore,
 )
-from app.llm import LLMMessage, LLMRequest, get_llm_client
+from app.llm import (
+    LLMAuthError,
+    LLMMessage,
+    LLMRateLimitError,
+    LLMRequest,
+    LLMUpstreamError,
+    get_llm_client,
+)
 from app.services.docgen.prompt_builders import build_cover_letter_prompt, build_resume_prompt
 from app.services.matching.matching_service import MatchingService
+
+logger = logging.getLogger(__name__)
+
+
+class DocgenError(Exception):
+    def __init__(self, user_message: str):
+        super().__init__(user_message)
+        self.user_message = user_message
+
+
+class DocgenNotFoundError(DocgenError):
+    pass
+
+
+class DocgenPrerequisiteError(DocgenError):
+    pass
+
+
+class DocgenProviderUnavailableError(DocgenError):
+    pass
+
+
+class DocgenMisconfigurationError(DocgenError):
+    pass
+
+
+class DocgenInvalidResultError(DocgenError):
+    pass
 
 
 class DocumentGenerationService:
@@ -35,24 +72,33 @@ class DocumentGenerationService:
         vacancy_facts = self._collect_vacancy_facts(vacancy_id) if vacancy_id is not None else {}
         tailoring = self._collect_tailoring(profile_id=profile_id, vacancy_id=vacancy_id)
 
+        self._validate_prerequisites(document_type="resume", profile_facts=profile_facts)
+
         messages = build_resume_prompt(profile_facts, vacancy_facts, tailoring)
         response = self._generate_llm_response(messages)
+        content_text = self._validate_generated_text(response.text, document_type="resume")
 
         metadata = self._build_generation_metadata(
+            document_type="resume",
+            profile_id=profile_id,
+            vacancy_id=vacancy_id,
             profile_facts=profile_facts,
             vacancy_facts=vacancy_facts,
             tailoring=tailoring,
             provider=response.provider,
             model=response.model,
+            source="ai",
+            status="draft",
         )
 
         draft = ResumeVersion(
             profile_id=profile_id,
             vacancy_id=vacancy_id,
-            content_text=response.text,
+            content_text=content_text,
             source="ai",
             status="draft",
             title=self._build_title("AI resume draft", metadata),
+            generation_metadata=metadata,
         )
         self.db.add(draft)
         self.db.commit()
@@ -64,25 +110,34 @@ class DocumentGenerationService:
         vacancy_facts = self._collect_vacancy_facts(vacancy_id)
         tailoring = self._collect_tailoring(profile_id=profile_id, vacancy_id=vacancy_id)
 
+        self._validate_prerequisites(document_type="cover_letter", profile_facts=profile_facts)
+
         messages = build_cover_letter_prompt(profile_facts, vacancy_facts, tailoring)
         response = self._generate_llm_response(messages)
+        content_text = self._validate_generated_text(response.text, document_type="cover_letter")
 
         metadata = self._build_generation_metadata(
+            document_type="cover_letter",
+            profile_id=profile_id,
+            vacancy_id=vacancy_id,
             profile_facts=profile_facts,
             vacancy_facts=vacancy_facts,
             tailoring=tailoring,
             provider=response.provider,
             model=response.model,
+            source="ai",
+            status="draft",
         )
 
         draft = CoverLetterVersion(
             profile_id=profile_id,
             vacancy_id=vacancy_id,
-            content_text=response.text,
+            content_text=content_text,
             source="ai",
             status="draft",
             title=self._build_title("AI cover letter draft", metadata),
             subject="Сопроводительное письмо",
+            generation_metadata=metadata,
         )
         self.db.add(draft)
         self.db.commit()
@@ -90,21 +145,32 @@ class DocumentGenerationService:
         return draft
 
     def _generate_llm_response(self, messages: list[LLMMessage]):
-        settings = get_llm_settings()
-        client = get_llm_client()
-        return client.generate(
-            LLMRequest(
-                messages=messages,
-                model=settings.model,
-                temperature=settings.temperature,
-                max_tokens=settings.max_tokens,
+        try:
+            settings = get_llm_settings()
+            client = get_llm_client()
+            return client.generate(
+                LLMRequest(
+                    messages=messages,
+                    model=settings.model,
+                    temperature=settings.temperature,
+                    max_tokens=settings.max_tokens,
+                )
             )
-        )
+        except (LLMRateLimitError, LLMUpstreamError) as exc:
+            logger.exception("docgen provider temporary failure")
+            raise DocgenProviderUnavailableError(
+                "Generation provider is temporarily unavailable. Please try again shortly."
+            ) from exc
+        except (NotImplementedError, ValueError, LLMAuthError) as exc:
+            logger.exception("docgen provider misconfiguration")
+            raise DocgenMisconfigurationError(
+                "Generation provider is not configured correctly. Please contact support."
+            ) from exc
 
     def _collect_profile_facts(self, profile_id: int) -> dict[str, Any]:
         profile = self.db.get(Profile, profile_id)
         if not profile:
-            raise ValueError(f"Profile not found: {profile_id}")
+            raise DocgenNotFoundError(f"Profile not found: {profile_id}")
 
         skills = self.db.execute(
             select(ProfileSkill)
@@ -192,7 +258,7 @@ class DocumentGenerationService:
     def _collect_vacancy_facts(self, vacancy_id: int) -> dict[str, Any]:
         vacancy = self.db.get(Vacancy, vacancy_id)
         if not vacancy:
-            raise ValueError(f"Vacancy not found: {vacancy_id}")
+            raise DocgenNotFoundError(f"Vacancy not found: {vacancy_id}")
 
         parsed = self.db.get(VacancyParsed, vacancy_id)
 
@@ -217,7 +283,11 @@ class DocumentGenerationService:
                 if isinstance(tailoring, dict):
                     return tailoring
             except Exception:
-                pass
+                logger.exception(
+                    "docgen tailoring fallback profile_id=%s vacancy_id=%s",
+                    profile_id,
+                    vacancy_id,
+                )
 
         score = self.db.execute(
             select(VacancyScore.explanation).where(
@@ -243,12 +313,17 @@ class DocumentGenerationService:
     def _build_generation_metadata(
         self,
         *,
+        document_type: str,
+        profile_id: int,
+        vacancy_id: int | None,
         profile_facts: dict[str, Any],
         vacancy_facts: dict[str, Any],
         tailoring: dict[str, Any],
         provider: str,
         model: str | None,
-    ) -> dict[str, str]:
+        source: str,
+        status: str,
+    ) -> dict[str, Any]:
         payload = {
             "profile_facts": profile_facts,
             "vacancy_facts": vacancy_facts,
@@ -258,13 +333,43 @@ class DocumentGenerationService:
         return {
             "provider": provider,
             "model": model or "",
+            "document_type": document_type,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "profile_id": profile_id,
+            "vacancy_id": vacancy_id,
             "prompt_version": "v1",
             "input_hash": input_hash,
+            "source": source,
+            "status": status,
         }
 
     @staticmethod
-    def _build_title(prefix: str, metadata: dict[str, str]) -> str:
-        short_hash = metadata["input_hash"][:12]
-        model = metadata.get("model") or "unknown-model"
-        provider = metadata.get("provider") or "unknown-provider"
+    def _build_title(prefix: str, metadata: dict[str, Any]) -> str:
+        short_hash = str(metadata.get("input_hash", ""))[:12]
+        model = str(metadata.get("model") or "unknown-model")
+        provider = str(metadata.get("provider") or "unknown-provider")
         return f"{prefix} [{provider}:{model}:v1:{short_hash}]"
+
+    @staticmethod
+    def _validate_prerequisites(*, document_type: str, profile_facts: dict[str, Any]) -> None:
+        has_about = bool((profile_facts.get("summary_about") or "").strip())
+        has_skills = bool(profile_facts.get("skills"))
+        has_experience = bool(profile_facts.get("experiences"))
+
+        if not (has_about or has_skills or has_experience):
+            raise DocgenPrerequisiteError(
+                f"Missing profile data required to generate {document_type.replace('_', ' ')}. "
+                "Add summary, skills, or experience and try again."
+            )
+
+    @staticmethod
+    def _validate_generated_text(text: str | None, *, document_type: str) -> str:
+        normalized = (text or "").strip()
+        min_chars = 120 if document_type == "resume" else 80
+
+        if len(normalized) < min_chars or len(normalized.split()) < 15:
+            raise DocgenInvalidResultError(
+                f"Generated {document_type.replace('_', ' ')} content is invalid or too short. Please retry."
+            )
+
+        return normalized
