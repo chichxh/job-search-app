@@ -2,6 +2,10 @@
 
 ## Verification
 
+## Testing
+
+Минимальный backend smoke/integration suite и инструкции запуска: `TESTING.md`.
+
 Минимальный воспроизводимый smoke-check для базовой версии: `verification-checklist.md`.
 Для reproducible проверки parsing+matching quality: `backend/docs/matching_diagnostics_verification.md`.
 Для ручной калибровки score/thresholds: `backend/docs/matching_calibration_note.md`.
