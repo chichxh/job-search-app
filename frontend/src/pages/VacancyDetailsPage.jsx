@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import {
   approveCoverLetterVersion,
   approveResumeVersion,
+  createApplication,
   generateCoverLetterDraft,
   generateResumeDraft,
   getTailoring,
@@ -163,6 +164,9 @@ export default function VacancyDetailsPage() {
   const [editError, setEditError] = useState('');
   const [editSuccess, setEditSuccess] = useState('');
   const [lastGeneratedResult, setLastGeneratedResult] = useState(null);
+  const [trackSuccess, setTrackSuccess] = useState('');
+  const [trackError, setTrackError] = useState('');
+  const [isTrackingApplication, setIsTrackingApplication] = useState(false);
 
   const clearActionFeedback = useCallback(() => {
     setGenerateError('');
@@ -291,6 +295,23 @@ export default function VacancyDetailsPage() {
   const refreshDocuments = useCallback(async () => {
     await loadDocuments({ silent: true });
   }, [loadDocuments]);
+
+  const handleTrackApplication = useCallback(async () => {
+    if (!vacancyId) {
+      return;
+    }
+    setTrackSuccess('');
+    setTrackError('');
+    setIsTrackingApplication(true);
+    try {
+      await createApplication(DEFAULT_PROFILE_ID, { vacancy_id: Number(vacancyId) });
+      setTrackSuccess('Vacancy added to applications funnel.');
+    } catch (requestError) {
+      setTrackError(getUserFacingError(requestError, 'Failed to track application for this vacancy.'));
+    } finally {
+      setIsTrackingApplication(false);
+    }
+  }, [vacancyId]);
 
   const handleResumeGeneration = useCallback(async () => {
     setIsGeneratingResume(true);
@@ -493,6 +514,21 @@ export default function VacancyDetailsPage() {
           </div>
           <h3 className="vacancy-details__section-title">Описание</h3>
           <pre className="vacancy-details__description">{vacancy.description ?? 'Описание отсутствует.'}</pre>
+          <div className="vacancy-details__docgen-actions">
+            <button
+              className="recommendations-toolbar__button"
+              type="button"
+              onClick={handleTrackApplication}
+              disabled={isTrackingApplication}
+            >
+              {isTrackingApplication ? 'Tracking...' : 'Track application'}
+            </button>
+            <Link className="vacancy-details__link" to="/applications">
+              Open applications funnel
+            </Link>
+          </div>
+          {trackSuccess ? <p className="vacancy-details__docgen-success">{trackSuccess}</p> : null}
+          {trackError ? <ErrorBanner message={trackError} /> : null}
         </article>
       ) : null}
 
