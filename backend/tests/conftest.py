@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.db import models
+from app.core.security import create_access_token
 from app.db.session import get_db
 
 os.environ.setdefault("EMBEDDING_PROVIDER", "localhash")
@@ -129,3 +130,24 @@ def client(fake_db, monkeypatch):
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def auth_headers(fake_db):
+    token = create_access_token(subject=str(1))
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture()
+def foreign_auth_headers(fake_db):
+    foreign_user = models.User(
+        email="other@example.local",
+        password_hash="x",
+        is_active=True,
+    )
+    fake_db.add(foreign_user)
+    fake_db.add(models.Profile(user_id=foreign_user.id, resume_text="Other resume", title="Other"))
+    token = create_access_token(subject=str(foreign_user.id))
+    return {"Authorization": f"Bearer {token}"}
+
+

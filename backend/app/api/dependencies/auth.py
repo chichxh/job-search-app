@@ -3,6 +3,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.security import decode_access_token
+from app.api.dependencies.ownership import get_owned_profile
 from app.db.models import Profile, User
 from app.db.session import get_db
 
@@ -37,4 +38,4 @@ def get_current_profile(
     profile = next((item for item in db.query(Profile).all() if item.user_id == current_user.id), None)
     if profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found for current user")
-    return profile
+    return get_owned_profile(db, profile_id=profile.id, current_user=current_user)

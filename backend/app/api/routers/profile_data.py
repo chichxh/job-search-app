@@ -1,12 +1,13 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.auth import get_current_user
+from app.api.dependencies.ownership import get_owned_profile, get_owned_profile_resource
 from app.db.models import (
     CoverLetterVersion,
-    Profile,
     ProfileAchievement,
     ProfileCertificate,
     ProfileEducation,
@@ -17,6 +18,7 @@ from app.db.models import (
     ProfileSkill,
     ResumeVersion,
 )
+from app.db.models import User
 from app.db.session import get_db
 from app.schemas.cover_letter_version import (
     CoverLetterVersionCreate,
@@ -33,30 +35,32 @@ from app.schemas.profile_project import ProfileProjectCreate, ProfileProjectRead
 from app.schemas.profile_skill import ProfileSkillCreate, ProfileSkillRead, ProfileSkillUpdate
 from app.schemas.resume_version import ResumeVersionCreate, ResumeVersionRead, ResumeVersionUpdate
 
-router = APIRouter(prefix="/profiles", tags=["profile-data"])
+router = APIRouter(prefix="/profiles", tags=["profile-data"], dependencies=[Depends(get_current_user)])
 
 
-def _ensure_profile(db: Session, profile_id: int) -> None:
-    if db.get(Profile, profile_id) is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+def _owned_profile_id(db: Session, profile_id: int, current_user: User) -> int:
+    return get_owned_profile(db, profile_id=profile_id, current_user=current_user).id
 
 
 def _get_owned_or_404(db: Session, model: Any, profile_id: int, item_id: int, detail: str):
-    item = db.get(model, item_id)
-    if item is None or item.profile_id != profile_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
-    return item
+    return get_owned_profile_resource(
+        db,
+        model=model,
+        resource_id=item_id,
+        profile_id=profile_id,
+        detail=detail,
+    )
 
 
 @router.get("/{profile_id}/experiences", response_model=list[ProfileExperienceRead])
-def list_experiences(profile_id: int, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def list_experiences(profile_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     return db.query(ProfileExperience).filter(ProfileExperience.profile_id == profile_id).order_by(ProfileExperience.id.desc()).all()
 
 
 @router.post("/{profile_id}/experiences", response_model=ProfileExperienceRead, status_code=status.HTTP_201_CREATED)
-def create_experience(profile_id: int, payload: ProfileExperienceCreate, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def create_experience(profile_id: int, payload: ProfileExperienceCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = ProfileExperience(profile_id=profile_id, **payload.model_dump())
     db.add(item)
     db.commit()
@@ -65,7 +69,8 @@ def create_experience(profile_id: int, payload: ProfileExperienceCreate, db: Ses
 
 
 @router.put("/{profile_id}/experiences/{item_id}", response_model=ProfileExperienceRead)
-def update_experience(profile_id: int, item_id: int, payload: ProfileExperienceUpdate, db: Session = Depends(get_db)):
+def update_experience(profile_id: int, item_id: int, payload: ProfileExperienceUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, ProfileExperience, profile_id, item_id, "Experience not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
@@ -75,21 +80,22 @@ def update_experience(profile_id: int, item_id: int, payload: ProfileExperienceU
 
 
 @router.delete("/{profile_id}/experiences/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_experience(profile_id: int, item_id: int, db: Session = Depends(get_db)):
+def delete_experience(profile_id: int, item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, ProfileExperience, profile_id, item_id, "Experience not found")
     db.delete(item)
     db.commit()
 
 
 @router.get("/{profile_id}/projects", response_model=list[ProfileProjectRead])
-def list_projects(profile_id: int, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def list_projects(profile_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     return db.query(ProfileProject).filter(ProfileProject.profile_id == profile_id).order_by(ProfileProject.id.desc()).all()
 
 
 @router.post("/{profile_id}/projects", response_model=ProfileProjectRead, status_code=status.HTTP_201_CREATED)
-def create_project(profile_id: int, payload: ProfileProjectCreate, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def create_project(profile_id: int, payload: ProfileProjectCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = ProfileProject(profile_id=profile_id, **payload.model_dump())
     db.add(item)
     db.commit()
@@ -98,7 +104,8 @@ def create_project(profile_id: int, payload: ProfileProjectCreate, db: Session =
 
 
 @router.put("/{profile_id}/projects/{item_id}", response_model=ProfileProjectRead)
-def update_project(profile_id: int, item_id: int, payload: ProfileProjectUpdate, db: Session = Depends(get_db)):
+def update_project(profile_id: int, item_id: int, payload: ProfileProjectUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, ProfileProject, profile_id, item_id, "Project not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
@@ -108,21 +115,22 @@ def update_project(profile_id: int, item_id: int, payload: ProfileProjectUpdate,
 
 
 @router.delete("/{profile_id}/projects/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_project(profile_id: int, item_id: int, db: Session = Depends(get_db)):
+def delete_project(profile_id: int, item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, ProfileProject, profile_id, item_id, "Project not found")
     db.delete(item)
     db.commit()
 
 
 @router.get("/{profile_id}/achievements", response_model=list[ProfileAchievementRead])
-def list_achievements(profile_id: int, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def list_achievements(profile_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     return db.query(ProfileAchievement).filter(ProfileAchievement.profile_id == profile_id).order_by(ProfileAchievement.id.desc()).all()
 
 
 @router.post("/{profile_id}/achievements", response_model=ProfileAchievementRead, status_code=status.HTTP_201_CREATED)
-def create_achievement(profile_id: int, payload: ProfileAchievementCreate, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def create_achievement(profile_id: int, payload: ProfileAchievementCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = ProfileAchievement(profile_id=profile_id, **payload.model_dump())
     db.add(item)
     db.commit()
@@ -131,7 +139,8 @@ def create_achievement(profile_id: int, payload: ProfileAchievementCreate, db: S
 
 
 @router.put("/{profile_id}/achievements/{item_id}", response_model=ProfileAchievementRead)
-def update_achievement(profile_id: int, item_id: int, payload: ProfileAchievementUpdate, db: Session = Depends(get_db)):
+def update_achievement(profile_id: int, item_id: int, payload: ProfileAchievementUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, ProfileAchievement, profile_id, item_id, "Achievement not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
@@ -141,21 +150,22 @@ def update_achievement(profile_id: int, item_id: int, payload: ProfileAchievemen
 
 
 @router.delete("/{profile_id}/achievements/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_achievement(profile_id: int, item_id: int, db: Session = Depends(get_db)):
+def delete_achievement(profile_id: int, item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, ProfileAchievement, profile_id, item_id, "Achievement not found")
     db.delete(item)
     db.commit()
 
 
 @router.get("/{profile_id}/education", response_model=list[ProfileEducationRead])
-def list_education(profile_id: int, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def list_education(profile_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     return db.query(ProfileEducation).filter(ProfileEducation.profile_id == profile_id).order_by(ProfileEducation.id.desc()).all()
 
 
 @router.post("/{profile_id}/education", response_model=ProfileEducationRead, status_code=status.HTTP_201_CREATED)
-def create_education(profile_id: int, payload: ProfileEducationCreate, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def create_education(profile_id: int, payload: ProfileEducationCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = ProfileEducation(profile_id=profile_id, **payload.model_dump())
     db.add(item)
     db.commit()
@@ -164,7 +174,8 @@ def create_education(profile_id: int, payload: ProfileEducationCreate, db: Sessi
 
 
 @router.put("/{profile_id}/education/{item_id}", response_model=ProfileEducationRead)
-def update_education(profile_id: int, item_id: int, payload: ProfileEducationUpdate, db: Session = Depends(get_db)):
+def update_education(profile_id: int, item_id: int, payload: ProfileEducationUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, ProfileEducation, profile_id, item_id, "Education not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
@@ -174,23 +185,24 @@ def update_education(profile_id: int, item_id: int, payload: ProfileEducationUpd
 
 
 @router.delete("/{profile_id}/education/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_education(profile_id: int, item_id: int, db: Session = Depends(get_db)):
+def delete_education(profile_id: int, item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, ProfileEducation, profile_id, item_id, "Education not found")
     db.delete(item)
     db.commit()
 
 
 @router.get("/{profile_id}/certificates", response_model=list[ProfileCertificateRead])
-def list_certificates(profile_id: int, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def list_certificates(profile_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     return (
         db.query(ProfileCertificate).filter(ProfileCertificate.profile_id == profile_id).order_by(ProfileCertificate.id.desc()).all()
     )
 
 
 @router.post("/{profile_id}/certificates", response_model=ProfileCertificateRead, status_code=status.HTTP_201_CREATED)
-def create_certificate(profile_id: int, payload: ProfileCertificateCreate, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def create_certificate(profile_id: int, payload: ProfileCertificateCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = ProfileCertificate(profile_id=profile_id, **payload.model_dump())
     db.add(item)
     db.commit()
@@ -199,7 +211,8 @@ def create_certificate(profile_id: int, payload: ProfileCertificateCreate, db: S
 
 
 @router.put("/{profile_id}/certificates/{item_id}", response_model=ProfileCertificateRead)
-def update_certificate(profile_id: int, item_id: int, payload: ProfileCertificateUpdate, db: Session = Depends(get_db)):
+def update_certificate(profile_id: int, item_id: int, payload: ProfileCertificateUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, ProfileCertificate, profile_id, item_id, "Certificate not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
@@ -209,21 +222,22 @@ def update_certificate(profile_id: int, item_id: int, payload: ProfileCertificat
 
 
 @router.delete("/{profile_id}/certificates/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_certificate(profile_id: int, item_id: int, db: Session = Depends(get_db)):
+def delete_certificate(profile_id: int, item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, ProfileCertificate, profile_id, item_id, "Certificate not found")
     db.delete(item)
     db.commit()
 
 
 @router.get("/{profile_id}/skills", response_model=list[ProfileSkillRead])
-def list_skills(profile_id: int, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def list_skills(profile_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     return db.query(ProfileSkill).filter(ProfileSkill.profile_id == profile_id).order_by(ProfileSkill.id.desc()).all()
 
 
 @router.post("/{profile_id}/skills", response_model=ProfileSkillRead, status_code=status.HTTP_201_CREATED)
-def create_skill(profile_id: int, payload: ProfileSkillCreate, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def create_skill(profile_id: int, payload: ProfileSkillCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = ProfileSkill(profile_id=profile_id, **payload.model_dump())
     db.add(item)
     db.commit()
@@ -232,7 +246,8 @@ def create_skill(profile_id: int, payload: ProfileSkillCreate, db: Session = Dep
 
 
 @router.put("/{profile_id}/skills/{item_id}", response_model=ProfileSkillRead)
-def update_skill(profile_id: int, item_id: int, payload: ProfileSkillUpdate, db: Session = Depends(get_db)):
+def update_skill(profile_id: int, item_id: int, payload: ProfileSkillUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, ProfileSkill, profile_id, item_id, "Skill not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
@@ -242,21 +257,22 @@ def update_skill(profile_id: int, item_id: int, payload: ProfileSkillUpdate, db:
 
 
 @router.delete("/{profile_id}/skills/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_skill(profile_id: int, item_id: int, db: Session = Depends(get_db)):
+def delete_skill(profile_id: int, item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, ProfileSkill, profile_id, item_id, "Skill not found")
     db.delete(item)
     db.commit()
 
 
 @router.get("/{profile_id}/languages", response_model=list[ProfileLanguageRead])
-def list_languages(profile_id: int, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def list_languages(profile_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     return db.query(ProfileLanguage).filter(ProfileLanguage.profile_id == profile_id).order_by(ProfileLanguage.id.desc()).all()
 
 
 @router.post("/{profile_id}/languages", response_model=ProfileLanguageRead, status_code=status.HTTP_201_CREATED)
-def create_language(profile_id: int, payload: ProfileLanguageCreate, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def create_language(profile_id: int, payload: ProfileLanguageCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = ProfileLanguage(profile_id=profile_id, **payload.model_dump())
     db.add(item)
     db.commit()
@@ -265,7 +281,8 @@ def create_language(profile_id: int, payload: ProfileLanguageCreate, db: Session
 
 
 @router.put("/{profile_id}/languages/{item_id}", response_model=ProfileLanguageRead)
-def update_language(profile_id: int, item_id: int, payload: ProfileLanguageUpdate, db: Session = Depends(get_db)):
+def update_language(profile_id: int, item_id: int, payload: ProfileLanguageUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, ProfileLanguage, profile_id, item_id, "Language not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
@@ -275,21 +292,22 @@ def update_language(profile_id: int, item_id: int, payload: ProfileLanguageUpdat
 
 
 @router.delete("/{profile_id}/languages/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_language(profile_id: int, item_id: int, db: Session = Depends(get_db)):
+def delete_language(profile_id: int, item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, ProfileLanguage, profile_id, item_id, "Language not found")
     db.delete(item)
     db.commit()
 
 
 @router.get("/{profile_id}/links", response_model=list[ProfileLinkRead])
-def list_links(profile_id: int, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def list_links(profile_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     return db.query(ProfileLink).filter(ProfileLink.profile_id == profile_id).order_by(ProfileLink.id.desc()).all()
 
 
 @router.post("/{profile_id}/links", response_model=ProfileLinkRead, status_code=status.HTTP_201_CREATED)
-def create_link(profile_id: int, payload: ProfileLinkCreate, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def create_link(profile_id: int, payload: ProfileLinkCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = ProfileLink(profile_id=profile_id, **payload.model_dump())
     db.add(item)
     db.commit()
@@ -298,7 +316,8 @@ def create_link(profile_id: int, payload: ProfileLinkCreate, db: Session = Depen
 
 
 @router.put("/{profile_id}/links/{item_id}", response_model=ProfileLinkRead)
-def update_link(profile_id: int, item_id: int, payload: ProfileLinkUpdate, db: Session = Depends(get_db)):
+def update_link(profile_id: int, item_id: int, payload: ProfileLinkUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, ProfileLink, profile_id, item_id, "Link not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
@@ -308,21 +327,22 @@ def update_link(profile_id: int, item_id: int, payload: ProfileLinkUpdate, db: S
 
 
 @router.delete("/{profile_id}/links/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_link(profile_id: int, item_id: int, db: Session = Depends(get_db)):
+def delete_link(profile_id: int, item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, ProfileLink, profile_id, item_id, "Link not found")
     db.delete(item)
     db.commit()
 
 
 @router.get("/{profile_id}/resume-versions", response_model=list[ResumeVersionRead])
-def list_resume_versions(profile_id: int, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def list_resume_versions(profile_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     return db.query(ResumeVersion).filter(ResumeVersion.profile_id == profile_id).order_by(ResumeVersion.id.desc()).all()
 
 
 @router.post("/{profile_id}/resume-versions", response_model=ResumeVersionRead, status_code=status.HTTP_201_CREATED)
-def create_resume_version(profile_id: int, payload: ResumeVersionCreate, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def create_resume_version(profile_id: int, payload: ResumeVersionCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = ResumeVersion(profile_id=profile_id, **payload.model_dump())
     db.add(item)
     db.commit()
@@ -331,7 +351,8 @@ def create_resume_version(profile_id: int, payload: ResumeVersionCreate, db: Ses
 
 
 @router.put("/{profile_id}/resume-versions/{item_id}", response_model=ResumeVersionRead)
-def update_resume_version(profile_id: int, item_id: int, payload: ResumeVersionUpdate, db: Session = Depends(get_db)):
+def update_resume_version(profile_id: int, item_id: int, payload: ResumeVersionUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, ResumeVersion, profile_id, item_id, "Resume version not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
@@ -341,25 +362,27 @@ def update_resume_version(profile_id: int, item_id: int, payload: ResumeVersionU
 
 
 @router.post("/{profile_id}/resume-versions/{item_id}/approve", response_model=ResumeVersionRead)
-def approve_resume_version(profile_id: int, item_id: int, db: Session = Depends(get_db)):
+def approve_resume_version(profile_id: int, item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, ResumeVersion, profile_id, item_id, "Resume version not found")
     item.status = "approved"
-    item.approved_at = datetime.utcnow()
+    item.approved_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(item)
     return item
 
 
 @router.delete("/{profile_id}/resume-versions/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_resume_version(profile_id: int, item_id: int, db: Session = Depends(get_db)):
+def delete_resume_version(profile_id: int, item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, ResumeVersion, profile_id, item_id, "Resume version not found")
     db.delete(item)
     db.commit()
 
 
 @router.get("/{profile_id}/cover-letter-versions", response_model=list[CoverLetterVersionRead])
-def list_cover_letter_versions(profile_id: int, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def list_cover_letter_versions(profile_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     return (
         db.query(CoverLetterVersion)
         .filter(CoverLetterVersion.profile_id == profile_id)
@@ -373,8 +396,13 @@ def list_cover_letter_versions(profile_id: int, db: Session = Depends(get_db)):
     response_model=CoverLetterVersionRead,
     status_code=status.HTTP_201_CREATED,
 )
-def create_cover_letter_version(profile_id: int, payload: CoverLetterVersionCreate, db: Session = Depends(get_db)):
-    _ensure_profile(db, profile_id)
+def create_cover_letter_version(
+    profile_id: int,
+    payload: CoverLetterVersionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = CoverLetterVersion(profile_id=profile_id, **payload.model_dump())
     db.add(item)
     db.commit()
@@ -387,8 +415,9 @@ def update_cover_letter_version(
     profile_id: int,
     item_id: int,
     payload: CoverLetterVersionUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user),
 ):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, CoverLetterVersion, profile_id, item_id, "Cover letter version not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
@@ -398,17 +427,19 @@ def update_cover_letter_version(
 
 
 @router.post("/{profile_id}/cover-letter-versions/{item_id}/approve", response_model=CoverLetterVersionRead)
-def approve_cover_letter_version(profile_id: int, item_id: int, db: Session = Depends(get_db)):
+def approve_cover_letter_version(profile_id: int, item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, CoverLetterVersion, profile_id, item_id, "Cover letter version not found")
     item.status = "approved"
-    item.approved_at = datetime.utcnow()
+    item.approved_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(item)
     return item
 
 
 @router.delete("/{profile_id}/cover-letter-versions/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_cover_letter_version(profile_id: int, item_id: int, db: Session = Depends(get_db)):
+def delete_cover_letter_version(profile_id: int, item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    profile_id = _owned_profile_id(db, profile_id, current_user)
     item = _get_owned_or_404(db, CoverLetterVersion, profile_id, item_id, "Cover letter version not found")
     db.delete(item)
     db.commit()
