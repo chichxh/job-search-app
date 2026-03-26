@@ -41,6 +41,99 @@ function toPreviewText(value, maxLength = 280) {
   return `${text.slice(0, maxLength)}…`;
 }
 
+function getUserFacingError(error, fallback) {
+  const rawMessage = String(error?.message ?? '').trim();
+  if (!rawMessage) {
+    return fallback;
+  }
+
+  const detailMatch = rawMessage.match(/\):\s*(.+)$/);
+  if (detailMatch?.[1]) {
+    return detailMatch[1].trim();
+  }
+
+  return rawMessage;
+}
+
+function getDocumentTypeLabel(type) {
+  return type === 'resume' ? 'Resume' : 'Cover letter';
+}
+
+function getMetadataEntries(metadata) {
+  if (!metadata || typeof metadata !== 'object') {
+    return [];
+  }
+
+  return Object.entries(metadata).filter(([, value]) => value !== null && value !== undefined && value !== '');
+}
+
+function renderMetadataCompact(metadata) {
+  const metadataEntries = getMetadataEntries(metadata);
+  if (!metadataEntries.length) {
+    return 'No generation metadata';
+  }
+
+  const compactKeys = ['provider', 'model', 'prompt_version', 'generated_at'];
+  const compactEntries = compactKeys
+    .map((key) => [key, metadata[key]])
+    .filter(([, value]) => value !== null && value !== undefined && value !== '');
+
+  if (!compactEntries.length) {
+    return `${metadataEntries.length} fields available`;
+  }
+
+  return compactEntries
+    .map(([key, value]) => {
+      if (key === 'generated_at') {
+        return `${key}: ${formatDateTime(value) ?? value}`;
+      }
+      return `${key}: ${value}`;
+    })
+    .join(' · ');
+}
+
+function GenerationResultBlock({ result, onRegenerate }) {
+  if (!result?.document) {
+    return null;
+  }
+
+  const { type, document } = result;
+  const metadataEntries = getMetadataEntries(document.generation_metadata);
+
+  return (
+    <article className="vacancy-details__created-draft" aria-live="polite">
+      <h3 className="vacancy-details__section-title">Created draft ({getDocumentTypeLabel(type)})</h3>
+      <p><strong>title:</strong> {getSafeText(document.title, '—')}</p>
+      <p><strong>status:</strong> {getSafeText(document.status, '—')}</p>
+      <p><strong>created_at:</strong> {formatDateTime(document.created_at) ?? '—'}</p>
+      <p><strong>vacancy_id:</strong> {document.vacancy_id ?? '—'}</p>
+
+      <div>
+        <h4 className="vacancy-details__section-title">generation_metadata</h4>
+        {metadataEntries.length ? (
+          <ul className="vacancy-details__metadata-list">
+            {metadataEntries.map(([key, value]) => (
+              <li key={key}>
+                <strong>{key}:</strong> {key.includes('at') ? (formatDateTime(value) ?? String(value)) : String(value)}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="vacancy-details__hint-text">Metadata is not available for this draft.</p>
+        )}
+      </div>
+
+      <button
+        className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
+        type="button"
+        onClick={() => onRegenerate(type)}
+      >
+        Regenerate {type === 'resume' ? 'resume' : 'cover letter'}
+      </button>
+    </article>
+  );
+}
+
 export default function VacancyDetailsPage() {
   const { vacancyId } = useParams();
   const isMountedRef = useRef(true);
@@ -53,9 +146,8 @@ export default function VacancyDetailsPage() {
   const [isRefreshingTailoring, setIsRefreshingTailoring] = useState(false);
   const [isGeneratingResume, setIsGeneratingResume] = useState(false);
   const [isGeneratingCoverLetter, setIsGeneratingCoverLetter] = useState(false);
-  const [documentError, setDocumentError] = useState('');
-  const [resumeSuccessMessage, setResumeSuccessMessage] = useState('');
-  const [coverLetterSuccessMessage, setCoverLetterSuccessMessage] = useState('');
+  const [generateError, setGenerateError] = useState('');
+  const [approveError, setApproveError] = useState('');
   const [documentsError, setDocumentsError] = useState('');
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [isRefreshingDocuments, setIsRefreshingDocuments] = useState(false);
@@ -63,10 +155,12 @@ export default function VacancyDetailsPage() {
   const [coverLetterDocuments, setCoverLetterDocuments] = useState([]);
   const [approvingResumeById, setApprovingResumeById] = useState({});
   const [approvingCoverLetterById, setApprovingCoverLetterById] = useState({});
+  const [lastGeneratedResult, setLastGeneratedResult] = useState(null);
 
-  const clearDocumentSuccessMessages = useCallback(() => {
-    setResumeSuccessMessage('');
-    setCoverLetterSuccessMessage('');
+  const clearActionFeedback = useCallback(() => {
+    setGenerateError('');
+    setApproveError('');
+    setLastGeneratedResult(null);
   }, []);
 
   const loadTailoring = useCallback(async () => {
@@ -77,7 +171,7 @@ export default function VacancyDetailsPage() {
       setTailoring(tailoringResponse);
     } catch (requestError) {
       setTailoring(null);
-      setTailoringError(requestError.message || 'Не удалось загрузить мэтчинг.');
+      setTailoringError(getUserFacingError(requestError, 'Не удалось загрузить мэтчинг.'));
     }
   }, [vacancyId]);
 
@@ -117,7 +211,7 @@ export default function VacancyDetailsPage() {
       if (!isMountedRef.current) {
         return;
       }
-      setDocumentsError(requestError.message || 'Не удалось загрузить документы для этой вакансии.');
+      setDocumentsError(getUserFacingError(requestError, 'Не удалось загрузить документы для этой вакансии.'));
     } finally {
       if (isMountedRef.current) {
         if (silent) {
@@ -135,65 +229,78 @@ export default function VacancyDetailsPage() {
 
   const handleResumeGeneration = useCallback(async () => {
     setIsGeneratingResume(true);
-    setDocumentError('');
-    clearDocumentSuccessMessages();
+    setGenerateError('');
+    setApproveError('');
+    setLastGeneratedResult(null);
 
     try {
-      await generateResumeDraft(DEFAULT_PROFILE_ID, vacancyId);
-      setResumeSuccessMessage('Resume draft was generated successfully.');
+      const createdDraft = await generateResumeDraft(DEFAULT_PROFILE_ID, vacancyId);
+      setLastGeneratedResult({ type: 'resume', document: createdDraft });
       await loadDocuments({ silent: true });
     } catch (requestError) {
-      setDocumentError(requestError.message || 'Failed to generate resume draft.');
+      setGenerateError(getUserFacingError(requestError, 'Failed to generate resume draft.'));
     } finally {
       setIsGeneratingResume(false);
     }
-  }, [clearDocumentSuccessMessages, loadDocuments, vacancyId]);
+  }, [loadDocuments, vacancyId]);
 
   const handleCoverLetterGeneration = useCallback(async () => {
     setIsGeneratingCoverLetter(true);
-    setDocumentError('');
-    clearDocumentSuccessMessages();
+    setGenerateError('');
+    setApproveError('');
+    setLastGeneratedResult(null);
 
     try {
-      await generateCoverLetterDraft(DEFAULT_PROFILE_ID, vacancyId);
-      setCoverLetterSuccessMessage('Cover letter draft was generated successfully.');
+      const createdDraft = await generateCoverLetterDraft(DEFAULT_PROFILE_ID, vacancyId);
+      setLastGeneratedResult({ type: 'cover_letter', document: createdDraft });
       await loadDocuments({ silent: true });
     } catch (requestError) {
-      setDocumentError(requestError.message || 'Failed to generate cover letter draft.');
+      setGenerateError(getUserFacingError(requestError, 'Failed to generate cover letter draft.'));
     } finally {
       setIsGeneratingCoverLetter(false);
     }
-  }, [clearDocumentSuccessMessages, loadDocuments, vacancyId]);
+  }, [loadDocuments, vacancyId]);
+
+  const handleRegenerate = useCallback((type) => {
+    if (type === 'resume') {
+      void handleResumeGeneration();
+      return;
+    }
+
+    void handleCoverLetterGeneration();
+  }, [handleCoverLetterGeneration, handleResumeGeneration]);
 
   const handleApproveResume = useCallback(async (id) => {
-    setDocumentError('');
-    clearDocumentSuccessMessages();
+    setApproveError('');
+    setGenerateError('');
+    setLastGeneratedResult(null);
     setApprovingResumeById((current) => ({ ...current, [id]: true }));
 
     try {
       const approved = await approveResumeVersion(DEFAULT_PROFILE_ID, id);
       setResumeDocuments((current) => current.map((item) => (item.id === id ? approved : item)));
     } catch (requestError) {
-      setDocumentError(requestError.message || 'Failed to approve resume draft.');
+      setApproveError(getUserFacingError(requestError, 'Failed to approve resume draft.'));
     } finally {
       setApprovingResumeById((current) => ({ ...current, [id]: false }));
     }
-  }, [clearDocumentSuccessMessages]);
+  }, []);
 
   const handleApproveCoverLetter = useCallback(async (id) => {
-    setDocumentError('');
-    clearDocumentSuccessMessages();
+    setApproveError('');
+    setGenerateError('');
+    setLastGeneratedResult(null);
     setApprovingCoverLetterById((current) => ({ ...current, [id]: true }));
 
     try {
       const approved = await approveCoverLetterVersion(DEFAULT_PROFILE_ID, id);
       setCoverLetterDocuments((current) => current.map((item) => (item.id === id ? approved : item)));
     } catch (requestError) {
-      setDocumentError(requestError.message || 'Failed to approve cover letter draft.');
+      setApproveError(getUserFacingError(requestError, 'Failed to approve cover letter draft.'));
     } finally {
       setApprovingCoverLetterById((current) => ({ ...current, [id]: false }));
     }
-  }, [clearDocumentSuccessMessages]);
+  }, []);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -229,7 +336,7 @@ export default function VacancyDetailsPage() {
         } catch (innerError) {
           if (isActive) {
             setVacancy(null);
-            setVacancyError(innerError.message || 'Не удалось загрузить вакансию.');
+            setVacancyError(getUserFacingError(innerError, 'Не удалось загрузить вакансию.'));
           }
         }
 
@@ -241,7 +348,7 @@ export default function VacancyDetailsPage() {
         } catch (innerError) {
           if (isActive) {
             setTailoring(null);
-            setTailoringError(innerError.message || 'Не удалось загрузить мэтчинг.');
+            setTailoringError(getUserFacingError(innerError, 'Не удалось загрузить мэтчинг.'));
           }
         }
       } finally {
@@ -251,6 +358,7 @@ export default function VacancyDetailsPage() {
       }
     }
 
+    clearActionFeedback();
     loadPageData();
     loadDocuments();
 
@@ -258,7 +366,7 @@ export default function VacancyDetailsPage() {
       isActive = false;
       isMountedRef.current = false;
     };
-  }, [loadDocuments, vacancyId]);
+  }, [clearActionFeedback, loadDocuments, vacancyId]);
 
   const explanation = tailoring?.explanation;
   const evidenceItems = useMemo(() => {
@@ -435,7 +543,9 @@ export default function VacancyDetailsPage() {
         <h2 className="vacancy-details__section-title">Document generation</h2>
         <p className="flow-hint">Следующий шаг: сгенерируйте draft и подтвердите (approve) нужную версию.</p>
 
-        {documentError ? <ErrorBanner message={documentError} /> : null}
+        {generateError ? <ErrorBanner message={`Generate action: ${generateError}`} /> : null}
+        {approveError ? <ErrorBanner message={`Approve action: ${approveError}`} /> : null}
+        {documentsError ? <ErrorBanner message={`Load documents: ${documentsError}`} /> : null}
 
         <div className="vacancy-details__docgen-actions">
           <button
@@ -444,7 +554,7 @@ export default function VacancyDetailsPage() {
             onClick={handleResumeGeneration}
             disabled={isGeneratingResume}
           >
-            {isGeneratingResume ? 'Generating resume draft...' : 'Generate resume draft'}
+            {isGeneratingResume ? 'Generating resume draft...' : (resumeDocuments.length ? 'Regenerate resume draft' : 'Generate resume draft')}
           </button>
           <button
             className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
@@ -460,14 +570,13 @@ export default function VacancyDetailsPage() {
             onClick={handleCoverLetterGeneration}
             disabled={isGeneratingCoverLetter}
           >
-            {isGeneratingCoverLetter ? 'Generating cover letter draft...' : 'Generate cover letter draft'}
+            {isGeneratingCoverLetter ? 'Generating cover letter draft...' : (coverLetterDocuments.length ? 'Regenerate cover letter draft' : 'Generate cover letter draft')}
           </button>
         </div>
 
-        {resumeSuccessMessage ? <p className="vacancy-details__docgen-success">{resumeSuccessMessage}</p> : null}
-        {coverLetterSuccessMessage ? <p className="vacancy-details__docgen-success">{coverLetterSuccessMessage}</p> : null}
-        {documentsError ? <ErrorBanner message={documentsError} /> : null}
         {documentsLoading ? <Loading message="Loading vacancy documents..." /> : null}
+
+        <GenerationResultBlock result={lastGeneratedResult} onRegenerate={handleRegenerate} />
 
         {!documentsLoading ? (
           <div className="vacancy-details__docgen-list">
@@ -482,6 +591,7 @@ export default function VacancyDetailsPage() {
                       <p><strong>created_at:</strong> {formatDateTime(item.created_at) ?? '—'}</p>
                       <p><strong>approved_at:</strong> {formatDateTime(item.approved_at) ?? '—'}</p>
                       <p><strong>vacancy_id:</strong> {item.vacancy_id ?? '—'}</p>
+                      <p className="vacancy-details__doc-meta"><strong>generation:</strong> {renderMetadataCompact(item.generation_metadata)}</p>
                       <h4 className="vacancy-details__section-title">content_text preview</h4>
                       <pre className="vacancy-details__description">{toPreviewText(item.content_text)}</pre>
                       {item.status === 'draft' ? (
@@ -515,6 +625,7 @@ export default function VacancyDetailsPage() {
                       <p><strong>created_at:</strong> {formatDateTime(item.created_at) ?? '—'}</p>
                       <p><strong>approved_at:</strong> {formatDateTime(item.approved_at) ?? '—'}</p>
                       <p><strong>vacancy_id:</strong> {item.vacancy_id ?? '—'}</p>
+                      <p className="vacancy-details__doc-meta"><strong>generation:</strong> {renderMetadataCompact(item.generation_metadata)}</p>
                       <h4 className="vacancy-details__section-title">content_text preview</h4>
                       <pre className="vacancy-details__description">{toPreviewText(item.content_text)}</pre>
                       {item.status === 'draft' ? (
