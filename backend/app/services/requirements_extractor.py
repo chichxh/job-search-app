@@ -7,9 +7,19 @@ from app.services.vacancy_parsing.requirement_markers import STARTS_LIKE_REQUIRE
 
 _SKILL_ALIASES: dict[str, tuple[str, ...]] = {
     "Python": ("python",),
+    "NumPy": ("numpy", "np"),
+    "Pandas": ("pandas", "pd"),
+    "scikit-learn": ("scikit-learn", "scikit learn", "sklearn"),
     "FastAPI": ("fastapi",),
     "Django": ("django",),
     "Flask": ("flask",),
+    "C++": ("c++",),
+    "C#": ("c#", "c sharp", "c-sharp"),
+    ".NET": (".net", "dotnet", "dot net"),
+    "ASP.NET": ("asp.net", "asp net", "aspnet"),
+    "SQL": ("sql",),
+    "MS SQL": ("ms sql", "mssql", "ms sql server", "microsoft sql server"),
+    "MySQL": ("mysql", "my sql"),
     "PostgreSQL": ("postgresql", "postgres"),
     "Redis": ("redis",),
     "Kafka": ("kafka",),
@@ -18,13 +28,25 @@ _SKILL_ALIASES: dict[str, tuple[str, ...]] = {
     "Docker": ("docker",),
     "Docker Compose": ("docker compose", "docker-compose"),
     "Kubernetes": ("kubernetes", "k8s"),
+    "Nginx": ("nginx",),
+    "Linux": ("linux",),
+    "CI/CD": ("ci/cd", "ci cd"),
+    "GitLab CI": ("gitlab ci", "gitlab-ci"),
+    "GitHub Actions": ("github actions",),
+    "AWS": ("aws", "amazon web services"),
+    "GCP": ("gcp", "google cloud", "google cloud platform"),
+    "Azure": ("azure", "microsoft azure"),
+    "GraphQL": ("graphql",),
     "React": ("react",),
+    "Vue": ("vue", "vue.js", "vuejs"),
+    "Node.js": ("node.js", "nodejs"),
+    "JavaScript": ("javascript", "java script", "js"),
     "TypeScript": ("typescript", "type script"),
     "Airflow": ("airflow",),
     "Prometheus": ("prometheus",),
     "Grafana": ("grafana",),
     "gRPC": ("grpc", "g rpc"),
-    "REST": ("rest", "rest api"),
+    "REST API": ("rest api",),
     "WebSocket": ("websocket", "web socket"),
     "Django REST Framework": ("drf", "django rest framework"),
     "ООП": ("ооп", "oop", "object oriented programming", "object-oriented programming"),
@@ -48,7 +70,16 @@ def _normalize_skill_key(text: str) -> str:
 
 _HARD_MARKERS = ("обязательно", "необходимо", "требуется")
 _NICE_MARKERS = ("плюсом будет", "желательно")
-_HARD_SECTION_MARKERS = ("требования", "мы ожидаем", "ожидания от кандидата")
+_HARD_SECTION_MARKERS = (
+    "требования",
+    "мы ожидаем",
+    "ожидания от кандидата",
+    "требования к кандидату",
+    "что важно",
+    "skills",
+    "expectations",
+    "requirements",
+)
 _NICE_SECTION_MARKERS = ("будет плюсом", "плюсом будет", "желательно")
 _STOP_SECTION_MARKERS = ("обязанности", "условия", "мы предлагаем", "о компании", "задачи")
 
@@ -188,16 +219,21 @@ def extract_requirements_from_sections(sections_json: dict) -> list[dict]:
                 upsert(req)
 
     if len(deduped) < 3:
-        other_lines = ((sections_json.get("other") or {}).get("lines") or [])
-        for line in other_lines:
-            line_class = classify_line(line, "other")
+        fallback_lines: list[tuple[str, str]] = []
+        for line in ((sections_json.get("other") or {}).get("lines") or []):
+            fallback_lines.append((line, "other"))
+        for line in ((sections_json.get("responsibilities") or {}).get("lines") or []):
+            fallback_lines.append((line, "responsibilities"))
+
+        for line, source_section in fallback_lines:
+            line_class = classify_line(line, source_section)
             should_add = line_class in {"must", "nice"} or _starts_like_requirement(line)
             if not should_add:
                 continue
 
-            for req in _extract_skills_from_text(line, is_hard=False):
-                req["is_hard"] = False
-                req["weight"] = 1
+            for req in _extract_skills_from_text(line, is_hard=line_class == "must"):
+                req["is_hard"] = line_class == "must"
+                req["weight"] = 3 if line_class == "must" else 1
                 req["source"] = "text_other_fallback"
                 upsert(req)
 
