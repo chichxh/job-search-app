@@ -1,7 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
-import { getTailoring, getVacancyById } from '../api/endpoints.js';
+import {
+  approveCoverLetterVersion,
+  approveResumeVersion,
+  generateCoverLetterDraft,
+  generateResumeDraft,
+  getTailoring,
+  getVacancyById,
+  listCoverLetterVersions,
+  listResumeVersions,
+} from '../api/endpoints.js';
 import { DEFAULT_PROFILE_ID } from '../config.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import Loading from '../components/Loading.jsx';
@@ -19,8 +28,22 @@ function formatConfidence(value) {
   return Number(value).toFixed(2);
 }
 
+function toPreviewText(value, maxLength = 280) {
+  if (!value) {
+    return '—';
+  }
+
+  const text = String(value).trim();
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  return `${text.slice(0, maxLength)}…`;
+}
+
 export default function VacancyDetailsPage() {
   const { vacancyId } = useParams();
+  const isMountedRef = useRef(true);
 
   const [vacancy, setVacancy] = useState(null);
   const [tailoring, setTailoring] = useState(null);
@@ -28,6 +51,23 @@ export default function VacancyDetailsPage() {
   const [vacancyError, setVacancyError] = useState('');
   const [tailoringError, setTailoringError] = useState('');
   const [isRefreshingTailoring, setIsRefreshingTailoring] = useState(false);
+  const [isGeneratingResume, setIsGeneratingResume] = useState(false);
+  const [isGeneratingCoverLetter, setIsGeneratingCoverLetter] = useState(false);
+  const [documentError, setDocumentError] = useState('');
+  const [resumeSuccessMessage, setResumeSuccessMessage] = useState('');
+  const [coverLetterSuccessMessage, setCoverLetterSuccessMessage] = useState('');
+  const [documentsError, setDocumentsError] = useState('');
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [isRefreshingDocuments, setIsRefreshingDocuments] = useState(false);
+  const [resumeDocuments, setResumeDocuments] = useState([]);
+  const [coverLetterDocuments, setCoverLetterDocuments] = useState([]);
+  const [approvingResumeById, setApprovingResumeById] = useState({});
+  const [approvingCoverLetterById, setApprovingCoverLetterById] = useState({});
+
+  const clearDocumentSuccessMessages = useCallback(() => {
+    setResumeSuccessMessage('');
+    setCoverLetterSuccessMessage('');
+  }, []);
 
   const loadTailoring = useCallback(async () => {
     setTailoringError('');
@@ -47,7 +87,116 @@ export default function VacancyDetailsPage() {
     setIsRefreshingTailoring(false);
   }, [loadTailoring]);
 
+  const loadDocuments = useCallback(async (options = {}) => {
+    const { silent = false } = options;
+
+    if (silent) {
+      setIsRefreshingDocuments(true);
+    } else {
+      setDocumentsLoading(true);
+    }
+    setDocumentsError('');
+
+    try {
+      const [resumeResponse, coverLetterResponse] = await Promise.all([
+        listResumeVersions(DEFAULT_PROFILE_ID),
+        listCoverLetterVersions(DEFAULT_PROFILE_ID),
+      ]);
+      if (!isMountedRef.current) {
+        return;
+      }
+      const numericVacancyId = Number(vacancyId);
+
+      const filteredResumes = resumeResponse.filter((item) => item.vacancy_id === numericVacancyId);
+      const filteredLetters = coverLetterResponse.filter((item) => item.vacancy_id === numericVacancyId);
+      const sortByCreatedAtDesc = (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+
+      setResumeDocuments(filteredResumes.sort(sortByCreatedAtDesc));
+      setCoverLetterDocuments(filteredLetters.sort(sortByCreatedAtDesc));
+    } catch (requestError) {
+      if (!isMountedRef.current) {
+        return;
+      }
+      setDocumentsError(requestError.message || 'Не удалось загрузить документы для этой вакансии.');
+    } finally {
+      if (isMountedRef.current) {
+        if (silent) {
+          setIsRefreshingDocuments(false);
+        } else {
+          setDocumentsLoading(false);
+        }
+      }
+    }
+  }, [vacancyId]);
+
+  const refreshDocuments = useCallback(async () => {
+    await loadDocuments({ silent: true });
+  }, [loadDocuments]);
+
+  const handleResumeGeneration = useCallback(async () => {
+    setIsGeneratingResume(true);
+    setDocumentError('');
+    clearDocumentSuccessMessages();
+
+    try {
+      await generateResumeDraft(DEFAULT_PROFILE_ID, vacancyId);
+      setResumeSuccessMessage('Resume draft was generated successfully.');
+      await loadDocuments({ silent: true });
+    } catch (requestError) {
+      setDocumentError(requestError.message || 'Failed to generate resume draft.');
+    } finally {
+      setIsGeneratingResume(false);
+    }
+  }, [clearDocumentSuccessMessages, loadDocuments, vacancyId]);
+
+  const handleCoverLetterGeneration = useCallback(async () => {
+    setIsGeneratingCoverLetter(true);
+    setDocumentError('');
+    clearDocumentSuccessMessages();
+
+    try {
+      await generateCoverLetterDraft(DEFAULT_PROFILE_ID, vacancyId);
+      setCoverLetterSuccessMessage('Cover letter draft was generated successfully.');
+      await loadDocuments({ silent: true });
+    } catch (requestError) {
+      setDocumentError(requestError.message || 'Failed to generate cover letter draft.');
+    } finally {
+      setIsGeneratingCoverLetter(false);
+    }
+  }, [clearDocumentSuccessMessages, loadDocuments, vacancyId]);
+
+  const handleApproveResume = useCallback(async (id) => {
+    setDocumentError('');
+    clearDocumentSuccessMessages();
+    setApprovingResumeById((current) => ({ ...current, [id]: true }));
+
+    try {
+      const approved = await approveResumeVersion(DEFAULT_PROFILE_ID, id);
+      setResumeDocuments((current) => current.map((item) => (item.id === id ? approved : item)));
+    } catch (requestError) {
+      setDocumentError(requestError.message || 'Failed to approve resume draft.');
+    } finally {
+      setApprovingResumeById((current) => ({ ...current, [id]: false }));
+    }
+  }, [clearDocumentSuccessMessages]);
+
+  const handleApproveCoverLetter = useCallback(async (id) => {
+    setDocumentError('');
+    clearDocumentSuccessMessages();
+    setApprovingCoverLetterById((current) => ({ ...current, [id]: true }));
+
+    try {
+      const approved = await approveCoverLetterVersion(DEFAULT_PROFILE_ID, id);
+      setCoverLetterDocuments((current) => current.map((item) => (item.id === id ? approved : item)));
+    } catch (requestError) {
+      setDocumentError(requestError.message || 'Failed to approve cover letter draft.');
+    } finally {
+      setApprovingCoverLetterById((current) => ({ ...current, [id]: false }));
+    }
+  }, [clearDocumentSuccessMessages]);
+
   useEffect(() => {
+    isMountedRef.current = true;
     let isActive = true;
 
     async function loadPageData() {
@@ -103,11 +252,13 @@ export default function VacancyDetailsPage() {
     }
 
     loadPageData();
+    loadDocuments();
 
     return () => {
       isActive = false;
+      isMountedRef.current = false;
     };
-  }, [vacancyId]);
+  }, [loadDocuments, vacancyId]);
 
   const explanation = tailoring?.explanation;
   const evidenceItems = useMemo(() => {
@@ -184,6 +335,7 @@ export default function VacancyDetailsPage() {
             Обновить мэтчинг
           </button>
         </div>
+        <p className="flow-hint">Шаг flow: проверьте tailoring и затем переходите к генерации документов ниже.</p>
 
         {isRefreshingTailoring ? <Loading message="Обновляем мэтчинг..." /> : null}
 
@@ -277,6 +429,120 @@ export default function VacancyDetailsPage() {
             <pre className="vacancy-details__description">{JSON.stringify(tailoring, null, 2)}</pre>
           </details>
         ) : null}
+      </section>
+
+      <section className="vacancy-details__documents">
+        <h2 className="vacancy-details__section-title">Document generation</h2>
+        <p className="flow-hint">Следующий шаг: сгенерируйте draft и подтвердите (approve) нужную версию.</p>
+
+        {documentError ? <ErrorBanner message={documentError} /> : null}
+
+        <div className="vacancy-details__docgen-actions">
+          <button
+            className="recommendations-toolbar__button"
+            type="button"
+            onClick={handleResumeGeneration}
+            disabled={isGeneratingResume}
+          >
+            {isGeneratingResume ? 'Generating resume draft...' : 'Generate resume draft'}
+          </button>
+          <button
+            className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
+            type="button"
+            onClick={refreshDocuments}
+            disabled={documentsLoading || isRefreshingDocuments}
+          >
+            {isRefreshingDocuments ? 'Refreshing documents...' : 'Обновить документы'}
+          </button>
+          <button
+            className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
+            type="button"
+            onClick={handleCoverLetterGeneration}
+            disabled={isGeneratingCoverLetter}
+          >
+            {isGeneratingCoverLetter ? 'Generating cover letter draft...' : 'Generate cover letter draft'}
+          </button>
+        </div>
+
+        {resumeSuccessMessage ? <p className="vacancy-details__docgen-success">{resumeSuccessMessage}</p> : null}
+        {coverLetterSuccessMessage ? <p className="vacancy-details__docgen-success">{coverLetterSuccessMessage}</p> : null}
+        {documentsError ? <ErrorBanner message={documentsError} /> : null}
+        {documentsLoading ? <Loading message="Loading vacancy documents..." /> : null}
+
+        {!documentsLoading ? (
+          <div className="vacancy-details__docgen-list">
+            <article className="vacancy-details__docgen-result">
+              <h3 className="vacancy-details__section-title">Resume versions (current vacancy)</h3>
+              {resumeDocuments.length ? (
+                <ul className="vacancy-details__doc-list">
+                  {resumeDocuments.map((item) => (
+                    <li key={item.id} className="vacancy-details__doc-item">
+                      <p><strong>title:</strong> {getSafeText(item.title, '—')}</p>
+                      <p><strong>status:</strong> {getSafeText(item.status, '—')}</p>
+                      <p><strong>created_at:</strong> {formatDateTime(item.created_at) ?? '—'}</p>
+                      <p><strong>approved_at:</strong> {formatDateTime(item.approved_at) ?? '—'}</p>
+                      <p><strong>vacancy_id:</strong> {item.vacancy_id ?? '—'}</p>
+                      <h4 className="vacancy-details__section-title">content_text preview</h4>
+                      <pre className="vacancy-details__description">{toPreviewText(item.content_text)}</pre>
+                      {item.status === 'draft' ? (
+                        <button
+                          className="recommendations-toolbar__button"
+                          type="button"
+                          onClick={() => handleApproveResume(item.id)}
+                          disabled={Boolean(approvingResumeById[item.id])}
+                        >
+                          {approvingResumeById[item.id] ? 'Approving resume...' : 'Approve resume'}
+                        </button>
+                      ) : (
+                        <p className="vacancy-details__doc-approved">Approved / finalized</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="vacancy-details__hint-text">Для этой вакансии пока нет resume versions.</p>
+              )}
+            </article>
+
+            <article className="vacancy-details__docgen-result">
+              <h3 className="vacancy-details__section-title">Cover letter versions (current vacancy)</h3>
+              {coverLetterDocuments.length ? (
+                <ul className="vacancy-details__doc-list">
+                  {coverLetterDocuments.map((item) => (
+                    <li key={item.id} className="vacancy-details__doc-item">
+                      <p><strong>title:</strong> {getSafeText(item.title, '—')}</p>
+                      <p><strong>status:</strong> {getSafeText(item.status, '—')}</p>
+                      <p><strong>created_at:</strong> {formatDateTime(item.created_at) ?? '—'}</p>
+                      <p><strong>approved_at:</strong> {formatDateTime(item.approved_at) ?? '—'}</p>
+                      <p><strong>vacancy_id:</strong> {item.vacancy_id ?? '—'}</p>
+                      <h4 className="vacancy-details__section-title">content_text preview</h4>
+                      <pre className="vacancy-details__description">{toPreviewText(item.content_text)}</pre>
+                      {item.status === 'draft' ? (
+                        <button
+                          className="recommendations-toolbar__button"
+                          type="button"
+                          onClick={() => handleApproveCoverLetter(item.id)}
+                          disabled={Boolean(approvingCoverLetterById[item.id])}
+                        >
+                          {approvingCoverLetterById[item.id] ? 'Approving cover letter...' : 'Approve cover letter'}
+                        </button>
+                      ) : (
+                        <p className="vacancy-details__doc-approved">Approved / finalized</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="vacancy-details__hint-text">Для этой вакансии пока нет cover letter versions.</p>
+              )}
+            </article>
+          </div>
+        ) : null}
+
+        <p className="vacancy-details__hint-text">
+          Need advanced edits?{' '}
+          <Link className="vacancy-details__link" to="/settings">Open full editor in Settings</Link>
+        </p>
       </section>
     </section>
   );

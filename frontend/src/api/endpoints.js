@@ -164,3 +164,15 @@ export function startHhImport(payload) {
 export function getTailoring(profileId = DEFAULT_PROFILE_ID, vacancyId) {
   return apiFetch(`/profiles/${profileId}/vacancies/${vacancyId}/tailoring`);
 }
+
+export function generateResumeDraft(profileId = DEFAULT_PROFILE_ID, vacancyId) {
+  return apiFetch(`/profiles/${profileId}/vacancies/${vacancyId}/resume/generate`, {
+    method: 'POST',
+  });
+}
+
+export function generateCoverLetterDraft(profileId = DEFAULT_PROFILE_ID, vacancyId) {
+  return apiFetch(`/profiles/${profileId}/vacancies/${vacancyId}/cover-letter/generate`, {
+    method: 'POST',
+  });
+}

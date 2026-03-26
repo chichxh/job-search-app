@@ -33,6 +33,34 @@ Current end-to-end flow that is supported by existing API/backend logic:
    - `POST /api/v1/profiles/{profile_id}/vacancies/{vacancy_id}/resume/generate`
    - `POST /api/v1/profiles/{profile_id}/vacancies/{vacancy_id}/cover-letter/generate`
 
+## Demo flow (manual, UI)
+
+Ниже — актуальный ручной сценарий проверки demo-flow в текущем UI:
+
+1. **Profile setup**: откройте `/settings`, заполните профиль и нажмите сохранение.
+2. **HH import**: откройте `/vacancies`, нажмите **«Выгрузить вакансии из HH»** и дождитесь статуса успешного импорта.
+3. **Recommendations recompute**: перейдите на `/recommendations`, нажмите **«Пересчитать рекомендации»** и дождитесь `SUCCESS`.
+4. **Open vacancy details**: откройте вакансию из списка рекомендаций (переход на `/vacancies/:vacancyId`).
+5. **Tailoring check**: на странице вакансии проверьте блок **Мэтчинг** (tailoring).
+6. **Generate drafts**: в блоке **Document generation** нажмите:
+   - `Generate resume draft`
+   - `Generate cover letter draft`
+7. **Approve**: в vacancy-scoped списках документов для этой вакансии нажмите:
+   - `Approve resume` для draft resume
+   - `Approve cover letter` для draft cover letter
+8. **Fallback editor (optional)**: при необходимости углублённого редактирования используйте ссылку **Open full editor in Settings**.
+
+### Manual verification checklist
+
+- [ ] Profile save (`/settings`)
+- [ ] HH import (`/vacancies`)
+- [ ] Recommendations recompute (`/recommendations`)
+- [ ] Open vacancy details (`/vacancies/:vacancyId`)
+- [ ] Load tailoring (блок **Мэтчинг**)
+- [ ] Generate resume draft
+- [ ] Generate cover letter draft
+- [ ] Approve generated document
+
 ## HH clusters and extra params
 
 - To preview HH facets (clusters), call `POST /api/v1/import/hh/clusters` with the same body as `/api/v1/import/hh` (`text` is required, plus optional `area`, etc.).
