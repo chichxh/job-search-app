@@ -37,6 +37,30 @@ def test_change_status_writes_history(client):
     assert applied_item["from_status"] == "saved"
 
 
+def test_history_endpoint_returns_ordered_events(client):
+    created = client.post("/api/v1/profiles/1/applications", json={"vacancy_id": 1})
+    assert created.status_code == 201
+    application_id = created.json()["id"]
+
+    first_change = client.post(
+        f"/api/v1/profiles/1/applications/{application_id}/status",
+        json={"status": "planned", "note": "Planning the submit"},
+    )
+    assert first_change.status_code == 200
+
+    second_change = client.post(
+        f"/api/v1/profiles/1/applications/{application_id}/status",
+        json={"status": "applied", "note": "Sent CV"},
+    )
+    assert second_change.status_code == 200
+
+    history_response = client.get(f"/api/v1/profiles/1/applications/{application_id}/history")
+    assert history_response.status_code == 200
+    history = history_response.json()
+
+    assert [item["to_status"] for item in history[:3]] == ["saved", "planned", "applied"]
+
+
 def test_attach_document_validates_profile_ownership(client, fake_db):
     fake_db.add(
         models.ResumeVersion(
