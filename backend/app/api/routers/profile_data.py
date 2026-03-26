@@ -350,6 +350,13 @@ def approve_resume_version(profile_id: int, item_id: int, db: Session = Depends(
     return item
 
 
+@router.delete("/{profile_id}/resume-versions/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_resume_version(profile_id: int, item_id: int, db: Session = Depends(get_db)):
+    item = _get_owned_or_404(db, ResumeVersion, profile_id, item_id, "Resume version not found")
+    db.delete(item)
+    db.commit()
+
+
 @router.get("/{profile_id}/cover-letter-versions", response_model=list[CoverLetterVersionRead])
 def list_cover_letter_versions(profile_id: int, db: Session = Depends(get_db)):
     _ensure_profile(db, profile_id)
@@ -398,3 +405,10 @@ def approve_cover_letter_version(profile_id: int, item_id: int, db: Session = De
     db.commit()
     db.refresh(item)
     return item
+
+
+@router.delete("/{profile_id}/cover-letter-versions/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_cover_letter_version(profile_id: int, item_id: int, db: Session = Depends(get_db)):
+    item = _get_owned_or_404(db, CoverLetterVersion, profile_id, item_id, "Cover letter version not found")
+    db.delete(item)
+    db.commit()

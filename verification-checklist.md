@@ -1,0 +1,72 @@
+# Base version verification checklist
+
+Этот чек-лист нужен для воспроизводимой ручной проверки “базовой стабильной версии” без расширения фич.
+
+## 0) Prerequisites
+
+- Подготовить `.env` (БД/Redis/LLM/GigaChat и т.д.).
+- Запускать команды из корня репозитория.
+
+## 1) Запуск инфраструктуры и backend/frontend
+
+```bash
+# поднять сервисы
+docker compose -f infra/docker-compose.yml up -d db redis api worker beat frontend
+
+# применить миграции
+docker compose -f infra/docker-compose.yml exec api alembic upgrade head
+```
+
+## 2) Health-check
+
+```bash
+curl -sS http://127.0.0.1:8000/health
+```
+
+Ожидаемо: JSON со статусом `ok`.
+
+## 3) Базовые ручные проверки demo-flow (API)
+
+> Ниже использовать реальные `profile_id`, `vacancy_id`, `resume_version_id`, `cover_letter_version_id`.
+
+```bash
+# 3.1 список вакансий
+curl -sS "http://127.0.0.1:8000/api/v1/vacancies?limit=5&offset=0"
+
+# 3.2 детали вакансии
+curl -sS "http://127.0.0.1:8000/api/v1/vacancies/<vacancy_id>"
+
+# 3.3 recommendations recompute
+curl -sS -X POST "http://127.0.0.1:8000/api/v1/profiles/<profile_id>/recommendations/recompute?limit=20"
+
+# 3.4 tailoring
+curl -sS "http://127.0.0.1:8000/api/v1/profiles/<profile_id>/vacancies/<vacancy_id>/tailoring"
+
+# 3.5 generate resume draft
+curl -sS -X POST "http://127.0.0.1:8000/api/v1/profiles/<profile_id>/vacancies/<vacancy_id>/resume/generate"
+
+# 3.6 generate cover letter draft
+curl -sS -X POST "http://127.0.0.1:8000/api/v1/profiles/<profile_id>/vacancies/<vacancy_id>/cover-letter/generate"
+
+# 3.7 delete resume version (должен вернуть 204)
+curl -i -X DELETE "http://127.0.0.1:8000/api/v1/profiles/<profile_id>/resume-versions/<resume_version_id>"
+
+# 3.8 delete cover letter version (должен вернуть 204)
+curl -i -X DELETE "http://127.0.0.1:8000/api/v1/profiles/<profile_id>/cover-letter-versions/<cover_letter_version_id>"
+```
+
+## 4) Проверка frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+После запуска открыть `http://127.0.0.1:5173` и пройти demo-flow на UI (профиль → вакансии → рекомендации → tailoring → генерация документов).
+
+## 5) Ограничения текущей базовой версии
+
+- LLM provider `openai` не реализован (planned).
+- Embedding providers `openai` и `gigachat` не реализованы (planned).
+- Чек-лист ориентирован на ручную smoke-проверку; полноценный e2e automation пока не добавлялся в рамках этого этапа.
