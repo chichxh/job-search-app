@@ -4,9 +4,34 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.schemas.cover_letter_version import CoverLetterVersionRead
 from app.schemas.resume_version import ResumeVersionRead
-from app.services.docgen.document_generation_service import DocumentGenerationService
+from app.services.docgen.document_generation_service import (
+    DocgenInvalidResultError,
+    DocgenMisconfigurationError,
+    DocgenNotFoundError,
+    DocgenPrerequisiteError,
+    DocgenProviderUnavailableError,
+    DocumentGenerationService,
+)
 
 router = APIRouter(prefix="/profiles", tags=["docgen"])
+
+
+def _map_docgen_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, DocgenNotFoundError):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.user_message)
+    if isinstance(exc, DocgenPrerequisiteError):
+        return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.user_message)
+    if isinstance(exc, DocgenInvalidResultError):
+        return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=exc.user_message)
+    if isinstance(exc, DocgenProviderUnavailableError):
+        return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=exc.user_message)
+    if isinstance(exc, DocgenMisconfigurationError):
+        return HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=exc.user_message)
+
+    return HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Document generation failed due to internal error.",
+    )
 
 
 @router.post(
@@ -18,8 +43,8 @@ def generate_resume_draft(profile_id: int, vacancy_id: int, db: Session = Depend
     service = DocumentGenerationService(db)
     try:
         return service.generate_resume_draft(profile_id=profile_id, vacancy_id=vacancy_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception as exc:
+        raise _map_docgen_error(exc) from exc
 
 
 @router.post(
@@ -31,5 +56,5 @@ def generate_cover_letter_draft(profile_id: int, vacancy_id: int, db: Session = 
     service = DocumentGenerationService(db)
     try:
         return service.generate_cover_letter_draft(profile_id=profile_id, vacancy_id=vacancy_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception as exc:
+        raise _map_docgen_error(exc) from exc
