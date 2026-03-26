@@ -24,7 +24,10 @@ import {
   deleteProject,
   deleteResumeVersion,
   deleteSkill,
+  disconnectHh,
   getProfile,
+  getHhConnectionStatus,
+  importProfileFromHh,
   listAchievements,
   listCertificates,
   listCoverLetterVersions,
@@ -35,6 +38,7 @@ import {
   listProjects,
   listResumeVersions,
   listSkills,
+  listHhResumes,
   recomputeAllProfileData,
   recomputeRecommendations,
   updateAchievement,
@@ -48,6 +52,7 @@ import {
   updateProject,
   updateResumeVersion,
   updateSkill,
+  startHhOAuthConnect,
 } from '../api/endpoints.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import Loading from '../components/Loading.jsx';
@@ -118,6 +123,10 @@ export default function SettingsPage() {
   const [links, setLinks] = useState([]);
   const [resumes, setResumes] = useState([]);
   const [letters, setLetters] = useState([]);
+  const [hhStatus, setHhStatus] = useState({ connected: false });
+  const [hhResumes, setHhResumes] = useState([]);
+  const [hhResumeId, setHhResumeId] = useState('');
+  const [hhBusy, setHhBusy] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -161,6 +170,17 @@ export default function SettingsPage() {
         setLinks(linksData);
         setResumes(resumeData);
         setLetters(letterData);
+
+        const hhConnection = await getHhConnectionStatus();
+        setHhStatus(hhConnection);
+        if (hhConnection.connected) {
+          const resumes = await listHhResumes();
+          setHhResumes(resumes);
+          setHhResumeId(hhConnection.hh_resume_id ?? resumes[0]?.id ?? '');
+        } else {
+          setHhResumes([]);
+          setHhResumeId('');
+        }
       } catch (requestError) {
         setError(requestError.message || 'Ошибка загрузки настроек.');
       } finally {
@@ -278,6 +298,62 @@ export default function SettingsPage() {
     }
   }
 
+  async function connectHh() {
+    setHhBusy(true);
+    setError('');
+    try {
+      const response = await startHhOAuthConnect();
+      window.location.href = response.authorize_url;
+    } catch (requestError) {
+      setError(requestError.message || 'Не удалось начать подключение HH.');
+      setHhBusy(false);
+    }
+  }
+
+  async function importFromHh() {
+    setHhBusy(true);
+    setError('');
+    setToast('');
+    try {
+      await importProfileFromHh({ consent: true, resume_id: hhResumeId || null });
+      const [profileData, experiencesData, skillsData, languagesData, linksData, statusData] = await Promise.all([
+        getProfile(profileId),
+        listExperiences(profileId),
+        listSkills(profileId),
+        listLanguages(profileId),
+        listLinks(profileId),
+        getHhConnectionStatus(),
+      ]);
+      setProfile(profileData);
+      setExperiences(experiencesData.sort((a, b) => (a.start_date < b.start_date ? 1 : -1)));
+      setSkills(skillsData);
+      setLanguages(languagesData);
+      setLinks(linksData);
+      setHhStatus(statusData);
+      setToast('Профиль импортирован из HH.');
+    } catch (requestError) {
+      setError(requestError.message || 'Импорт HH завершился с ошибкой.');
+    } finally {
+      setHhBusy(false);
+    }
+  }
+
+  async function disconnectFromHh() {
+    setHhBusy(true);
+    setError('');
+    try {
+      await disconnectHh();
+      setHhStatus({ connected: false });
+      setHhResumes([]);
+      setHhResumeId('');
+      setToast('HH отключён.');
+    } catch (requestError) {
+      setError(requestError.message || 'Не удалось отключить HH.');
+    } finally {
+      setHhBusy(false);
+    }
+  }
+
   const experienceOptions = useMemo(
     () => experiences.map((item) => ({ value: String(item.id), label: `${item.company_name} — ${item.position_title}` })),
     [experiences],
@@ -310,6 +386,34 @@ export default function SettingsPage() {
         </button>
         <Link to="/recommendations" className="button button--ghost">Перейти к рекомендациям</Link>
       </div>
+
+      <Section title="HH Integration (MVP)" defaultOpen>
+        <p className="muted-text">
+          Импорт выполняется только по явному действию пользователя. Импортируются: основные поля профиля, опыт, навыки,
+          языки и ссылки.
+        </p>
+        <p>{hhStatus.connected ? 'Статус: HH подключён' : 'Статус: HH не подключён'}</p>
+        {hhStatus.last_imported_at ? <p>Последний импорт: {new Date(hhStatus.last_imported_at).toLocaleString()}</p> : null}
+        <div className="recommendations-toolbar">
+          <button className="button" type="button" onClick={connectHh} disabled={hhBusy}>
+            {hhBusy ? 'Подключение...' : 'Connect HH'}
+          </button>
+          <button className="button" type="button" onClick={importFromHh} disabled={hhBusy || !hhStatus.connected}>
+            {hhBusy ? 'Импорт...' : 'Import profile from HH'}
+          </button>
+          <button className="button button--ghost" type="button" onClick={disconnectFromHh} disabled={hhBusy || !hhStatus.connected}>
+            Disconnect HH
+          </button>
+        </div>
+        {hhResumes.length ? (
+          <SelectField
+            label="HH resume"
+            value={hhResumeId}
+            onChange={(e) => setHhResumeId(e.target.value)}
+            options={hhResumes.map((item) => ({ value: item.id, label: item.title }))}
+          />
+        ) : null}
+      </Section>
 
       <div className="settings-grid settings-grid--two">
         <TextField label="Full name" value={profile.full_name ?? ''} onChange={(e) => updateProfileField('full_name', e.target.value)} />

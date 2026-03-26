@@ -154,6 +154,17 @@ export const startHhImport = (payload) =>
     body: JSON.stringify(payload),
   });
 
+export const getHhConnectionStatus = () => apiFetch('/integrations/hh/status');
+export const startHhOAuthConnect = () => apiFetch('/integrations/hh/connect/start', { method: 'POST' });
+export const listHhResumes = () => apiFetch('/integrations/hh/resumes');
+export const importProfileFromHh = (payload) =>
+  apiFetch('/integrations/hh/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+export const disconnectHh = () => apiFetch('/integrations/hh/connection', { method: 'DELETE' });
+
 export const getTailoring = (profileId, vacancyId) =>
   apiFetch(`/profiles/${resolveProfileId(profileId)}/vacancies/${vacancyId}/tailoring`);
 
