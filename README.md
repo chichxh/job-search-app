@@ -3,6 +3,7 @@
 ## Verification
 
 Минимальный воспроизводимый smoke-check для базовой версии: `verification-checklist.md`.
+Для reproducible проверки parsing+matching quality: `backend/docs/matching_diagnostics_verification.md`.
 
 ## Current status (implemented vs planned)
 
@@ -92,6 +93,10 @@ Current end-to-end flow that is supported by existing API/backend logic:
 - Если `EMBEDDING_DIM` задан и не совпадает с размерностью модели, API/worker падают при старте с понятной ошибкой конфигурации.
 - При сохранении/обновлении вакансий и профилей ставятся Celery-задачи на пересчёт embedding.
 - Dev endpoints для массового пересчёта c очисткой старых векторов: `POST /api/v1/dev/embeddings/rebuild-vacancies?limit=20`, `POST /api/v1/dev/embeddings/rebuild-profiles?limit=20`, `POST /api/v1/dev/embeddings/rebuild-profile/1`.
+- Dev diagnostics endpoints для quality snapshot:
+  - `GET /dev/matching/diagnostics` (global quality summary)
+  - `GET /dev/matching/diagnostics?profile_id=1&top_n=10` (global + profile summary)
+  - `GET /dev/profiles/1/matching/diagnostics?top_n=10` (profile-only breakdown)
 
 ## Frontend (Vite)
 
