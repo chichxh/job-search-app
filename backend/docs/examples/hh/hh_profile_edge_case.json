@@ -1,0 +1,51 @@
+{
+  "me": {
+    "id": "user-edge",
+    "email": "edge@example.com"
+  },
+  "resumes_mine": {
+    "items": [
+      {
+        "id": "edge-1",
+        "title": "Platform Engineer"
+      }
+    ]
+  },
+  "resume": {
+    "id": "edge-1",
+    "title": "Platform Engineer",
+    "summary": "Hands-on backend and platform work",
+    "salary": {
+      "from": 180000,
+      "to": 260000,
+      "gross": true
+    },
+    "experience": [
+      {
+        "company": "Initech",
+        "position": "SRE",
+        "start": "2020-02-15",
+        "end": "2021-11",
+        "description": "Reliability engineering"
+      }
+    ],
+    "skill_set": [
+      "Linux",
+      "Terraform"
+    ],
+    "language": [
+      {
+        "name": "English"
+      }
+    ],
+    "contact": [
+      {
+        "type": {
+          "id": "linkedin",
+          "name": "LinkedIn"
+        },
+        "formatted": "https://linkedin.com/in/demo"
+      }
+    ]
+  }
+}

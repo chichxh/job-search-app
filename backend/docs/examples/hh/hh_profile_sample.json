@@ -1,0 +1,119 @@
+{
+  "me": {
+    "id": "user-1",
+    "email": "candidate@example.com"
+  },
+  "resumes_mine": {
+    "items": [
+      {
+        "id": "res-basic",
+        "title": "Python Backend Engineer"
+      },
+      {
+        "id": "res-full",
+        "title": "Senior Python Engineer"
+      }
+    ]
+  },
+  "resumes": [
+    {
+      "id": "res-basic",
+      "title": "Python Backend Engineer",
+      "description": "Backend engineer with FastAPI",
+      "salary": {
+        "amount": 220000
+      },
+      "skill_set": [
+        {
+          "name": "Python"
+        },
+        {
+          "name": "FastAPI"
+        }
+      ],
+      "experience": [
+        {
+          "company": "Acme",
+          "position": "Backend Engineer",
+          "start": {
+            "year": 2021,
+            "month": 3,
+            "day": 1
+          },
+          "end": {
+            "year": 2023,
+            "month": 7,
+            "day": 1
+          },
+          "description": "Built backend services"
+        }
+      ],
+      "language": [
+        {
+          "name": "English",
+          "level": {
+            "name": "B2"
+          }
+        }
+      ],
+      "contact": [
+        {
+          "type": {
+            "id": "github",
+            "name": "GitHub"
+          },
+          "value": "https://github.com/demo"
+        }
+      ]
+    },
+    {
+      "id": "res-full",
+      "title": "Senior Python Engineer",
+      "first_name": "Ivan",
+      "last_name": "Petrov",
+      "skills": "Distributed systems and platform engineering",
+      "description": "Seasoned engineer with architecture focus",
+      "salary": {
+        "amount": 350000
+      },
+      "experience": [
+        {
+          "company": "Globex",
+          "position": "Lead Engineer",
+          "start": "2019-01-10",
+          "end": null,
+          "description": "Leading team and platform roadmap"
+        }
+      ],
+      "skill_set": [
+        {
+          "name": "Python"
+        },
+        "Kubernetes",
+        {
+          "name": "PostgreSQL"
+        }
+      ],
+      "language": [
+        {
+          "name": "English",
+          "level": {
+            "name": "C1"
+          }
+        },
+        {
+          "name": "Russian"
+        }
+      ],
+      "contact": [
+        {
+          "type": {
+            "id": "telegram",
+            "name": "Telegram"
+          },
+          "formatted": "https://t.me/demo_user"
+        }
+      ]
+    }
+  ]
+}

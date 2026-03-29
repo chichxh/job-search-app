@@ -13,7 +13,7 @@ def _load_fixture(name: str) -> dict:
 
 
 def test_import_hh_json_happy_path(client, auth_headers, fake_db) -> None:
-    fixture = _load_fixture("hh_import_envelope_happy.json")
+    fixture = _load_fixture("hh_profile_sample.json")
 
     response = client.post(
         "/api/v1/integrations/hh/import-json",
@@ -33,7 +33,7 @@ def test_import_hh_json_happy_path(client, auth_headers, fake_db) -> None:
 
 
 def test_import_hh_json_with_resume_id_selection(client, auth_headers, fake_db) -> None:
-    fixture = _load_fixture("hh_import_envelope_happy.json")
+    fixture = _load_fixture("hh_profile_sample.json")
 
     response = client.post(
         "/api/v1/integrations/hh/import-json",
@@ -52,7 +52,7 @@ def test_import_hh_json_with_resume_id_selection(client, auth_headers, fake_db) 
 
 
 def test_import_hh_json_salary_normalization_from_to(client, auth_headers, fake_db) -> None:
-    fixture = _load_fixture("hh_import_edge_shapes.json")
+    fixture = _load_fixture("hh_profile_edge_case.json")
 
     response = client.post(
         "/api/v1/integrations/hh/import-json",
@@ -67,7 +67,7 @@ def test_import_hh_json_salary_normalization_from_to(client, auth_headers, fake_
 
 
 def test_import_hh_json_experience_date_normalization_from_string(client, auth_headers, fake_db) -> None:
-    fixture = _load_fixture("hh_import_edge_shapes.json")
+    fixture = _load_fixture("hh_profile_edge_case.json")
 
     response = client.post(
         "/api/v1/integrations/hh/import-json",
@@ -95,7 +95,7 @@ def test_import_hh_json_invalid_payload_shape_returns_400(client, auth_headers) 
 
 
 def test_import_hh_json_requires_explicit_consent(client, auth_headers) -> None:
-    fixture = _load_fixture("hh_import_edge_shapes.json")
+    fixture = _load_fixture("hh_profile_edge_case.json")
 
     response = client.post(
         "/api/v1/integrations/hh/import-json",
