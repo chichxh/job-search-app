@@ -196,6 +196,16 @@ Import policy (MVP):
 - коллекции `experiences/skills/languages/links` работают в режиме controlled replace-per-section (delete + insert из HH);
 - это предотвращает хаотичные дубли и делает поведение предсказуемым.
 
+
+
+### HH fallback JSON import (dev fixtures)
+
+Для разработки/демо без live HH API используйте documented fallback flow:
+
+- canonical fixtures: `backend/tests/fixtures/hh/hh_profile_sample.json`, `backend/tests/fixtures/hh/hh_profile_edge_case.json`
+- docs/examples copies: `backend/docs/examples/hh/`
+- contract + UI/API guide + verification checklist: `backend/docs/hh_fallback_import_dev_guide.md`
+
 ## Saved searches with extra HH filters
 
 - Saved searches now store `filters_json` (JSONB) with additional HH query params (for example, `metro`, `professional_role`).
