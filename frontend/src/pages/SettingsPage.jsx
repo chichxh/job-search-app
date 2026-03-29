@@ -198,6 +198,37 @@ export default function SettingsPage() {
     loadData();
   }, [profileId]);
 
+  const hhJsonParseResult = useMemo(() => {
+    if (!hhJsonRaw.trim()) {
+      return { error: '', payload: null };
+    }
+    try {
+      return { error: '', payload: JSON.parse(hhJsonRaw) };
+    } catch {
+      return { error: 'Некорректный JSON: не удалось распарсить текст.', payload: null };
+    }
+  }, [hhJsonRaw]);
+
+  const hhJsonPreview = useMemo(() => {
+    if (!hhJsonParseResult.payload) {
+      return { meFound: false, resumesMineFound: false, resumes: [] };
+    }
+    const payload = hhJsonParseResult.payload;
+    const resumes = collectHhResumeCandidates(payload).map((item, index) => ({
+      id: String(item.id ?? `json-resume-${index + 1}`),
+      title: typeof item.title === 'string' && item.title.trim() ? item.title.trim() : `Resume ${index + 1}`,
+      originalId: item.id ? String(item.id) : '',
+    }));
+    return {
+      meFound: Boolean(payload.me && typeof payload.me === 'object'),
+      resumesMineFound: Boolean(payload.resumes_mine && Array.isArray(payload.resumes_mine.items)),
+      resumes,
+    };
+  }, [hhJsonParseResult]);
+
+  const resolvedHhJsonResumeId = hhJsonResumeId || hhJsonPreview.resumes[0]?.id || '';
+  const selectedHhJsonResume = hhJsonPreview.resumes.find((item) => item.id === resolvedHhJsonResumeId) ?? null;
+
   useEffect(() => {
     if (!hhJsonPreview.resumes.length) {
       setHhJsonResumeId('');
@@ -517,36 +548,6 @@ export default function SettingsPage() {
 
   const visibleResumes = approvedOnlyResume ? resumes.filter((item) => item.status === 'approved') : resumes;
   const visibleLetters = approvedOnlyLetter ? letters.filter((item) => item.status === 'approved') : letters;
-  const hhJsonParseResult = useMemo(() => {
-    if (!hhJsonRaw.trim()) {
-      return { error: '', payload: null };
-    }
-    try {
-      return { error: '', payload: JSON.parse(hhJsonRaw) };
-    } catch {
-      return { error: 'Некорректный JSON: не удалось распарсить текст.', payload: null };
-    }
-  }, [hhJsonRaw]);
-
-  const hhJsonPreview = useMemo(() => {
-    if (!hhJsonParseResult.payload) {
-      return { meFound: false, resumesMineFound: false, resumes: [] };
-    }
-    const payload = hhJsonParseResult.payload;
-    const resumes = collectHhResumeCandidates(payload).map((item, index) => ({
-      id: String(item.id ?? `json-resume-${index + 1}`),
-      title: typeof item.title === 'string' && item.title.trim() ? item.title.trim() : `Resume ${index + 1}`,
-      originalId: item.id ? String(item.id) : '',
-    }));
-    return {
-      meFound: Boolean(payload.me && typeof payload.me === 'object'),
-      resumesMineFound: Boolean(payload.resumes_mine && Array.isArray(payload.resumes_mine.items)),
-      resumes,
-    };
-  }, [hhJsonParseResult]);
-
-  const resolvedHhJsonResumeId = hhJsonResumeId || hhJsonPreview.resumes[0]?.id || '';
-  const selectedHhJsonResume = hhJsonPreview.resumes.find((item) => item.id === resolvedHhJsonResumeId) ?? null;
 
   if (loading) {
     return <Loading message="Загрузка /settings..." />;
