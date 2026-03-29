@@ -331,7 +331,7 @@ class ProfileLanguage(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
     language: Mapped[str] = mapped_column(String(100), nullable=False)
-    level: Mapped[str] = mapped_column(String(20), nullable=False)
+    level: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
