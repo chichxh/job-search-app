@@ -5,7 +5,7 @@ import json
 import os
 import secrets
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from urllib.parse import urlencode
 
@@ -13,14 +13,8 @@ import httpx
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.db.models import (
-    HHOAuthConnection,
-    Profile,
-    ProfileExperience,
-    ProfileLanguage,
-    ProfileLink,
-    ProfileSkill,
-)
+from app.db.models import HHOAuthConnection, Profile
+from app.services.hh_profile_importer import HHProfileImporter
 
 
 class HHOAuthError(Exception):
@@ -49,6 +43,7 @@ class HHOAuthService:
         self.scopes = os.getenv("HH_OAUTH_SCOPES", "").strip()
         self.user_agent = os.getenv("HH_USER_AGENT")
         self.state_secret = os.getenv("HH_OAUTH_STATE_SECRET") or os.getenv("AUTH_JWT_SECRET", "dev-only-change-me")
+        self.profile_importer = HHProfileImporter(db)
 
         if not self.client_id or not self.client_secret or not self.redirect_uri:
             raise HTTPException(
@@ -120,8 +115,7 @@ class HHOAuthService:
 
         resume_payload = await self._hh_get(f"/resumes/{target_resume_id}", token)
 
-        updated_fields = self._apply_profile_fields(profile, resume_payload)
-        replaced_sections = self._replace_profile_sections(profile.id, resume_payload)
+        updated_fields, replaced_sections = self.profile_importer.import_resume(profile=profile, resume=resume_payload)
 
         profile.resume_text = profile.resume_text or "Imported from HH"
         imported_at = datetime.now(timezone.utc)
@@ -142,122 +136,6 @@ class HHOAuthService:
             replaced_sections=replaced_sections,
         )
 
-    def _apply_profile_fields(self, profile: Profile, resume: dict[str, Any]) -> list[str]:
-        updated: list[str] = []
-
-        def apply(field: str, value: Any) -> None:
-            if value is None:
-                return
-            setattr(profile, field, value)
-            updated.append(field)
-
-        first_name = (resume.get("first_name") or "").strip()
-        last_name = (resume.get("last_name") or "").strip()
-        middle_name = (resume.get("middle_name") or "").strip()
-        full_name = " ".join(part for part in [last_name, first_name, middle_name] if part).strip()
-
-        apply("full_name", full_name or None)
-        apply("title", resume.get("title"))
-        apply("summary_about", resume.get("skills"))
-
-        area = resume.get("area") or {}
-        apply("location", area.get("name"))
-        apply("city", area.get("name"))
-
-        salary = resume.get("salary") or {}
-        amount = salary.get("amount") if isinstance(salary, dict) else None
-        if isinstance(amount, (int, float)):
-            apply("salary_min", int(amount))
-
-        relocation = resume.get("relocation") or {}
-        if isinstance(relocation, dict):
-            apply("relocation_ok", bool(relocation.get("type", "") not in {"no_relocation", "impossible"}))
-
-        travel = resume.get("travel_time") or {}
-        if isinstance(travel, dict):
-            apply("remote_ok", travel.get("id") in {"none", "any"})
-
-        apply("skills_text", ", ".join(skill.get("name") for skill in (resume.get("skill_set") or []) if skill.get("name")))
-
-        raw_resume = resume.get("description")
-        if isinstance(raw_resume, str) and raw_resume.strip():
-            apply("resume_text", raw_resume.strip())
-
-        return sorted(set(updated))
-
-    def _replace_profile_sections(self, profile_id: int, resume: dict[str, Any]) -> list[str]:
-        self._delete_for_profile(ProfileExperience, profile_id)
-        self._delete_for_profile(ProfileSkill, profile_id)
-        self._delete_for_profile(ProfileLanguage, profile_id)
-        self._delete_for_profile(ProfileLink, profile_id)
-
-        for exp in resume.get("experience") or []:
-            start = self._parse_partial_date(exp.get("start"))
-            if not start:
-                continue
-            end = self._parse_partial_date(exp.get("end"))
-            item = ProfileExperience(
-                profile_id=profile_id,
-                company_name=exp.get("company") or "Unknown company",
-                position_title=exp.get("position") or "Unknown position",
-                location=(exp.get("area") or {}).get("name"),
-                start_date=start,
-                end_date=end,
-                is_current=end is None,
-                responsibilities_text=(exp.get("description") or "").strip() or "Imported from HH",
-                achievements_text="",
-                tech_stack_text=None,
-                employment_type=(exp.get("employment") or {}).get("name") if isinstance(exp.get("employment"), dict) else None,
-            )
-            self.db.add(item)
-
-        for skill in resume.get("skill_set") or []:
-            name = (skill.get("name") or "").strip()
-            if not name:
-                continue
-            self.db.add(
-                ProfileSkill(
-                    profile_id=profile_id,
-                    name_raw=name,
-                    normalized_key=name.lower(),
-                    category="hard_skill",
-                    level="intermediate",
-                    is_primary=False,
-                )
-            )
-
-        for lang in resume.get("language") or []:
-            language_name = (lang.get("name") or "").strip()
-            if not language_name:
-                continue
-            self.db.add(
-                ProfileLanguage(
-                    profile_id=profile_id,
-                    language=language_name,
-                    level=((lang.get("level") or {}).get("name") if isinstance(lang.get("level"), dict) else "unknown") or "unknown",
-                )
-            )
-
-        contacts = resume.get("contact") or []
-        for contact in contacts:
-            url = contact.get("value") or contact.get("formatted")
-            if not isinstance(url, str) or not url.strip():
-                continue
-            link_type = (contact.get("type") or {}).get("id") if isinstance(contact.get("type"), dict) else "other"
-            self.db.add(
-                ProfileLink(
-                    profile_id=profile_id,
-                    type=link_type or "other",
-                    url=url.strip(),
-                    label=(contact.get("type") or {}).get("name") if isinstance(contact.get("type"), dict) else None,
-                )
-            )
-
-        return ["experiences", "skills", "languages", "links"]
-
-    def _delete_for_profile(self, model: Any, profile_id: int) -> None:
-        for item in [entry for entry in self.db.query(model).all() if entry.profile_id == profile_id]:
-            self.db.delete(item)
 
     def _get_connection_for_user(self, user_id: int) -> HHOAuthConnection | None:
         for connection in self.db.query(HHOAuthConnection).all():
@@ -369,17 +247,3 @@ class HHOAuthService:
             return int(payload["user_id"])
         except Exception as exc:  # noqa: BLE001
             raise HHOAuthError("Invalid OAuth state") from exc
-
-    @staticmethod
-    def _parse_partial_date(raw: dict[str, Any] | None) -> date | None:
-        if not isinstance(raw, dict):
-            return None
-        year = raw.get("year")
-        month = raw.get("month") or 1
-        day = raw.get("day") or 1
-        if not year:
-            return None
-        try:
-            return date(int(year), int(month), int(day))
-        except ValueError:
-            return None
