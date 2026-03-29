@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,6 +25,12 @@ class HHResumeOption(BaseModel):
 
 class HHProfileImportRequest(BaseModel):
     consent: bool = Field(default=False)
+    resume_id: Optional[str] = None
+
+
+class HHProfileImportJSONRequest(BaseModel):
+    consent: bool = Field(default=False)
+    payload: dict[str, Any]
     resume_id: Optional[str] = None
 
 

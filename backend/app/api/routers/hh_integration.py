@@ -1,4 +1,4 @@
-from datetime import timezone
+from datetime import datetime, timezone
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -11,11 +11,13 @@ from app.db.session import get_db
 from app.schemas.hh_integration import (
     HHOAuthConnectionStatus,
     HHOAuthStartResponse,
+    HHProfileImportJSONRequest,
     HHProfileImportRequest,
     HHProfileImportResponse,
     HHResumeOption,
 )
 from app.services.hh_oauth_service import HHOAuthError, HHOAuthService
+from app.services.hh_profile_importer import HHImportPayloadError, HHProfileImporter
 
 router = APIRouter(prefix="/integrations/hh", tags=["hh-integration"])
 
@@ -123,6 +125,43 @@ async def import_hh_profile(
         imported_at=outcome.imported_at.astimezone(timezone.utc),
         updated_fields=outcome.updated_fields,
         replaced_sections=outcome.replaced_sections,
+    )
+
+
+@router.post("/import-json", response_model=HHProfileImportResponse)
+async def import_hh_profile_json(
+    body: HHProfileImportJSONRequest,
+    current_user: User = Depends(get_current_user),
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+) -> HHProfileImportResponse:
+    if not body.consent:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Explicit consent is required to import HH profile data",
+        )
+
+    if profile.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
+
+    importer = HHProfileImporter(db)
+    try:
+        selected = importer.select_resume_from_payload(payload=body.payload, resume_id=body.resume_id)
+    except HHImportPayloadError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    updated_fields, replaced_sections = importer.import_resume(profile=profile, resume=selected.resume_payload)
+    profile.resume_text = profile.resume_text or "Imported from HH"
+    imported_at = datetime.now(timezone.utc)
+    db.add(profile)
+    db.commit()
+
+    return HHProfileImportResponse(
+        profile_id=profile.id,
+        resume_id=selected.resume_id,
+        imported_at=imported_at,
+        updated_fields=updated_fields,
+        replaced_sections=replaced_sections,
     )
 
 
