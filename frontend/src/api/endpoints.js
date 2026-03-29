@@ -163,6 +163,12 @@ export const importProfileFromHh = (payload) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+export const importProfileFromHhJson = (payload) =>
+  apiFetch('/integrations/hh/import-json', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 export const disconnectHh = () => apiFetch('/integrations/hh/connection', { method: 'DELETE' });
 
 export const getTailoring = (profileId, vacancyId) =>

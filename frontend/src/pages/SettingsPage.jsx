@@ -28,6 +28,7 @@ import {
   getProfile,
   getHhConnectionStatus,
   importProfileFromHh,
+  importProfileFromHhJson,
   listAchievements,
   listCertificates,
   listCoverLetterVersions,
@@ -127,6 +128,12 @@ export default function SettingsPage() {
   const [hhResumes, setHhResumes] = useState([]);
   const [hhResumeId, setHhResumeId] = useState('');
   const [hhBusy, setHhBusy] = useState(false);
+  const [hhJsonRaw, setHhJsonRaw] = useState('');
+  const [hhJsonConsent, setHhJsonConsent] = useState(false);
+  const [hhJsonBusy, setHhJsonBusy] = useState(false);
+  const [hhJsonError, setHhJsonError] = useState('');
+  const [hhJsonResumeId, setHhJsonResumeId] = useState('');
+  const [hhJsonImportSummary, setHhJsonImportSummary] = useState(null);
 
   useEffect(() => {
     async function loadData() {
@@ -190,6 +197,17 @@ export default function SettingsPage() {
 
     loadData();
   }, [profileId]);
+
+  useEffect(() => {
+    if (!hhJsonPreview.resumes.length) {
+      setHhJsonResumeId('');
+      return;
+    }
+    const hasSelected = hhJsonPreview.resumes.some((item) => item.id === hhJsonResumeId);
+    if (!hasSelected) {
+      setHhJsonResumeId(hhJsonPreview.resumes[0].id);
+    }
+  }, [hhJsonPreview, hhJsonResumeId]);
 
   function updateProfileField(name, value) {
     setProfile((current) => ({ ...current, [name]: value }));
@@ -316,20 +334,7 @@ export default function SettingsPage() {
     setToast('');
     try {
       await importProfileFromHh({ consent: true, resume_id: hhResumeId || null });
-      const [profileData, experiencesData, skillsData, languagesData, linksData, statusData] = await Promise.all([
-        getProfile(profileId),
-        listExperiences(profileId),
-        listSkills(profileId),
-        listLanguages(profileId),
-        listLinks(profileId),
-        getHhConnectionStatus(),
-      ]);
-      setProfile(profileData);
-      setExperiences(experiencesData.sort((a, b) => (a.start_date < b.start_date ? 1 : -1)));
-      setSkills(skillsData);
-      setLanguages(languagesData);
-      setLinks(linksData);
-      setHhStatus(statusData);
+      await refreshAfterImport();
       setToast('Профиль импортирован из HH.');
     } catch (requestError) {
       setError(requestError.message || 'Импорт HH завершился с ошибкой.');
@@ -354,6 +359,152 @@ export default function SettingsPage() {
     }
   }
 
+  function collectHhResumeCandidates(payload) {
+    const candidates = [];
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return candidates;
+    }
+
+    if (payload.resume && typeof payload.resume === 'object' && !Array.isArray(payload.resume)) {
+      candidates.push(payload.resume);
+    }
+
+    if (Array.isArray(payload.resumes)) {
+      candidates.push(...payload.resumes.filter((item) => item && typeof item === 'object' && !Array.isArray(item)));
+    }
+
+    if (payload.resumes_mine && typeof payload.resumes_mine === 'object' && Array.isArray(payload.resumes_mine.items)) {
+      candidates.push(...payload.resumes_mine.items.filter((item) => item && typeof item === 'object' && !Array.isArray(item)));
+    }
+
+    const looksLikeResume = ['id', 'title', 'first_name', 'last_name', 'experience', 'skill_set', 'description', 'contact']
+      .some((key) => key in payload);
+    if (looksLikeResume) {
+      candidates.push(payload);
+    }
+
+    const deduped = [];
+    const seen = new Set();
+    candidates.forEach((candidate, index) => {
+      const signature = String(candidate.id ?? `idx-${index}`);
+      if (seen.has(signature)) {
+        return;
+      }
+      seen.add(signature);
+      deduped.push(candidate);
+    });
+    return deduped;
+  }
+
+  function formatHhJsonError(requestError, fallbackMessage) {
+    if (!requestError) {
+      return fallbackMessage;
+    }
+    if (typeof requestError.message === 'string' && requestError.message.trim()) {
+      return requestError.message;
+    }
+    if (typeof requestError.detail === 'string' && requestError.detail.trim()) {
+      return requestError.detail;
+    }
+    return fallbackMessage;
+  }
+
+  async function refreshAfterImport() {
+    const [
+      profileData,
+      experiencesData,
+      skillsData,
+      languagesData,
+      linksData,
+      statusData,
+    ] = await Promise.all([
+      getProfile(profileId),
+      listExperiences(profileId),
+      listSkills(profileId),
+      listLanguages(profileId),
+      listLinks(profileId),
+      getHhConnectionStatus(),
+    ]);
+
+    setProfile(profileData);
+    setExperiences(experiencesData.sort((a, b) => (a.start_date < b.start_date ? 1 : -1)));
+    setSkills(skillsData);
+    setLanguages(languagesData);
+    setLinks(linksData);
+    setHhStatus(statusData);
+  }
+
+  function onHhJsonFileUpload(event) {
+    const [file] = event.target.files ?? [];
+    if (!file) {
+      return;
+    }
+
+    setHhJsonError('');
+    setHhJsonImportSummary(null);
+
+    if (!file.name.toLowerCase().endsWith('.json')) {
+      setHhJsonError('Выберите файл с расширением .json.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const content = typeof reader.result === 'string' ? reader.result : '';
+      setHhJsonRaw(content);
+    };
+    reader.onerror = () => {
+      setHhJsonError('Не удалось прочитать файл JSON.');
+    };
+    reader.readAsText(file, 'utf-8');
+  }
+
+  async function importFromHhJson() {
+    setHhJsonBusy(true);
+    setHhJsonError('');
+    setError('');
+    setToast('');
+    setHhJsonImportSummary(null);
+
+    try {
+      if (!hhJsonConsent) {
+        throw new Error('Подтвердите согласие на импорт данных из локального JSON.');
+      }
+
+      if (!hhJsonRaw.trim()) {
+        throw new Error('Загрузите файл JSON или вставьте JSON в поле ниже.');
+      }
+
+      let parsedPayload;
+      try {
+        parsedPayload = JSON.parse(hhJsonRaw);
+      } catch {
+        throw new Error('Некорректный JSON: проверьте синтаксис.');
+      }
+
+      const previewCandidates = collectHhResumeCandidates(parsedPayload);
+      if (!previewCandidates.length) {
+        throw new Error('В JSON не найдено резюме. Ожидается HH-like payload с resumes/resumes_mine.');
+      }
+
+      const selectedPreviewResume = hhJsonPreview.resumes.find((item) => item.id === resolvedHhJsonResumeId) ?? null;
+      const selectedResumeId = selectedPreviewResume?.originalId || null;
+      const result = await importProfileFromHhJson({
+        consent: true,
+        payload: parsedPayload,
+        resume_id: selectedResumeId,
+      });
+
+      await refreshAfterImport();
+      setHhJsonImportSummary(result);
+      setToast('Профиль импортирован из локального HH-like JSON.');
+    } catch (requestError) {
+      setHhJsonError(formatHhJsonError(requestError, 'Импорт из JSON завершился с ошибкой.'));
+    } finally {
+      setHhJsonBusy(false);
+    }
+  }
+
   const experienceOptions = useMemo(
     () => experiences.map((item) => ({ value: String(item.id), label: `${item.company_name} — ${item.position_title}` })),
     [experiences],
@@ -366,6 +517,36 @@ export default function SettingsPage() {
 
   const visibleResumes = approvedOnlyResume ? resumes.filter((item) => item.status === 'approved') : resumes;
   const visibleLetters = approvedOnlyLetter ? letters.filter((item) => item.status === 'approved') : letters;
+  const hhJsonParseResult = useMemo(() => {
+    if (!hhJsonRaw.trim()) {
+      return { error: '', payload: null };
+    }
+    try {
+      return { error: '', payload: JSON.parse(hhJsonRaw) };
+    } catch {
+      return { error: 'Некорректный JSON: не удалось распарсить текст.', payload: null };
+    }
+  }, [hhJsonRaw]);
+
+  const hhJsonPreview = useMemo(() => {
+    if (!hhJsonParseResult.payload) {
+      return { meFound: false, resumesMineFound: false, resumes: [] };
+    }
+    const payload = hhJsonParseResult.payload;
+    const resumes = collectHhResumeCandidates(payload).map((item, index) => ({
+      id: String(item.id ?? `json-resume-${index + 1}`),
+      title: typeof item.title === 'string' && item.title.trim() ? item.title.trim() : `Resume ${index + 1}`,
+      originalId: item.id ? String(item.id) : '',
+    }));
+    return {
+      meFound: Boolean(payload.me && typeof payload.me === 'object'),
+      resumesMineFound: Boolean(payload.resumes_mine && Array.isArray(payload.resumes_mine.items)),
+      resumes,
+    };
+  }, [hhJsonParseResult]);
+
+  const resolvedHhJsonResumeId = hhJsonResumeId || hhJsonPreview.resumes[0]?.id || '';
+  const selectedHhJsonResume = hhJsonPreview.resumes.find((item) => item.id === resolvedHhJsonResumeId) ?? null;
 
   if (loading) {
     return <Loading message="Загрузка /settings..." />;
@@ -412,6 +593,80 @@ export default function SettingsPage() {
             onChange={(e) => setHhResumeId(e.target.value)}
             options={hhResumes.map((item) => ({ value: item.id, label: item.title }))}
           />
+        ) : null}
+        <hr />
+        <p className="muted-text">
+          Fallback/dev path: импорт из локального HH-like JSON (файл или вставка текста) без live OAuth callback.
+        </p>
+        <div className="settings-grid settings-grid--two">
+          <label className="field">
+            <span>Upload HH-like JSON</span>
+            <input type="file" accept=".json,application/json" onChange={onHhJsonFileUpload} />
+          </label>
+        </div>
+        <TextAreaField
+          label="HH-like JSON payload"
+          rows={8}
+          value={hhJsonRaw}
+          onChange={(e) => {
+            setHhJsonRaw(e.target.value);
+            setHhJsonError('');
+            setHhJsonImportSummary(null);
+          }}
+          placeholder='{"me": {...}, "resumes_mine": {"items": [...]}}'
+        />
+        {hhJsonParseResult.error ? <ErrorBanner message={hhJsonParseResult.error} /> : null}
+        {!hhJsonParseResult.error && hhJsonRaw.trim() ? (
+          <div className="muted-text">
+            <p>Preview:</p>
+            <ul>
+              <li>{hhJsonPreview.meFound ? '✓ me найден' : '✗ me не найден'}</li>
+              <li>{hhJsonPreview.resumesMineFound ? '✓ resumes_mine.items найден' : '✗ resumes_mine.items не найден'}</li>
+              <li>Найдено резюме: {hhJsonPreview.resumes.length}</li>
+              <li>Будет импортировано: {selectedHhJsonResume?.title ?? '—'} ({selectedHhJsonResume?.id ?? '—'})</li>
+            </ul>
+          </div>
+        ) : null}
+        {hhJsonPreview.resumes.length > 1 ? (
+          <SelectField
+            label="Resume from JSON"
+            value={resolvedHhJsonResumeId}
+            onChange={(e) => setHhJsonResumeId(e.target.value)}
+            options={hhJsonPreview.resumes.map((item) => ({ value: item.id, label: `${item.title} (${item.id})` }))}
+          />
+        ) : null}
+        <label className="field">
+          <input
+            type="checkbox"
+            checked={hhJsonConsent}
+            onChange={(e) => setHhJsonConsent(e.target.checked)}
+          />
+          <span>Подтверждаю импорт профиля из локального JSON в текущий профиль.</span>
+        </label>
+        <div className="recommendations-toolbar">
+          <button
+            className="button"
+            type="button"
+            onClick={importFromHhJson}
+            disabled={hhJsonBusy || !hhJsonConsent || !hhJsonRaw.trim() || Boolean(hhJsonParseResult.error)}
+          >
+            {hhJsonBusy ? 'Импорт JSON...' : 'Import profile from local JSON'}
+          </button>
+        </div>
+        {hhJsonError ? <ErrorBanner message={hhJsonError} /> : null}
+        {hhJsonImportSummary ? (
+          <div className="muted-text">
+            <p>JSON import summary:</p>
+            <ul>
+              <li>resume_id: {hhJsonImportSummary.resume_id ?? '—'}</li>
+              <li>updated fields: {(hhJsonImportSummary.updated_fields ?? []).join(', ') || '—'}</li>
+              <li>replaced sections: {(hhJsonImportSummary.replaced_sections ?? []).join(', ') || '—'}</li>
+              <li>
+                imported_at:{' '}
+                {hhJsonImportSummary.imported_at ? new Date(hhJsonImportSummary.imported_at).toLocaleString() : '—'}
+              </li>
+            </ul>
+          </div>
         ) : null}
       </Section>
 
