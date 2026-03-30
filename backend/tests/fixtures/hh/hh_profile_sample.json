@@ -1,119 +1,208 @@
 {
+  "meta": {
+    "provider": "hh",
+    "schema": "hh-like-v1",
+    "exported_at": "2026-03-29T13:40:00+0300"
+  },
   "me": {
-    "id": "user-1",
-    "email": "candidate@example.com"
+    "id": "12345678",
+    "email": "anna.ivanova@example.com",
+    "first_name": "Анна",
+    "last_name": "Иванова",
+    "middle_name": "Сергеевна",
+    "is_anonymous": false,
+    "resumes_url": "https://api.hh.ru/resumes/mine",
+    "user_statuses": {
+      "job_search_status": {
+        "id": "looking_for_offers",
+        "name": "Рассматриваю предложения"
+      }
+    }
   },
   "resumes_mine": {
     "items": [
       {
-        "id": "res-basic",
-        "title": "Python Backend Engineer"
-      },
-      {
-        "id": "res-full",
-        "title": "Senior Python Engineer"
+        "id": "0123456789abcdef0123456789abcdef",
+        "title": "Python Backend Developer / ML Engineer",
+        "url": "https://api.hh.ru/resumes/0123456789abcdef0123456789abcdef",
+        "alternate_url": "https://hh.ru/resume/0123456789abcdef0123456789abcdef",
+        "updated_at": "2026-03-20T12:10:00+0300"
       }
     ]
   },
-  "resumes": [
-    {
-      "id": "res-basic",
-      "title": "Python Backend Engineer",
-      "description": "Backend engineer with FastAPI",
-      "salary": {
-        "amount": 220000
+  "resume": {
+    "id": "0123456789abcdef0123456789abcdef",
+    "title": "Python Backend Developer / ML Engineer",
+    "url": "https://api.hh.ru/resumes/0123456789abcdef0123456789abcdef",
+    "alternate_url": "https://hh.ru/resume/0123456789abcdef0123456789abcdef",
+    "first_name": "Анна",
+    "last_name": "Иванова",
+    "middle_name": "Сергеевна",
+    "created_at": "2026-02-10T09:30:00+0300",
+    "updated_at": "2026-03-20T12:10:00+0300",
+    "area": {
+      "id": "2",
+      "name": "Санкт-Петербург",
+      "url": "https://api.hh.ru/areas/2"
+    },
+    "gender": {
+      "id": "female",
+      "name": "Женский"
+    },
+    "salary": {
+      "from": 220000,
+      "to": null,
+      "currency": "RUR",
+      "gross": true
+    },
+    "skills": "Python, FastAPI, PostgreSQL, Docker, Celery, SQLAlchemy, REST API, GitHub Actions, ML basics",
+    "description": "Python backend-разработчик. Проектирую и разрабатываю API, очереди фоновых задач, интеграции и сервисы под PostgreSQL. Есть опыт в NLP/ML-пайплайнах, Docker и CI/CD. Ищу backend/ML-engineer роль с упором на Python и data-intensive systems.",
+    "skill_set": [
+      { "name": "Python" },
+      { "name": "FastAPI" },
+      { "name": "PostgreSQL" },
+      { "name": "SQLAlchemy" },
+      { "name": "Docker" },
+      { "name": "Celery" },
+      { "name": "Redis" },
+      { "name": "REST API" },
+      { "name": "GitHub Actions" },
+      { "name": "Pandas" },
+      { "name": "scikit-learn" }
+    ],
+    "total_experience": {
+      "months": 54
+    },
+    "education": {
+      "level": {
+        "id": "higher",
+        "name": "Высшее"
       },
-      "skill_set": [
+      "primary": [
         {
-          "name": "Python"
-        },
-        {
-          "name": "FastAPI"
-        }
-      ],
-      "experience": [
-        {
-          "company": "Acme",
-          "position": "Backend Engineer",
-          "start": {
-            "year": 2021,
-            "month": 3,
-            "day": 1
-          },
-          "end": {
-            "year": 2023,
-            "month": 7,
-            "day": 1
-          },
-          "description": "Built backend services"
-        }
-      ],
-      "language": [
-        {
-          "name": "English",
-          "level": {
-            "name": "B2"
-          }
-        }
-      ],
-      "contact": [
-        {
-          "type": {
-            "id": "github",
-            "name": "GitHub"
-          },
-          "value": "https://github.com/demo"
+          "name": "Санкт-Петербургский государственный университет телекоммуникаций",
+          "organization": "СПбГУТ",
+          "result": "Бакалавр",
+          "year": 2026
         }
       ]
     },
-    {
-      "id": "res-full",
-      "title": "Senior Python Engineer",
-      "first_name": "Ivan",
-      "last_name": "Petrov",
-      "skills": "Distributed systems and platform engineering",
-      "description": "Seasoned engineer with architecture focus",
-      "salary": {
-        "amount": 350000
-      },
-      "experience": [
-        {
-          "company": "Globex",
-          "position": "Lead Engineer",
-          "start": "2019-01-10",
-          "end": null,
-          "description": "Leading team and platform roadmap"
-        }
-      ],
-      "skill_set": [
-        {
-          "name": "Python"
+    "experience": [
+      {
+        "position": "Python Developer",
+        "start": "2024-07-01",
+        "end": null,
+        "company": "AI Product Lab",
+        "company_url": "https://example.com",
+        "company_id": null,
+        "area": {
+          "id": "2",
+          "name": "Санкт-Петербург",
+          "url": "https://api.hh.ru/areas/2"
         },
-        "Kubernetes",
-        {
-          "name": "PostgreSQL"
-        }
-      ],
-      "language": [
-        {
-          "name": "English",
-          "level": {
-            "name": "C1"
+        "industries": [
+          {
+            "id": "7.513",
+            "name": "Интернет-компания"
           }
+        ],
+        "employment": {
+          "id": "full",
+          "name": "Полная занятость"
         },
-        {
-          "name": "Russian"
+        "description": "Разработка backend-сервисов на Python/FastAPI, интеграций с внешними API, очередей Celery, работы с PostgreSQL и pgvector. Поддержка Docker Compose окружения, миграций Alembic и CI."
+      },
+      {
+        "position": "Junior Python Developer",
+        "start": "2022-09-01",
+        "end": "2024-06-30",
+        "company": "Data Systems Team",
+        "company_url": "https://example.org",
+        "company_id": null,
+        "area": {
+          "id": "2",
+          "name": "Санкт-Петербург",
+          "url": "https://api.hh.ru/areas/2"
+        },
+        "industries": [
+          {
+            "id": "7.541",
+            "name": "Разработка программного обеспечения"
+          }
+        ],
+        "employment": {
+          "id": "full",
+          "name": "Полная занятость"
+        },
+        "description": "Поддержка ETL-пайплайнов, автоматизация обработки данных, написание внутренних API, SQL-запросов и сервисных скриптов."
+      }
+    ],
+    "language": [
+      {
+        "name": "Русский",
+        "level": {
+          "id": "native_or_bilingual",
+          "name": "Родной"
         }
-      ],
-      "contact": [
-        {
-          "type": {
-            "id": "telegram",
-            "name": "Telegram"
-          },
-          "formatted": "https://t.me/demo_user"
+      },
+      {
+        "name": "Английский",
+        "level": {
+          "id": "b2",
+          "name": "B2 — Upper Intermediate"
         }
-      ]
-    }
-  ]
+      }
+    ],
+    "contact": [
+      {
+        "type": {
+          "id": "email",
+          "name": "Электронная почта"
+        },
+        "value": "anna.ivanova@example.com",
+        "formatted": "anna.ivanova@example.com"
+      },
+      {
+        "type": {
+          "id": "cell",
+          "name": "Мобильный телефон"
+        },
+        "value": "+7 999 123-45-67",
+        "formatted": "+7 999 123-45-67"
+      },
+      {
+        "type": {
+          "id": "telegram",
+          "name": "Telegram"
+        },
+        "value": "https://t.me/anna_ivanova",
+        "formatted": "@anna_ivanova"
+      },
+      {
+        "type": {
+          "id": "github",
+          "name": "GitHub"
+        },
+        "value": "https://github.com/anna-ivanova",
+        "formatted": "github.com/anna-ivanova"
+      }
+    ],
+    "relocation": {
+      "type": "possible",
+      "area": []
+    },
+    "travel_time": {
+      "id": "any",
+      "name": "Не имеет значения"
+    },
+    "download": {
+      "pdf": {
+        "url": "https://hh.ru/api_resume_converter/0123456789abcdef0123456789abcdef/AnnaIvanova.pdf?type=pdf"
+      },
+      "rtf": {
+        "url": "https://hh.ru/api_resume_converter/0123456789abcdef0123456789abcdef/AnnaIvanova.rtf?type=rtf"
+      }
+    },
+    "hidden_fields": []
+  }
 }
