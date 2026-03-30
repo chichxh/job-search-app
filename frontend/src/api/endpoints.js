@@ -171,6 +171,30 @@ export const importProfileFromHhJson = (payload) =>
   });
 export const disconnectHh = () => apiFetch('/integrations/hh/connection', { method: 'DELETE' });
 
+export const extractResumeImportFile = (profileId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  return apiFetch(`/profiles/${resolveProfileId(profileId)}/resume-import/extract`, {
+    method: 'POST',
+    body: formData,
+  });
+};
+
+export const parseResumeImportText = (profileId, extractedText) =>
+  apiFetch(`/profiles/${resolveProfileId(profileId)}/resume-import/parse`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ extracted_text: extractedText }),
+  });
+
+export const applyResumeImportDraft = (profileId, payload) =>
+  apiFetch(`/profiles/${resolveProfileId(profileId)}/resume-import/apply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
 export const getTailoring = (profileId, vacancyId) =>
   apiFetch(`/profiles/${resolveProfileId(profileId)}/vacancies/${vacancyId}/tailoring`);
 

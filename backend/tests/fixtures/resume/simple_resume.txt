@@ -1,0 +1,9 @@
+John Doe
+Senior Backend Engineer
+
+Experience:
+- 7+ years with Python, FastAPI, PostgreSQL
+- Built high-load APIs and async pipelines
+
+Education:
+- BSc Computer Science
