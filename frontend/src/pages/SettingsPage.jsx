@@ -14,6 +14,7 @@ import {
   createProject,
   createResumeVersion,
   createSkill,
+  extractResumeImportFile,
   deleteAchievement,
   deleteCertificate,
   deleteCoverLetterVersion,
@@ -29,6 +30,7 @@ import {
   getHhConnectionStatus,
   importProfileFromHh,
   importProfileFromHhJson,
+  parseResumeImportText,
   listAchievements,
   listCertificates,
   listCoverLetterVersions,
@@ -53,6 +55,7 @@ import {
   updateProject,
   updateResumeVersion,
   updateSkill,
+  applyResumeImportDraft,
   startHhOAuthConnect,
 } from '../api/endpoints.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
@@ -84,6 +87,7 @@ const SCHEDULE_OPTIONS = [
   { value: 'remote', label: 'Remote' },
   { value: 'hybrid', label: 'Hybrid' },
 ];
+const SUPPORTED_RESUME_IMPORT_EXTENSIONS = ['txt', 'md', 'docx', 'pdf', 'rtf'];
 
 const emptyBySection = {
   skills: { name_raw: '', category: '', level: '', years: '', last_used_year: '', is_primary: false, evidence_text: '' },
@@ -134,6 +138,15 @@ export default function SettingsPage() {
   const [hhJsonError, setHhJsonError] = useState('');
   const [hhJsonResumeId, setHhJsonResumeId] = useState('');
   const [hhJsonImportSummary, setHhJsonImportSummary] = useState(null);
+  const [resumeImportFile, setResumeImportFile] = useState(null);
+  const [resumeImportBusy, setResumeImportBusy] = useState(false);
+  const [resumeImportParseError, setResumeImportParseError] = useState('');
+  const [resumeImportApplyError, setResumeImportApplyError] = useState('');
+  const [resumeImportExtractionWarnings, setResumeImportExtractionWarnings] = useState([]);
+  const [resumeImportExtractedTextLength, setResumeImportExtractedTextLength] = useState(0);
+  const [resumeImportExtractedFileName, setResumeImportExtractedFileName] = useState('');
+  const [resumeImportDraftResponse, setResumeImportDraftResponse] = useState(null);
+  const [resumeImportApplySummary, setResumeImportApplySummary] = useState(null);
 
   useEffect(() => {
     async function loadData() {
@@ -440,6 +453,107 @@ export default function SettingsPage() {
     return fallbackMessage;
   }
 
+  function formatApiError(requestError, fallbackMessage) {
+    if (!requestError?.message) {
+      return fallbackMessage;
+    }
+
+    const detailMatch = String(requestError.message).match(/\):\s*(.+)$/);
+    return detailMatch?.[1] || String(requestError.message) || fallbackMessage;
+  }
+
+  function onResumeImportFileChange(event) {
+    const [file] = event.target.files ?? [];
+    setResumeImportFile(file ?? null);
+    setResumeImportParseError('');
+    setResumeImportApplyError('');
+    setResumeImportExtractionWarnings([]);
+    setResumeImportExtractedTextLength(0);
+    setResumeImportExtractedFileName(file?.name ?? '');
+    setResumeImportDraftResponse(null);
+    setResumeImportApplySummary(null);
+  }
+
+  async function extractAndParseResumeFile() {
+    if (!resumeImportFile) {
+      setResumeImportParseError('Выберите файл резюме перед запуском импорта.');
+      return;
+    }
+
+    const extension = resumeImportFile.name.includes('.')
+      ? resumeImportFile.name.split('.').pop().toLowerCase()
+      : '';
+    if (!SUPPORTED_RESUME_IMPORT_EXTENSIONS.includes(extension)) {
+      setResumeImportParseError('Неподдерживаемый формат файла. Разрешены: txt, md, docx, pdf, rtf.');
+      return;
+    }
+
+    setResumeImportBusy(true);
+    setResumeImportParseError('');
+    setResumeImportApplyError('');
+    setResumeImportApplySummary(null);
+    setResumeImportDraftResponse(null);
+    setResumeImportExtractionWarnings([]);
+    setResumeImportExtractedTextLength(0);
+    setResumeImportExtractedFileName(resumeImportFile.name);
+    setToast('');
+    setError('');
+
+    try {
+      const extractionResult = await extractResumeImportFile(profileId, resumeImportFile);
+      setResumeImportExtractionWarnings(extractionResult.warnings ?? []);
+      setResumeImportExtractedTextLength(extractionResult.text_length ?? 0);
+
+      const parseResult = await parseResumeImportText(profileId, extractionResult.extracted_text);
+      setResumeImportDraftResponse(parseResult);
+    } catch (requestError) {
+      setResumeImportParseError(
+        formatApiError(requestError, 'Не удалось извлечь или распарсить данные резюме.'),
+      );
+    } finally {
+      setResumeImportBusy(false);
+    }
+  }
+
+  async function applyResumeImportToProfile() {
+    if (!resumeImportDraftResponse?.draft) {
+      setResumeImportApplyError('Сначала получите черновик из файла резюме.');
+      return;
+    }
+
+    const hasUsefulContent = Boolean(resumeImportDraftResponse.applyability?.has_useful_content);
+    if (!hasUsefulContent) {
+      setResumeImportApplyError('Черновик содержит недостаточно данных для импорта в профиль.');
+      return;
+    }
+
+    setResumeImportBusy(true);
+    setResumeImportApplyError('');
+    setToast('');
+    setError('');
+
+    try {
+      const result = await applyResumeImportDraft(profileId, {
+        draft: resumeImportDraftResponse.draft,
+        update_main_fields: true,
+        replace_sections: ['experiences', 'skills', 'languages', 'links'],
+      });
+      setResumeImportApplySummary({
+        ...result,
+        imported_file_name: resumeImportExtractedFileName || resumeImportFile?.name || '',
+        applied_at: new Date().toISOString(),
+      });
+      await refreshAfterImport();
+      setToast('Импорт из файла применён к профилю.');
+    } catch (requestError) {
+      setResumeImportApplyError(
+        formatApiError(requestError, 'Не удалось применить импортированные данные к профилю.'),
+      );
+    } finally {
+      setResumeImportBusy(false);
+    }
+  }
+
   async function refreshAfterImport() {
     const [
       profileData,
@@ -667,6 +781,93 @@ export default function SettingsPage() {
                 {hhJsonImportSummary.imported_at ? new Date(hhJsonImportSummary.imported_at).toLocaleString() : '—'}
               </li>
             </ul>
+          </div>
+        ) : null}
+      </Section>
+
+      <Section title="Импорт резюме из файла" defaultOpen>
+        <p className="muted-text">
+          Шаги: загрузите файл резюме, получите preview распознанного черновика и примените его к текущему профилю.
+        </p>
+        <div className="settings-grid settings-grid--two">
+          <label className="field">
+            <span>Файл резюме</span>
+            <input type="file" accept=".txt,.md,.docx,.pdf,.rtf,text/plain,text/markdown,application/pdf,application/rtf" onChange={onResumeImportFileChange} />
+          </label>
+        </div>
+        <p className="muted-text">
+          Поддерживаемые форматы: txt / md / docx / pdf (text-based) / rtf.
+        </p>
+        {resumeImportFile ? <p className="muted-text">Выбран файл: {resumeImportFile.name}</p> : null}
+        <div className="recommendations-toolbar">
+          <button className="button" type="button" onClick={extractAndParseResumeFile} disabled={resumeImportBusy || !resumeImportFile}>
+            {resumeImportBusy ? 'Извлечение и парсинг...' : 'Извлечь и распарсить'}
+          </button>
+        </div>
+
+        {resumeImportParseError ? <ErrorBanner message={resumeImportParseError} /> : null}
+
+        {resumeImportDraftResponse ? (
+          <div className="muted-text">
+            <p>Preview импортируемого черновика:</p>
+            <ul>
+              <li>full_name: {resumeImportDraftResponse.draft?.full_name || '—'}</li>
+              <li>title: {resumeImportDraftResponse.draft?.title || '—'}</li>
+              <li>location: {resumeImportDraftResponse.draft?.location || '—'}</li>
+              <li>summary/about: {resumeImportDraftResponse.draft?.summary_about || '—'}</li>
+              <li>experiences count: {resumeImportDraftResponse.draft?.experiences?.length ?? 0}</li>
+              <li>skills count: {resumeImportDraftResponse.draft?.skills?.length ?? 0}</li>
+              <li>languages count: {resumeImportDraftResponse.draft?.languages?.length ?? 0}</li>
+              <li>links count: {resumeImportDraftResponse.draft?.links?.length ?? 0}</li>
+              <li>text length: {resumeImportExtractedTextLength}</li>
+              <li>usable draft: {resumeImportDraftResponse.applyability?.has_useful_content ? 'да' : 'нет'}</li>
+            </ul>
+            {[...(resumeImportExtractionWarnings ?? []), ...(resumeImportDraftResponse.warnings ?? [])].length ? (
+              <>
+                <p>Warnings:</p>
+                <ul>
+                  {[...(resumeImportExtractionWarnings ?? []), ...(resumeImportDraftResponse.warnings ?? [])]
+                    .map((warning, index) => (
+                      <li key={`${warning}-${index}`}>{warning}</li>
+                    ))}
+                </ul>
+              </>
+            ) : (
+              <p>Warnings: нет.</p>
+            )}
+          </div>
+        ) : null}
+
+        <div className="recommendations-toolbar">
+          <button
+            className="button"
+            type="button"
+            onClick={applyResumeImportToProfile}
+            disabled={resumeImportBusy || !resumeImportDraftResponse?.applyability?.has_useful_content}
+          >
+            {resumeImportBusy ? 'Импорт в профиль...' : 'Импортировать в профиль'}
+          </button>
+        </div>
+        {resumeImportApplyError ? <ErrorBanner message={resumeImportApplyError} /> : null}
+        {resumeImportApplySummary ? (
+          <div className="muted-text">
+            <p>Итог импорта:</p>
+            <ul>
+              <li>imported file: {resumeImportApplySummary.imported_file_name || '—'}</li>
+              <li>updated sections/fields: {(resumeImportApplySummary.updated_fields ?? []).join(', ') || '—'}</li>
+              <li>replaced sections: {(resumeImportApplySummary.replaced_sections ?? []).join(', ') || '—'}</li>
+              <li>applied at: {resumeImportApplySummary.applied_at ? new Date(resumeImportApplySummary.applied_at).toLocaleString() : '—'}</li>
+            </ul>
+            {(resumeImportApplySummary.warnings ?? []).length ? (
+              <>
+                <p>Warnings после apply:</p>
+                <ul>
+                  {(resumeImportApplySummary.warnings ?? []).map((warning, index) => (
+                    <li key={`${warning}-${index}`}>{warning}</li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
           </div>
         ) : null}
       </Section>
