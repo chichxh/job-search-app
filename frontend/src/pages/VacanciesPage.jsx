@@ -4,7 +4,9 @@ import { Link } from 'react-router-dom';
 import { getTask, getVacancies, startHhImport } from '../api/endpoints.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import Loading from '../components/Loading.jsx';
-import VacancyCard from '../components/VacancyCard.jsx';
+import PageHeader from '../components/ui/PageHeader.jsx';
+import SectionCard from '../components/ui/SectionCard.jsx';
+import StatusPill from '../components/ui/StatusPill.jsx';
 import { formatDateTime, formatSalary, getSafeText } from '../utils/formatters.js';
 
 const DEFAULT_IMPORT_PAYLOAD = {
@@ -143,7 +145,7 @@ export default function VacanciesPage() {
 
   const emptyStateMessage = vacancies.length === 0
     ? 'Пока нет вакансий. Импортируйте вакансии, чтобы они появились здесь.'
-    : 'Нет вакансий по текущим фильтрам. Попробуйте изменить поиск или отключить "Only open".';
+    : 'Нет вакансий по текущим фильтрам. Попробуйте изменить поиск или отключить фильтр «Только открытые».';
 
   async function handleStartImport() {
     setImportError('');
@@ -163,79 +165,80 @@ export default function VacanciesPage() {
 
   return (
     <section className="page-stack">
-      <header className="page-header">
-        <div>
-          <h1>Вакансии</h1>
-          <p className="page-header__subtitle">Собирайте вакансии и поддерживайте чистый шортлист для мэтчинга.</p>
+      <PageHeader
+        eyebrow="Vacancy Discovery"
+        title="Вакансии"
+        subtitle="Импортируйте поток вакансий и поддерживайте чистый shortlist для мэтчинга и генерации документов."
+      />
+
+      <SectionCard
+        className="import-area"
+        title="Импорт из HH"
+        subtitle="Запускает фоновую задачу импорта и обновляет список вакансий после завершения."
+        actions={(
+          <button
+            className="recommendations-toolbar__button"
+            type="button"
+            onClick={handleStartImport}
+            disabled={isImporting}
+          >
+            {isImporting ? 'Идёт импорт...' : 'Выгрузить вакансии из HH'}
+          </button>
+        )}
+      >
+        <div className="inline-status-row">
+          <StatusPill tone={isImporting ? 'info' : importSuccess ? 'success' : 'neutral'}>
+            {isImporting ? `Task ${importTaskId || '—'} · ${importState}` : importSuccess || 'Готово к запуску импорта'}
+          </StatusPill>
+          <p className="flow-hint">После импорта перейдите в <Link className="vacancy-details__link" to="/recommendations">Recommendations</Link> и пересчитайте ranking.</p>
         </div>
-      </header>
-
-      <div className="toolbar vacancies-toolbar">
-        <button
-          className="recommendations-toolbar__button"
-          type="button"
-          onClick={handleStartImport}
-          disabled={isImporting}
-        >
-          {isImporting ? 'Идёт импорт...' : 'Выгрузить вакансии из HH'}
-        </button>
-
-        {isImporting ? <p className="vacancies-toolbar__status">Задача {importTaskId}: {importState}</p> : null}
-        {!isImporting && importSuccess ? <p className="vacancies-toolbar__status">{importSuccess}</p> : null}
-      </div>
-
-      {!isImporting && importSuccess ? (
-        <p className="flow-hint">
-          Далее: перейдите в{' '}
-          <Link className="vacancy-details__link" to="/recommendations">Recommendations</Link>
-          {' '}и запустите пересчёт.
-        </p>
-      ) : null}
+      </SectionCard>
 
       {importError ? <ErrorBanner message={importError} /> : null}
 
-      <div className="toolbar toolbar--subtle vacancy-filters" aria-label="Vacancy filters">
-        <input
-          className="vacancy-filters__search"
-          type="search"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Поиск по названию, компании или локации"
-          aria-label="Поиск вакансий"
-        />
-        <label className="vacancy-filters__toggle">
+      <SectionCard className="vacancy-list-shell" title="Список вакансий" subtitle={`Всего: ${vacancies.length} · Показано: ${filteredVacancies.length}`}>
+        <div className="toolbar toolbar--subtle vacancy-filters" aria-label="Vacancy filters">
           <input
-            type="checkbox"
-            checked={onlyOpen}
-            onChange={(event) => setOnlyOpen(event.target.checked)}
+            className="vacancy-filters__search"
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Поиск по названию, компании или локации"
+            aria-label="Поиск вакансий"
           />
-          <span>Только открытые</span>
-        </label>
-      </div>
+          <label className="vacancy-filters__toggle">
+            <input
+              type="checkbox"
+              checked={onlyOpen}
+              onChange={(event) => setOnlyOpen(event.target.checked)}
+            />
+            <span>Только открытые</span>
+          </label>
+        </div>
 
-      {loading ? <Loading message="Загружаем вакансии..." /> : null}
-      {!loading && error ? <ErrorBanner message={error} /> : null}
+        {loading ? <Loading message="Загружаем вакансии..." /> : null}
+        {!loading && error ? <ErrorBanner message={error} /> : null}
 
-      {!loading && !error ? (
-        filteredVacancies.length > 0 ? (
-          <div className="vacancy-grid">
-            {filteredVacancies.map((vacancy) => (
-              <VacancyCard
-                key={vacancy.id}
-                title={getSafeText(vacancy.title, 'Название вакансии не указано')}
-                company={getSafeText(vacancy.company_name ?? vacancy.company, 'Компания не указана')}
-                location={getSafeText(vacancy.location, 'Локация не указана')}
-                salary={formatSalary(vacancy)}
-                createdAt={formatDateTime(vacancy.created_at)}
-                updatedAt={formatDateTime(vacancy.updated_at)}
-                to={`/vacancies/${vacancy.id}`}
-              />
-            ))}
-          </div>
-        ) : (
-          <p className="empty-state">{emptyStateMessage}</p>
-        )
-      ) : null}
+        {!loading && !error ? (
+          filteredVacancies.length > 0 ? (
+            <div className="vacancy-list">
+              {filteredVacancies.map((vacancy) => (
+                <Link key={vacancy.id} className="vacancy-row" to={`/vacancies/${vacancy.id}`}>
+                  <div>
+                    <p className="vacancy-row__title">{getSafeText(vacancy.title, 'Название вакансии не указано')}</p>
+                    <p className="vacancy-row__meta">{getSafeText(vacancy.company_name ?? vacancy.company, 'Компания не указана')} · {getSafeText(vacancy.location, 'Локация не указана')}</p>
+                  </div>
+                  <p className="vacancy-row__salary">{formatSalary(vacancy)}</p>
+                  <StatusPill tone={vacancy.status?.toLowerCase() === 'open' ? 'success' : 'neutral'}>{vacancy.status ?? 'unknown'}</StatusPill>
+                  <p className="vacancy-row__date">updated {formatDateTime(vacancy.updated_at) ?? '—'}</p>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="empty-state">{emptyStateMessage}</p>
+          )
+        ) : null}
+      </SectionCard>
     </section>
   );
 }

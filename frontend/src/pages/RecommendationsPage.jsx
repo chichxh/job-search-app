@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import {
   getRecommendations,
   getTask,
   recomputeRecommendations,
 } from '../api/endpoints.js';
+import { useAuth } from '../auth/useAuth.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import Loading from '../components/Loading.jsx';
-import VacancyCard from '../components/VacancyCard.jsx';
+import MetricTile from '../components/ui/MetricTile.jsx';
+import PageHeader from '../components/ui/PageHeader.jsx';
+import SectionCard from '../components/ui/SectionCard.jsx';
+import VerdictBadge from '../components/ui/VerdictBadge.jsx';
 import { formatDateTime, getSafeText } from '../utils/formatters.js';
 import { loadJobSearchSettings } from '../utils/settings.js';
-import { useAuth } from '../auth/useAuth.js';
 
 function formatScore(score) {
   if (score == null || Number.isNaN(Number(score))) {
@@ -137,101 +141,89 @@ export default function RecommendationsPage() {
     setSettings(nextSettings);
   }
 
+  const topScore = visibleRecommendations[0]?.final_score;
+
   return (
     <section className="page-stack">
-      <header className="page-header">
-        <div>
-          <h1>Рекомендации</h1>
-          <p className="page-header__subtitle">Пересчитывайте ранжирование и фокусируйтесь на сильнейших вакансиях.</p>
+      <PageHeader
+        eyebrow="Ranking Workspace"
+        title="Рекомендации"
+        subtitle="Ключевой экран ранжирования: пересчёт, скоринг, вердикт и быстрый переход к деталям вакансии."
+      />
+
+      <SectionCard
+        className="recommendations-hero"
+        title="Recompute & control"
+        subtitle="Обновите ranking на основе текущего профиля и лимита рекомендаций."
+        actions={(
+          <div className="button-group">
+            <button className="recommendations-toolbar__button" type="button" onClick={handleRecompute} disabled={Boolean(taskId)}>
+              Пересчитать рекомендации
+            </button>
+            <button className="recommendations-toolbar__button recommendations-toolbar__button--secondary" type="button" onClick={handleReloadSettings}>
+              Обновить настройки
+            </button>
+          </div>
+        )}
+      >
+        <div className="recommendations-metrics">
+          <MetricTile label="Видимых рекомендаций" value={visibleRecommendations.length} hint="После фильтров weak/reject" />
+          <MetricTile label="Top final_score" value={formatScore(topScore)} tone="info" hint="Лучший элемент текущего ранжирования" />
+          <MetricTile label="Лимит" value={settings.recommendationsLimit} hint={`hideReject: ${settings.hideReject ? 'on' : 'off'}`} />
         </div>
-      </header>
-
-      <div className="toolbar recommendations-toolbar" aria-label="Recommendations controls">
-        <button
-          className="recommendations-toolbar__button"
-          type="button"
-          onClick={handleRecompute}
-          disabled={Boolean(taskId)}
-        >
-          Пересчитать рекомендации
-        </button>
-
-        <button
-          className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
-          type="button"
-          onClick={handleReloadSettings}
-        >
-          Обновить настройки
-        </button>
-
         <label className="vacancy-filters__toggle">
           <input
             type="checkbox"
             checked={hideWeak}
             onChange={(event) => setHideWeak(event.target.checked)}
           />
-          <span>Скрывать слабые</span>
+          <span>Скрывать weak verdict</span>
         </label>
-      </div>
-
-      <p className="info-banner">лимит: {settings.recommendationsLimit} · hideReject: {settings.hideReject ? 'вкл' : 'выкл'}</p>
-
-      {taskId ? (
-        <p className="info-banner">Задача {taskId}: {taskState}</p>
-      ) : taskState === 'SUCCESS' ? (
-        <p className="success-banner">Рекомендации пересчитаны.</p>
-      ) : null}
-
-      {taskState === 'SUCCESS' && !taskId ? (
-        <p className="flow-hint">
-          Следующий шаг: откройте карточку вакансии, проверьте tailoring и сгенерируйте draft-документы.
-        </p>
-      ) : null}
+        {taskId ? (
+          <p className="info-banner">Задача {taskId}: {taskState}</p>
+        ) : taskState === 'SUCCESS' ? (
+          <p className="success-banner">Рекомендации пересчитаны.</p>
+        ) : null}
+      </SectionCard>
 
       {taskError ? <ErrorBanner message={taskError} /> : null}
 
-      {loading ? <Loading message="Загружаем рекомендации..." /> : null}
-      {!loading && error ? <ErrorBanner message={error} /> : null}
+      <SectionCard title="Ranked list" subtitle="Сначала самые сильные кандидаты на отклик.">
+        {loading ? <Loading message="Загружаем рекомендации..." /> : null}
+        {!loading && error ? <ErrorBanner message={error} /> : null}
 
-      {!loading && !error ? (
-        visibleRecommendations.length > 0 ? (
-          <div className="recommendations-list">
-            {visibleRecommendations.map((item) => (
-              <article className="recommendations-item" key={item.id}>
-                <VacancyCard
-                  title={getSafeText(item.title, 'Название вакансии не указано')}
-                  company={getSafeText(item.company_name ?? item.company, 'Компания не указана')}
-                  location={getSafeText(item.location, 'Локация не указана')}
-                  salary="Открытая вакансия"
-                  createdAt={formatDateTime(item.created_at)}
-                  updatedAt={formatDateTime(item.updated_at)}
-                  to={`/vacancies/${item.id}`}
-                />
-                <div className="recommendations-item__score">
-                  <p className="recommendations-item__metric">
-                    итоговый_скор:  <strong>{formatScore(item.final_score)}</strong>
-                  </p>
-                  <p className={`recommendations-item__verdict recommendations-item__verdict--${item.verdict}`}>
-                    вердикт: {item.verdict}
-                  </p>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <p className="empty-state">
-            {recommendations.length === 0
-              ? 'Пока нет рекомендаций. Нажмите «Пересчитать рекомендации».'
-              : 'Нет рекомендаций по текущим фильтрам. Попробуйте отключить фильтр weak/reject.'}
-          </p>
-        )
-      ) : null}
-
-      {!loading && !error && visibleRecommendations.length > 0 ? (
-        <p className="flow-hint">
-          Откройте любую вакансию из списка, чтобы перейти к tailoring → generate → approve.
-        </p>
-      ) : null}
+        {!loading && !error ? (
+          visibleRecommendations.length > 0 ? (
+            <div className="recommendations-ranked-list">
+              {visibleRecommendations.map((item, index) => (
+                <article className="recommendation-row" key={item.id}>
+                  <div className="recommendation-row__rank">#{index + 1}</div>
+                  <div className="recommendation-row__main">
+                    <p className="recommendation-row__title">{getSafeText(item.title, 'Название вакансии не указано')}</p>
+                    <p className="recommendation-row__meta">{getSafeText(item.company_name ?? item.company, 'Компания не указана')} · {getSafeText(item.location, 'Локация не указана')}</p>
+                    <p className="recommendation-row__dates">updated {formatDateTime(item.updated_at) ?? '—'} · created {formatDateTime(item.created_at) ?? '—'}</p>
+                  </div>
+                  <div className="recommendation-row__scorebox">
+                    <p className="recommendation-row__score">{formatScore(item.final_score)}</p>
+                    <p className="recommendation-row__score-label">final_score</p>
+                    <VerdictBadge verdict={item.verdict} />
+                  </div>
+                  <div className="recommendation-row__actions">
+                    <Link className="recommendation-row__link" to={`/vacancies/${item.id}`}>Открыть details →</Link>
+                    <p className="recommendation-row__next">Next: tailoring + draft docs</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="empty-state">
+              {recommendations.length === 0
+                ? 'Пока нет рекомендаций. Нажмите «Пересчитать рекомендации».'
+                : 'Нет рекомендаций по текущим фильтрам. Попробуйте отключить фильтр weak/reject.'}
+            </p>
+          )
+        ) : null}
+      </SectionCard>
     </section>
   );
 }
