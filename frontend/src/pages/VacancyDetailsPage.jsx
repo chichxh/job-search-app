@@ -14,10 +14,15 @@ import {
   updateCoverLetterVersion,
   updateResumeVersion,
 } from '../api/endpoints.js';
+import { useAuth } from '../auth/useAuth.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import Loading from '../components/Loading.jsx';
+import MetricTile from '../components/ui/MetricTile.jsx';
+import PageHeader from '../components/ui/PageHeader.jsx';
+import SectionCard from '../components/ui/SectionCard.jsx';
+import StatusPill from '../components/ui/StatusPill.jsx';
+import VerdictBadge from '../components/ui/VerdictBadge.jsx';
 import { formatDateTime, formatSalary, getSafeText } from '../utils/formatters.js';
-import { useAuth } from '../auth/useAuth.js';
 
 function toList(value) {
   return Array.isArray(value) ? value : [];
@@ -95,43 +100,28 @@ function renderMetadataCompact(metadata) {
     .join(' · ');
 }
 
-function GenerationResultBlock({ result, onПерегенерировать }) {
+function GenerationResultBlock({ result, onRegenerate }) {
   if (!result?.document) {
     return null;
   }
 
   const { type, document } = result;
-  const metadataEntries = getMetadataEntries(document.метаданные_генерации);
 
   return (
     <article className="vacancy-details__created-draft" aria-live="polite">
-      <h3 className="vacancy-details__section-title">Созданный черновик ({getDocumentTypeLabel(type)})</h3>
-      <p><strong>title:</strong> {getSafeText(document.title, '—')}</p>
-      <p><strong>status:</strong> {getSafeText(document.status, '—')}</p>
-      <p><strong>created_at:</strong> {formatDateTime(document.created_at) ?? '—'}</p>
-      <p><strong>vacancy_id:</strong> {document.vacancy_id ?? '—'}</p>
-
-      <div>
-        <h4 className="vacancy-details__section-title">метаданные_генерации</h4>
-        {metadataEntries.length ? (
-          <ul className="vacancy-details__metadata-list">
-            {metadataEntries.map(([key, value]) => (
-              <li key={key}>
-                <strong>{key}:</strong> {key.includes('at') ? (formatDateTime(value) ?? String(value)) : String(value)}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="vacancy-details__hint-text">Metadata is not available for this draft.</p>
-        )}
+      <h3 className="vacancy-details__section-title">Новый черновик: {getDocumentTypeLabel(type)}</h3>
+      <div className="inline-status-row">
+        <StatusPill tone="success">status: {getSafeText(document.status, '—')}</StatusPill>
+        <p className="vacancy-details__hint-text">Создан: {formatDateTime(document.created_at) ?? '—'}</p>
       </div>
-
+      <p><strong>title:</strong> {getSafeText(document.title, '—')}</p>
+      <p className="vacancy-details__doc-meta"><strong>генерация:</strong> {renderMetadataCompact(document.метаданные_генерации)}</p>
       <button
         className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
         type="button"
-        onClick={() => onПерегенерировать(type)}
+        onClick={() => onRegenerate(type)}
       >
-        Перегенерировать {type === 'resume' ? 'resume' : 'cover letter'}
+        Перегенерировать
       </button>
     </article>
   );
@@ -181,10 +171,7 @@ export default function VacancyDetailsPage() {
     setEditError('');
     setEditSuccess('');
     setEditingDocumentKey(`${type}:${item.id}`);
-    setEditDraft({
-      title: item.title ?? '',
-      content_text: item.content_text ?? '',
-    });
+    setEditDraft({ title: item.title ?? '', content_text: item.content_text ?? '' });
   }, []);
 
   const cancelEditingDocument = useCallback(() => {
@@ -213,10 +200,7 @@ export default function VacancyDetailsPage() {
     setEditSuccess('');
     setSavingEditByKey((current) => ({ ...current, [key]: true }));
 
-    const payload = {
-      title: editDraft.title.trim() || null,
-      content_text: editDraft.content_text,
-    };
+    const payload = { title: editDraft.title.trim() || null, content_text: editDraft.content_text };
 
     try {
       const updated = type === 'resume'
@@ -348,7 +332,7 @@ export default function VacancyDetailsPage() {
     }
   }, [loadDocuments, profileId, vacancyId]);
 
-  const handleПерегенерировать = useCallback((type) => {
+  const handleRegenerate = useCallback((type) => {
     if (type === 'resume') {
       void handleResumeGeneration();
       return;
@@ -488,375 +472,198 @@ export default function VacancyDetailsPage() {
 
   return (
     <section className="page-stack">
-      <h1>Vacancy details</h1>
+      <PageHeader
+        eyebrow="Detail Workspace"
+        title="Vacancy details"
+        subtitle="Премиальный рабочий экран: summary вакансии, мэтчинг-объяснение и pipeline генерации документов."
+      />
 
       {loading ? <Loading message="Загружаем детали вакансии..." /> : null}
       {!loading && vacancyError ? <ErrorBanner message={vacancyError} /> : null}
 
       {!loading && vacancy ? (
-        <article className="vacancy-details">
-          <h2 className="vacancy-details__title">{vacancy.title}</h2>
-          <div className="vacancy-details__meta-grid">
-            <p><strong>Компания:</strong> {getSafeText(vacancy.company_name ?? vacancy.company, 'Не указана')}</p>
-            <p><strong>Локация:</strong> {getSafeText(vacancy.location, 'Не указана')}</p>
-            <p><strong>Зарплата:</strong> {formatSalary(vacancy, { emptyLabel: 'Не указана', fromLabel: 'от', toLabel: 'до' })}</p>
-            <p><strong>Статус:</strong> {vacancy.status ?? 'Не указан'}</p>
-            <p><strong>Источник:</strong> {vacancy.source ?? 'Не указан'}</p>
-            {formatDateTime(vacancy.created_at) ? <p><strong>Создано:</strong> {formatDateTime(vacancy.created_at)}</p> : null}
-            {formatDateTime(vacancy.updated_at) ? <p><strong>Обновлено:</strong> {formatDateTime(vacancy.updated_at)}</p> : null}
-            <p>
-              <strong>Ссылка:</strong>{' '}
-              {vacancy.url ? (
-                <a href={vacancy.url} target="_blank" rel="noreferrer">{vacancy.url}</a>
-              ) : (
-                'Не указана'
-              )}
-            </p>
+        <SectionCard className="vacancy-summary-card" title={vacancy.title} subtitle={getSafeText(vacancy.company_name ?? vacancy.company, 'Не указана компания')}>
+          <div className="vacancy-summary-top">
+            <MetricTile label="Локация" value={getSafeText(vacancy.location, 'Не указана')} />
+            <MetricTile label="Зарплата" value={formatSalary(vacancy, { emptyLabel: 'Не указана', fromLabel: 'от', toLabel: 'до' })} tone="info" />
+            <MetricTile label="Статус" value={vacancy.status ?? 'Не указан'} hint={`Источник: ${vacancy.source ?? '—'}`} />
+            <MetricTile label="Обновлено" value={formatDateTime(vacancy.updated_at) ?? '—'} hint={`Создано: ${formatDateTime(vacancy.created_at) ?? '—'}`} />
           </div>
-          <h3 className="vacancy-details__section-title">Описание</h3>
-          <pre className="vacancy-details__description">{vacancy.description ?? 'Описание отсутствует.'}</pre>
           <div className="vacancy-details__docgen-actions">
-            <button
-              className="recommendations-toolbar__button"
-              type="button"
-              onClick={handleTrackApplication}
-              disabled={isTrackingApplication}
-            >
+            <button className="recommendations-toolbar__button" type="button" onClick={handleTrackApplication} disabled={isTrackingApplication}>
               {isTrackingApplication ? 'Добавляем...' : 'Добавить в отклики'}
             </button>
-            <Link className="vacancy-details__link" to="/applications">
-              Open applications funnel
-            </Link>
+            <Link className="vacancy-details__link" to="/applications">Открыть воронку откликов</Link>
+            {vacancy.url ? <a className="vacancy-details__link" href={vacancy.url} target="_blank" rel="noreferrer">Открыть источник вакансии</a> : null}
           </div>
-          {trackSuccess ? <p className="vacancy-details__docgen-success">{trackSuccess}</p> : null}
+          {trackSuccess ? <p className="success-banner">{trackSuccess}</p> : null}
           {trackError ? <ErrorBanner message={trackError} /> : null}
-        </article>
+          <h3 className="vacancy-details__section-title">Описание вакансии</h3>
+          <pre className="vacancy-details__description">{vacancy.description ?? 'Описание отсутствует.'}</pre>
+        </SectionCard>
       ) : null}
 
-      <section className="vacancy-details__matching">
-        <div className="vacancy-details__matching-header">
-          <h2 className="vacancy-details__section-title">Мэтчинг</h2>
-          <button
-            className="recommendations-toolbar__button"
-            type="button"
-            onClick={refreshTailoring}
-            disabled={loading || isRefreshingTailoring}
-          >
-            Обновить мэтчинг
-          </button>
-        </div>
-        <p className="flow-hint">Шаг flow: проверьте tailoring и затем переходите к генерации документов ниже.</p>
+      <div className="details-layout">
+        <SectionCard
+          className="vacancy-details__matching"
+          title="Matching & explanation"
+          subtitle="Читаемое объяснение: итоговый скор, вердикт, пробелы и evidence."
+          actions={(
+            <button className="recommendations-toolbar__button" type="button" onClick={refreshTailoring} disabled={loading || isRefreshingTailoring}>
+              Обновить мэтчинг
+            </button>
+          )}
+        >
+          {isRefreshingTailoring ? <Loading message="Обновляем мэтчинг..." /> : null}
+          {!loading && (tailoringError || !tailoring) ? (
+            <div className="vacancy-details__hint">
+              {tailoringError ? <ErrorBanner message={tailoringError} /> : null}
+              <p>Пересчитайте рекомендации и вернитесь на эту страницу.</p>
+              <Link className="vacancy-details__link" to="/recommendations">Перейти на /recommendations</Link>
+            </div>
+          ) : null}
 
-        {isRefreshingTailoring ? <Loading message="Обновляем мэтчинг..." /> : null}
+          {!loading && tailoring && hasTailoringSections ? (
+            <>
+              <div className="matching-highlight">
+                <MetricTile label="Final score" value={formatConfidence(finalScore)} tone="info" />
+                <MetricTile label="Verdict" value={<VerdictBadge verdict={verdict} />} />
+              </div>
 
-        {!loading && (tailoringError || !tailoring) ? (
-          <div className="vacancy-details__hint">
-            {tailoringError ? <ErrorBanner message={tailoringError} /> : null}
-            <p>Пересчитайте рекомендации.</p>
-            <Link className="vacancy-details__link" to="/recommendations">
-              Перейти на /recommendations
-            </Link>
+              {keywordsToAdd.length ? (
+                <div>
+                  <h3 className="vacancy-details__section-title">Keywords to add</h3>
+                  <div className="chip-list">{keywordsToAdd.map((keyword) => <span className="chip" key={keyword}>{keyword}</span>)}</div>
+                </div>
+              ) : null}
+
+              {missingMustHave.length ? (
+                <div>
+                  <h3 className="vacancy-details__section-title">Missing must-have</h3>
+                  <ul className="structured-list">{missingMustHave.map((item) => <li key={item}>{item}</li>)}</ul>
+                </div>
+              ) : null}
+
+              {missingNiceToHave.length ? (
+                <div>
+                  <h3 className="vacancy-details__section-title">Missing nice-to-have</h3>
+                  <ul className="structured-list">{missingNiceToHave.map((item) => <li key={item}>{item}</li>)}</ul>
+                </div>
+              ) : null}
+
+              {coverLetterPoints.length ? (
+                <div>
+                  <h3 className="vacancy-details__section-title">Cover letter focus points</h3>
+                  <ul className="structured-list">{coverLetterPoints.map((item) => <li key={item}>{item}</li>)}</ul>
+                </div>
+              ) : null}
+
+              {evidenceItems.length ? (
+                <div>
+                  <h3 className="vacancy-details__section-title">Evidence</h3>
+                  <ul className="structured-list">
+                    {evidenceItems.map((item, index) => {
+                      const text = item.text ?? item.evidence_text ?? String(item);
+                      const confidence = item.confidence;
+                      return <li key={`${text}-${index}`}>{text} {confidence != null ? <StatusPill tone="info">confidence {formatConfidence(confidence)}</StatusPill> : null}</li>;
+                    })}
+                  </ul>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+
+          {!loading && tailoring && !hasTailoringSections ? (
+            <details>
+              <summary>Raw tailoring JSON</summary>
+              <pre className="vacancy-details__description">{JSON.stringify(tailoring, null, 2)}</pre>
+            </details>
+          ) : null}
+        </SectionCard>
+
+        <SectionCard className="vacancy-details__documents" title="Document generation" subtitle="Сгенерируйте и согласуйте резюме/cover letter без выхода с экрана.">
+          <div className="vacancy-details__docgen-actions">
+            <button className="recommendations-toolbar__button" type="button" onClick={handleResumeGeneration} disabled={isGeneratingResume}>
+              {isGeneratingResume ? 'Генерируем резюме...' : (resumeDocuments.length ? 'Перегенерировать resume draft' : 'Сгенерировать resume draft')}
+            </button>
+            <button className="recommendations-toolbar__button recommendations-toolbar__button--secondary" type="button" onClick={handleCoverLetterGeneration} disabled={isGeneratingCoverLetter}>
+              {isGeneratingCoverLetter ? 'Генерируем cover letter...' : (coverLetterDocuments.length ? 'Перегенерировать cover letter draft' : 'Сгенерировать cover letter draft')}
+            </button>
+            <button className="recommendations-toolbar__button recommendations-toolbar__button--secondary" type="button" onClick={refreshDocuments} disabled={documentsLoading || isRefreshingDocuments}>
+              {isRefreshingDocuments ? 'Обновляем...' : 'Обновить документы'}
+            </button>
           </div>
-        ) : null}
 
-        {!loading && tailoring && hasTailoringSections ? (
-          <div className="vacancy-details__matching-content">
-            {(finalScore != null || verdict) ? (
-              <p className="vacancy-details__score">
-                {finalScore != null ? <>final_score: <strong>{formatConfidence(finalScore)}</strong></> : null}
-                {finalScore != null && verdict ? ' · ' : null}
-                {verdict ? <>verdict: <strong>{verdict}</strong></> : null}
-              </p>
-            ) : null}
+          {generateError ? <ErrorBanner message={`Generate action: ${generateError}`} /> : null}
+          {approveError ? <ErrorBanner message={`Approve action: ${approveError}`} /> : null}
+          {editError ? <ErrorBanner message={`Edit action: ${editError}`} /> : null}
+          {documentsError ? <ErrorBanner message={`Load documents: ${documentsError}`} /> : null}
+          {editSuccess ? <p className="success-banner">{editSuccess}</p> : null}
+          {documentsLoading ? <Loading message="Загружаем документы по вакансии..." /> : null}
 
-            {keywordsToAdd.length ? (
-              <div>
-                <h3 className="vacancy-details__section-title">keywords_to_add</h3>
-                <ul>
-                  {keywordsToAdd.map((keyword) => (
-                    <li key={keyword}>{keyword}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
+          <GenerationResultBlock result={lastGeneratedResult} onRegenerate={handleRegenerate} />
 
-            {missingMustHave.length ? (
-              <div>
-                <h3 className="vacancy-details__section-title">missing_must_have</h3>
-                <ul>
-                  {missingMustHave.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            {missingNiceToHave.length ? (
-              <div>
-                <h3 className="vacancy-details__section-title">missing_nice_to_have</h3>
-                <ul>
-                  {missingNiceToHave.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            {coverLetterPoints.length ? (
-              <div>
-                <h3 className="vacancy-details__section-title">cover_letter_points</h3>
-                <ul>
-                  {coverLetterPoints.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            {evidenceItems.length ? (
-              <div>
-                <h3 className="vacancy-details__section-title">evidence</h3>
-                <ul>
-                  {evidenceItems.map((item, index) => {
-                    const text = item.text ?? item.evidence_text ?? String(item);
-                    const confidence = item.confidence;
-
-                    return (
-                      <li key={`${text}-${index}`}>
-                        {text} {confidence != null ? `(${formatConfidence(confidence)})` : ''}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {!loading && tailoring && !hasTailoringSections ? (
-          <details>
-            <summary>Raw tailoring JSON</summary>
-            <pre className="vacancy-details__description">{JSON.stringify(tailoring, null, 2)}</pre>
-          </details>
-        ) : null}
-      </section>
-
-      <section className="vacancy-details__documents">
-        <h2 className="vacancy-details__section-title">Генерация документов</h2>
-        <p className="flow-hint">Следующий шаг: сгенерируйте draft и подтвердите (approve) нужную версию.</p>
-
-        {generateError ? <ErrorBanner message={`Generate action: ${generateError}`} /> : null}
-        {approveError ? <ErrorBanner message={`Approve action: ${approveError}`} /> : null}
-        {editError ? <ErrorBanner message={`Edit action: ${editError}`} /> : null}
-        {documentsError ? <ErrorBanner message={`Load documents: ${documentsError}`} /> : null}
-        {editSuccess ? <p className="vacancy-details__docgen-success">{editSuccess}</p> : null}
-
-        <div className="vacancy-details__docgen-actions">
-          <button
-            className="recommendations-toolbar__button"
-            type="button"
-            onClick={handleResumeGeneration}
-            disabled={isGeneratingResume}
-          >
-            {isGeneratingResume ? 'Генерируем черновик резюме...' : (resumeDocuments.length ? 'Перегенерировать resume draft' : 'Сгенерировать черновик резюме')}
-          </button>
-          <button
-            className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
-            type="button"
-            onClick={refreshDocuments}
-            disabled={documentsLoading || isRefreshingDocuments}
-          >
-            {isRefreshingDocuments ? 'Обновляем документы...' : 'Обновить документы'}
-          </button>
-          <button
-            className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
-            type="button"
-            onClick={handleCoverLetterGeneration}
-            disabled={isGeneratingCoverLetter}
-          >
-            {isGeneratingCoverLetter ? 'Генерируем черновик сопроводительного письма...' : (coverLetterDocuments.length ? 'Перегенерировать cover letter draft' : 'Сгенерировать черновик сопроводительного письма')}
-          </button>
-        </div>
-
-        {documentsLoading ? <Loading message="Загружаем документы по вакансии..." /> : null}
-
-        <GenerationResultBlock result={lastGeneratedResult} onПерегенерировать={handleПерегенерировать} />
-
-        {!documentsLoading ? (
-          <div className="vacancy-details__docgen-list">
-            <article className="vacancy-details__docgen-result">
-              <h3 className="vacancy-details__section-title">Resume versions (current vacancy)</h3>
-              {resumeDocuments.length ? (
-                <ul className="vacancy-details__doc-list">
-                  {resumeDocuments.map((item) => (
-                    <li key={item.id} className="vacancy-details__doc-item">
-                      <p><strong>title:</strong> {getSafeText(item.title, '—')}</p>
-                      <p><strong>status:</strong> {getSafeText(item.status, '—')}</p>
-                      <p><strong>created_at:</strong> {formatDateTime(item.created_at) ?? '—'}</p>
-                      <p><strong>approved_at:</strong> {formatDateTime(item.approved_at) ?? '—'}</p>
-                      <p><strong>vacancy_id:</strong> {item.vacancy_id ?? '—'}</p>
-                      <p className="vacancy-details__doc-meta"><strong>генерация:</strong> {renderMetadataCompact(item.метаданные_генерации)}</p>
-                      <h4 className="vacancy-details__section-title">Предпросмотр content_text</h4>
-                      <pre className="vacancy-details__description">{toPreviewText(item.content_text)}</pre>
-                      {item.status === 'draft' ? (
-                        <button
-                          className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
-                          type="button"
-                          onClick={() => startEditingDocument('resume', item)}
-                        >
-                          Edit
-                        </button>
-                      ) : null}
-                      {editingDocumentKey === `resume:${item.id}` ? (
-                        <div className="vacancy-details__edit-panel">
-                          <label className="field-label" htmlFor={`resume-title-${item.id}`}>Название</label>
-                          <input
-                            id={`resume-title-${item.id}`}
-                            className="input"
-                            value={editDraft.title}
-                            onChange={(event) => setEditDraft((current) => ({ ...current, title: event.target.value }))}
-                          />
-                          <label className="field-label" htmlFor={`resume-content-${item.id}`}>Текст</label>
-                          <textarea
-                            id={`resume-content-${item.id}`}
-                            className="textarea"
-                            rows={8}
-                            value={editDraft.content_text}
-                            onChange={(event) => setEditDraft((current) => ({ ...current, content_text: event.target.value }))}
-                          />
-                          {(editDraft.title !== (item.title ?? '') || editDraft.content_text !== (item.content_text ?? '')) ? (
-                            <p className="vacancy-details__edit-warning">Есть несохранённые изменения.</p>
+          {!documentsLoading ? (
+            <div className="vacancy-details__docgen-list">
+              {[['resume', resumeDocuments], ['cover_letter', coverLetterDocuments]].map(([type, items]) => (
+                <article className="vacancy-details__docgen-result" key={type}>
+                  <h3 className="vacancy-details__section-title">{type === 'resume' ? 'Resume versions' : 'Cover letter versions'}</h3>
+                  {items.length ? (
+                    <ul className="vacancy-details__doc-list">
+                      {items.map((item) => (
+                        <li key={item.id} className="vacancy-details__doc-item">
+                          <div className="inline-status-row">
+                            <p><strong>{getSafeText(item.title, '—')}</strong></p>
+                            <StatusPill tone={item.status === 'approved' ? 'success' : 'neutral'}>{getSafeText(item.status, '—')}</StatusPill>
+                          </div>
+                          <p className="vacancy-details__hint-text">created {formatDateTime(item.created_at) ?? '—'} · approved {formatDateTime(item.approved_at) ?? '—'}</p>
+                          <p className="vacancy-details__doc-meta"><strong>генерация:</strong> {renderMetadataCompact(item.метаданные_генерации)}</p>
+                          <pre className="vacancy-details__description">{toPreviewText(item.content_text)}</pre>
+                          {item.status === 'draft' ? (
+                            <button className="recommendations-toolbar__button recommendations-toolbar__button--secondary" type="button" onClick={() => startEditingDocument(type, item)}>Edit</button>
                           ) : null}
-                          <div className="vacancy-details__edit-actions">
+                          {editingDocumentKey === `${type}:${item.id}` ? (
+                            <div className="vacancy-details__edit-panel">
+                              <label className="field-label" htmlFor={`${type}-title-${item.id}`}>Название</label>
+                              <input id={`${type}-title-${item.id}`} className="input" value={editDraft.title} onChange={(event) => setEditDraft((current) => ({ ...current, title: event.target.value }))} />
+                              <label className="field-label" htmlFor={`${type}-content-${item.id}`}>Текст</label>
+                              <textarea id={`${type}-content-${item.id}`} className="textarea" rows={8} value={editDraft.content_text} onChange={(event) => setEditDraft((current) => ({ ...current, content_text: event.target.value }))} />
+                              <div className="vacancy-details__edit-actions">
+                                <button className="recommendations-toolbar__button" type="button" onClick={() => saveEditingDocument(type, item.id)} disabled={Boolean(savingEditByKey[`${type}:${item.id}`])}>
+                                  {savingEditByKey[`${type}:${item.id}`] ? 'Сохраняем...' : 'Сохранить'}
+                                </button>
+                                <button className="recommendations-toolbar__button recommendations-toolbar__button--secondary" type="button" onClick={cancelEditingDocument} disabled={Boolean(savingEditByKey[`${type}:${item.id}`])}>Cancel</button>
+                              </div>
+                            </div>
+                          ) : null}
+                          {item.status === 'draft' ? (
                             <button
                               className="recommendations-toolbar__button"
                               type="button"
-                              onClick={() => saveEditingDocument('resume', item.id)}
-                              disabled={Boolean(savingEditByKey[`resume:${item.id}`])}
+                              onClick={() => (type === 'resume' ? handleApproveResume(item.id) : handleApproveCoverLetter(item.id))}
+                              disabled={Boolean(type === 'resume' ? approvingResumeById[item.id] : approvingCoverLetterById[item.id])}
                             >
-                              {savingEditByKey[`resume:${item.id}`] ? 'Сохраняем...' : 'Сохранить'}
+                              {type === 'resume'
+                                ? (approvingResumeById[item.id] ? 'Подтверждаем резюме...' : 'Подтвердить резюме')
+                                : (approvingCoverLetterById[item.id] ? 'Подтверждаем сопроводительное письмо...' : 'Подтвердить сопроводительное письмо')}
                             </button>
-                            <button
-                              className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
-                              type="button"
-                              onClick={cancelEditingDocument}
-                              disabled={Boolean(savingEditByKey[`resume:${item.id}`])}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-                      {item.status === 'draft' ? (
-                        <button
-                          className="recommendations-toolbar__button"
-                          type="button"
-                          onClick={() => handleApproveResume(item.id)}
-                          disabled={Boolean(approvingResumeById[item.id])}
-                        >
-                          {approvingResumeById[item.id] ? 'Подтверждаем резюме...' : 'Подтвердить резюме'}
-                        </button>
-                      ) : (
-                        <p className="vacancy-details__doc-approved">Подтверждено</p>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="vacancy-details__hint-text">Для этой вакансии пока нет resume versions.</p>
-              )}
-            </article>
+                          ) : (
+                            <p className="vacancy-details__doc-approved">Подтверждено</p>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="vacancy-details__hint-text">Пока нет документов для этой вакансии.</p>
+                  )}
+                </article>
+              ))}
+            </div>
+          ) : null}
 
-            <article className="vacancy-details__docgen-result">
-              <h3 className="vacancy-details__section-title">Cover letter versions (current vacancy)</h3>
-              {coverLetterDocuments.length ? (
-                <ul className="vacancy-details__doc-list">
-                  {coverLetterDocuments.map((item) => (
-                    <li key={item.id} className="vacancy-details__doc-item">
-                      <p><strong>title:</strong> {getSafeText(item.title, '—')}</p>
-                      <p><strong>status:</strong> {getSafeText(item.status, '—')}</p>
-                      <p><strong>created_at:</strong> {formatDateTime(item.created_at) ?? '—'}</p>
-                      <p><strong>approved_at:</strong> {formatDateTime(item.approved_at) ?? '—'}</p>
-                      <p><strong>vacancy_id:</strong> {item.vacancy_id ?? '—'}</p>
-                      <p className="vacancy-details__doc-meta"><strong>генерация:</strong> {renderMetadataCompact(item.метаданные_генерации)}</p>
-                      <h4 className="vacancy-details__section-title">Предпросмотр content_text</h4>
-                      <pre className="vacancy-details__description">{toPreviewText(item.content_text)}</pre>
-                      {item.status === 'draft' ? (
-                        <button
-                          className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
-                          type="button"
-                          onClick={() => startEditingDocument('cover_letter', item)}
-                        >
-                          Edit
-                        </button>
-                      ) : null}
-                      {editingDocumentKey === `cover_letter:${item.id}` ? (
-                        <div className="vacancy-details__edit-panel">
-                          <label className="field-label" htmlFor={`letter-title-${item.id}`}>Название</label>
-                          <input
-                            id={`letter-title-${item.id}`}
-                            className="input"
-                            value={editDraft.title}
-                            onChange={(event) => setEditDraft((current) => ({ ...current, title: event.target.value }))}
-                          />
-                          <label className="field-label" htmlFor={`letter-content-${item.id}`}>Текст</label>
-                          <textarea
-                            id={`letter-content-${item.id}`}
-                            className="textarea"
-                            rows={8}
-                            value={editDraft.content_text}
-                            onChange={(event) => setEditDraft((current) => ({ ...current, content_text: event.target.value }))}
-                          />
-                          {(editDraft.title !== (item.title ?? '') || editDraft.content_text !== (item.content_text ?? '')) ? (
-                            <p className="vacancy-details__edit-warning">Есть несохранённые изменения.</p>
-                          ) : null}
-                          <div className="vacancy-details__edit-actions">
-                            <button
-                              className="recommendations-toolbar__button"
-                              type="button"
-                              onClick={() => saveEditingDocument('cover_letter', item.id)}
-                              disabled={Boolean(savingEditByKey[`cover_letter:${item.id}`])}
-                            >
-                              {savingEditByKey[`cover_letter:${item.id}`] ? 'Сохраняем...' : 'Сохранить'}
-                            </button>
-                            <button
-                              className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
-                              type="button"
-                              onClick={cancelEditingDocument}
-                              disabled={Boolean(savingEditByKey[`cover_letter:${item.id}`])}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-                      {item.status === 'draft' ? (
-                        <button
-                          className="recommendations-toolbar__button"
-                          type="button"
-                          onClick={() => handleApproveCoverLetter(item.id)}
-                          disabled={Boolean(approvingCoverLetterById[item.id])}
-                        >
-                          {approvingCoverLetterById[item.id] ? 'Подтверждаем сопроводительное письмо...' : 'Подтвердить сопроводительное письмо'}
-                        </button>
-                      ) : (
-                        <p className="vacancy-details__doc-approved">Подтверждено</p>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="vacancy-details__hint-text">Для этой вакансии пока нет версии сопроводительного письма.</p>
-              )}
-            </article>
-          </div>
-        ) : null}
-
-        <p className="vacancy-details__hint-text">
-          Need advanced edits?{' '}
-          <Link className="vacancy-details__link" to="/settings">Открыть полный редактор в настройках</Link>
-        </p>
-      </section>
+          <p className="vacancy-details__hint-text">Need advanced edits? <Link className="vacancy-details__link" to="/settings">Открыть полный редактор в настройках</Link></p>
+        </SectionCard>
+      </div>
     </section>
   );
 }
