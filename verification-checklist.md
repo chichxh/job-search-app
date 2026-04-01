@@ -70,3 +70,19 @@ npm run dev
 - LLM provider `openai` не реализован (planned).
 - Embedding providers `openai` и `gigachat` не реализованы (planned).
 - Чек-лист ориентирован на ручную smoke-проверку; полноценный e2e automation пока не добавлялся в рамках этого этапа.
+
+## 6) Resume file import verification (Settings)
+
+Для полного сценария и ограничений MVP использовать:
+- `backend/docs/resume_import_mvp.md`
+
+Короткий path:
+1. Login → Settings.
+2. Upload `sample_resume.txt` и `sample_resume.pdf` из `backend/tests/fixtures/resume/` (для `.docx` использовать любой локальный текстовый DOCX sample).
+3. Verify extracted text (`text length`) не пустой.
+4. Verify parsed preview fields (`full_name/title/experiences/skills`).
+5. Apply import.
+6. Verify профиль обновлён (main fields + experiences + skills).
+7. Проверить ограничения:
+   - `low_signal_resume.txt` → low-signal/too-short validation error;
+   - `no_text_resume.pdf` → no-extractable-text validation error.

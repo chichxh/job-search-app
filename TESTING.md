@@ -55,3 +55,16 @@ python scripts/verify_migrations.py
 ```
 
 Проверка фейлится, если БД недоступна, миграции не применяются до `head`, `current != heads` или появились неожиданные множественные `heads`.
+
+## Resume import flow (MVP)
+
+Подробный документ по reproducible flow, ограничениям форматов и manual checklist:
+
+- `backend/docs/resume_import_mvp.md`
+
+Быстрый запуск целевых backend тестов:
+
+```bash
+cd backend
+python -m pytest tests/test_resume_import_api.py tests/test_resume_profile_draft_api.py
+```
