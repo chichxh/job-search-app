@@ -59,7 +59,7 @@ function getUserFacingError(error, fallback) {
 }
 
 function getDocumentTypeLabel(type) {
-  return type === 'resume' ? 'Resume' : 'Cover letter';
+  return type === 'resume' ? 'Резюме' : 'Сопроводительное письмо';
 }
 
 function getMetadataEntries(metadata) {
@@ -73,7 +73,7 @@ function getMetadataEntries(metadata) {
 function renderMetadataCompact(metadata) {
   const metadataEntries = getMetadataEntries(metadata);
   if (!metadataEntries.length) {
-    return 'No generation metadata';
+    return 'Нет метаданных генерации';
   }
 
   const compactKeys = ['provider', 'model', 'prompt_version', 'generated_at'];
@@ -95,24 +95,24 @@ function renderMetadataCompact(metadata) {
     .join(' · ');
 }
 
-function GenerationResultBlock({ result, onRegenerate }) {
+function GenerationResultBlock({ result, onПерегенерировать }) {
   if (!result?.document) {
     return null;
   }
 
   const { type, document } = result;
-  const metadataEntries = getMetadataEntries(document.generation_metadata);
+  const metadataEntries = getMetadataEntries(document.метаданные_генерации);
 
   return (
     <article className="vacancy-details__created-draft" aria-live="polite">
-      <h3 className="vacancy-details__section-title">Created draft ({getDocumentTypeLabel(type)})</h3>
+      <h3 className="vacancy-details__section-title">Созданный черновик ({getDocumentTypeLabel(type)})</h3>
       <p><strong>title:</strong> {getSafeText(document.title, '—')}</p>
       <p><strong>status:</strong> {getSafeText(document.status, '—')}</p>
       <p><strong>created_at:</strong> {formatDateTime(document.created_at) ?? '—'}</p>
       <p><strong>vacancy_id:</strong> {document.vacancy_id ?? '—'}</p>
 
       <div>
-        <h4 className="vacancy-details__section-title">generation_metadata</h4>
+        <h4 className="vacancy-details__section-title">метаданные_генерации</h4>
         {metadataEntries.length ? (
           <ul className="vacancy-details__metadata-list">
             {metadataEntries.map(([key, value]) => (
@@ -129,9 +129,9 @@ function GenerationResultBlock({ result, onRegenerate }) {
       <button
         className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
         type="button"
-        onClick={() => onRegenerate(type)}
+        onClick={() => onПерегенерировать(type)}
       >
-        Regenerate {type === 'resume' ? 'resume' : 'cover letter'}
+        Перегенерировать {type === 'resume' ? 'resume' : 'cover letter'}
       </button>
     </article>
   );
@@ -224,10 +224,10 @@ export default function VacancyDetailsPage() {
         : await updateCoverLetterVersion(profileId, id, payload);
 
       applyUpdatedDocument(type, updated);
-      setEditSuccess(`${getDocumentTypeLabel(type)} draft saved.`);
+      setEditSuccess(`${getDocumentTypeLabel(type)} сохранён.`);
       setEditingDocumentKey('');
     } catch (requestError) {
-      setEditError(getUserFacingError(requestError, `Failed to save ${getDocumentTypeLabel(type).toLowerCase()} draft.`));
+      setEditError(getUserFacingError(requestError, `Не удалось сохранить ${getDocumentTypeLabel(type).toLowerCase()} draft.`));
     } finally {
       setSavingEditByKey((current) => ({ ...current, [key]: false }));
     }
@@ -306,9 +306,9 @@ export default function VacancyDetailsPage() {
     setIsTrackingApplication(true);
     try {
       await createApplication(profileId, { vacancy_id: Number(vacancyId) });
-      setTrackSuccess('Vacancy added to applications funnel.');
+      setTrackSuccess('Вакансия добавлена в воронку откликов.');
     } catch (requestError) {
-      setTrackError(getUserFacingError(requestError, 'Failed to track application for this vacancy.'));
+      setTrackError(getUserFacingError(requestError, 'Не удалось добавить эту вакансию в отклики.'));
     } finally {
       setIsTrackingApplication(false);
     }
@@ -325,7 +325,7 @@ export default function VacancyDetailsPage() {
       setLastGeneratedResult({ type: 'resume', document: createdDraft });
       await loadDocuments({ silent: true });
     } catch (requestError) {
-      setGenerateError(getUserFacingError(requestError, 'Failed to generate resume draft.'));
+      setGenerateError(getUserFacingError(requestError, 'Failed to generate resume.'));
     } finally {
       setIsGeneratingResume(false);
     }
@@ -342,13 +342,13 @@ export default function VacancyDetailsPage() {
       setLastGeneratedResult({ type: 'cover_letter', document: createdDraft });
       await loadDocuments({ silent: true });
     } catch (requestError) {
-      setGenerateError(getUserFacingError(requestError, 'Failed to generate cover letter draft.'));
+      setGenerateError(getUserFacingError(requestError, 'Failed to generate cover letter.'));
     } finally {
       setIsGeneratingCoverLetter(false);
     }
   }, [loadDocuments, profileId, vacancyId]);
 
-  const handleRegenerate = useCallback((type) => {
+  const handleПерегенерировать = useCallback((type) => {
     if (type === 'resume') {
       void handleResumeGeneration();
       return;
@@ -367,7 +367,7 @@ export default function VacancyDetailsPage() {
       const approved = await approveResumeVersion(profileId, id);
       setResumeDocuments((current) => current.map((item) => (item.id === id ? approved : item)));
     } catch (requestError) {
-      setApproveError(getUserFacingError(requestError, 'Failed to approve resume draft.'));
+      setApproveError(getUserFacingError(requestError, 'Failed to approve resume.'));
     } finally {
       setApprovingResumeById((current) => ({ ...current, [id]: false }));
     }
@@ -383,7 +383,7 @@ export default function VacancyDetailsPage() {
       const approved = await approveCoverLetterVersion(profileId, id);
       setCoverLetterDocuments((current) => current.map((item) => (item.id === id ? approved : item)));
     } catch (requestError) {
-      setApproveError(getUserFacingError(requestError, 'Failed to approve cover letter draft.'));
+      setApproveError(getUserFacingError(requestError, 'Failed to approve cover letter.'));
     } finally {
       setApprovingCoverLetterById((current) => ({ ...current, [id]: false }));
     }
@@ -490,7 +490,7 @@ export default function VacancyDetailsPage() {
     <section className="page-stack">
       <h1>Vacancy details</h1>
 
-      {loading ? <Loading message="Loading vacancy details..." /> : null}
+      {loading ? <Loading message="Загружаем детали вакансии..." /> : null}
       {!loading && vacancyError ? <ErrorBanner message={vacancyError} /> : null}
 
       {!loading && vacancy ? (
@@ -522,7 +522,7 @@ export default function VacancyDetailsPage() {
               onClick={handleTrackApplication}
               disabled={isTrackingApplication}
             >
-              {isTrackingApplication ? 'Tracking...' : 'Track application'}
+              {isTrackingApplication ? 'Добавляем...' : 'Добавить в отклики'}
             </button>
             <Link className="vacancy-details__link" to="/applications">
               Open applications funnel
@@ -642,7 +642,7 @@ export default function VacancyDetailsPage() {
       </section>
 
       <section className="vacancy-details__documents">
-        <h2 className="vacancy-details__section-title">Document generation</h2>
+        <h2 className="vacancy-details__section-title">Генерация документов</h2>
         <p className="flow-hint">Следующий шаг: сгенерируйте draft и подтвердите (approve) нужную версию.</p>
 
         {generateError ? <ErrorBanner message={`Generate action: ${generateError}`} /> : null}
@@ -658,7 +658,7 @@ export default function VacancyDetailsPage() {
             onClick={handleResumeGeneration}
             disabled={isGeneratingResume}
           >
-            {isGeneratingResume ? 'Generating resume draft...' : (resumeDocuments.length ? 'Regenerate resume draft' : 'Generate resume draft')}
+            {isGeneratingResume ? 'Генерируем черновик резюме...' : (resumeDocuments.length ? 'Перегенерировать resume draft' : 'Сгенерировать черновик резюме')}
           </button>
           <button
             className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
@@ -666,7 +666,7 @@ export default function VacancyDetailsPage() {
             onClick={refreshDocuments}
             disabled={documentsLoading || isRefreshingDocuments}
           >
-            {isRefreshingDocuments ? 'Refreshing documents...' : 'Обновить документы'}
+            {isRefreshingDocuments ? 'Обновляем документы...' : 'Обновить документы'}
           </button>
           <button
             className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
@@ -674,13 +674,13 @@ export default function VacancyDetailsPage() {
             onClick={handleCoverLetterGeneration}
             disabled={isGeneratingCoverLetter}
           >
-            {isGeneratingCoverLetter ? 'Generating cover letter draft...' : (coverLetterDocuments.length ? 'Regenerate cover letter draft' : 'Generate cover letter draft')}
+            {isGeneratingCoverLetter ? 'Генерируем черновик сопроводительного письма...' : (coverLetterDocuments.length ? 'Перегенерировать cover letter draft' : 'Сгенерировать черновик сопроводительного письма')}
           </button>
         </div>
 
-        {documentsLoading ? <Loading message="Loading vacancy documents..." /> : null}
+        {documentsLoading ? <Loading message="Загружаем документы по вакансии..." /> : null}
 
-        <GenerationResultBlock result={lastGeneratedResult} onRegenerate={handleRegenerate} />
+        <GenerationResultBlock result={lastGeneratedResult} onПерегенерировать={handleПерегенерировать} />
 
         {!documentsLoading ? (
           <div className="vacancy-details__docgen-list">
@@ -695,8 +695,8 @@ export default function VacancyDetailsPage() {
                       <p><strong>created_at:</strong> {formatDateTime(item.created_at) ?? '—'}</p>
                       <p><strong>approved_at:</strong> {formatDateTime(item.approved_at) ?? '—'}</p>
                       <p><strong>vacancy_id:</strong> {item.vacancy_id ?? '—'}</p>
-                      <p className="vacancy-details__doc-meta"><strong>generation:</strong> {renderMetadataCompact(item.generation_metadata)}</p>
-                      <h4 className="vacancy-details__section-title">content_text preview</h4>
+                      <p className="vacancy-details__doc-meta"><strong>генерация:</strong> {renderMetadataCompact(item.метаданные_генерации)}</p>
+                      <h4 className="vacancy-details__section-title">Предпросмотр content_text</h4>
                       <pre className="vacancy-details__description">{toPreviewText(item.content_text)}</pre>
                       {item.status === 'draft' ? (
                         <button
@@ -709,14 +709,14 @@ export default function VacancyDetailsPage() {
                       ) : null}
                       {editingDocumentKey === `resume:${item.id}` ? (
                         <div className="vacancy-details__edit-panel">
-                          <label className="field-label" htmlFor={`resume-title-${item.id}`}>Title</label>
+                          <label className="field-label" htmlFor={`resume-title-${item.id}`}>Название</label>
                           <input
                             id={`resume-title-${item.id}`}
                             className="input"
                             value={editDraft.title}
                             onChange={(event) => setEditDraft((current) => ({ ...current, title: event.target.value }))}
                           />
-                          <label className="field-label" htmlFor={`resume-content-${item.id}`}>Content text</label>
+                          <label className="field-label" htmlFor={`resume-content-${item.id}`}>Текст</label>
                           <textarea
                             id={`resume-content-${item.id}`}
                             className="textarea"
@@ -725,7 +725,7 @@ export default function VacancyDetailsPage() {
                             onChange={(event) => setEditDraft((current) => ({ ...current, content_text: event.target.value }))}
                           />
                           {(editDraft.title !== (item.title ?? '') || editDraft.content_text !== (item.content_text ?? '')) ? (
-                            <p className="vacancy-details__edit-warning">You have unsaved changes.</p>
+                            <p className="vacancy-details__edit-warning">Есть несохранённые изменения.</p>
                           ) : null}
                           <div className="vacancy-details__edit-actions">
                             <button
@@ -734,7 +734,7 @@ export default function VacancyDetailsPage() {
                               onClick={() => saveEditingDocument('resume', item.id)}
                               disabled={Boolean(savingEditByKey[`resume:${item.id}`])}
                             >
-                              {savingEditByKey[`resume:${item.id}`] ? 'Saving...' : 'Save'}
+                              {savingEditByKey[`resume:${item.id}`] ? 'Сохраняем...' : 'Сохранить'}
                             </button>
                             <button
                               className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
@@ -754,10 +754,10 @@ export default function VacancyDetailsPage() {
                           onClick={() => handleApproveResume(item.id)}
                           disabled={Boolean(approvingResumeById[item.id])}
                         >
-                          {approvingResumeById[item.id] ? 'Approving resume...' : 'Approve resume'}
+                          {approvingResumeById[item.id] ? 'Подтверждаем резюме...' : 'Подтвердить резюме'}
                         </button>
                       ) : (
-                        <p className="vacancy-details__doc-approved">Approved / finalized</p>
+                        <p className="vacancy-details__doc-approved">Подтверждено</p>
                       )}
                     </li>
                   ))}
@@ -778,8 +778,8 @@ export default function VacancyDetailsPage() {
                       <p><strong>created_at:</strong> {formatDateTime(item.created_at) ?? '—'}</p>
                       <p><strong>approved_at:</strong> {formatDateTime(item.approved_at) ?? '—'}</p>
                       <p><strong>vacancy_id:</strong> {item.vacancy_id ?? '—'}</p>
-                      <p className="vacancy-details__doc-meta"><strong>generation:</strong> {renderMetadataCompact(item.generation_metadata)}</p>
-                      <h4 className="vacancy-details__section-title">content_text preview</h4>
+                      <p className="vacancy-details__doc-meta"><strong>генерация:</strong> {renderMetadataCompact(item.метаданные_генерации)}</p>
+                      <h4 className="vacancy-details__section-title">Предпросмотр content_text</h4>
                       <pre className="vacancy-details__description">{toPreviewText(item.content_text)}</pre>
                       {item.status === 'draft' ? (
                         <button
@@ -792,14 +792,14 @@ export default function VacancyDetailsPage() {
                       ) : null}
                       {editingDocumentKey === `cover_letter:${item.id}` ? (
                         <div className="vacancy-details__edit-panel">
-                          <label className="field-label" htmlFor={`letter-title-${item.id}`}>Title</label>
+                          <label className="field-label" htmlFor={`letter-title-${item.id}`}>Название</label>
                           <input
                             id={`letter-title-${item.id}`}
                             className="input"
                             value={editDraft.title}
                             onChange={(event) => setEditDraft((current) => ({ ...current, title: event.target.value }))}
                           />
-                          <label className="field-label" htmlFor={`letter-content-${item.id}`}>Content text</label>
+                          <label className="field-label" htmlFor={`letter-content-${item.id}`}>Текст</label>
                           <textarea
                             id={`letter-content-${item.id}`}
                             className="textarea"
@@ -808,7 +808,7 @@ export default function VacancyDetailsPage() {
                             onChange={(event) => setEditDraft((current) => ({ ...current, content_text: event.target.value }))}
                           />
                           {(editDraft.title !== (item.title ?? '') || editDraft.content_text !== (item.content_text ?? '')) ? (
-                            <p className="vacancy-details__edit-warning">You have unsaved changes.</p>
+                            <p className="vacancy-details__edit-warning">Есть несохранённые изменения.</p>
                           ) : null}
                           <div className="vacancy-details__edit-actions">
                             <button
@@ -817,7 +817,7 @@ export default function VacancyDetailsPage() {
                               onClick={() => saveEditingDocument('cover_letter', item.id)}
                               disabled={Boolean(savingEditByKey[`cover_letter:${item.id}`])}
                             >
-                              {savingEditByKey[`cover_letter:${item.id}`] ? 'Saving...' : 'Save'}
+                              {savingEditByKey[`cover_letter:${item.id}`] ? 'Сохраняем...' : 'Сохранить'}
                             </button>
                             <button
                               className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
@@ -837,16 +837,16 @@ export default function VacancyDetailsPage() {
                           onClick={() => handleApproveCoverLetter(item.id)}
                           disabled={Boolean(approvingCoverLetterById[item.id])}
                         >
-                          {approvingCoverLetterById[item.id] ? 'Approving cover letter...' : 'Approve cover letter'}
+                          {approvingCoverLetterById[item.id] ? 'Подтверждаем сопроводительное письмо...' : 'Подтвердить сопроводительное письмо'}
                         </button>
                       ) : (
-                        <p className="vacancy-details__doc-approved">Approved / finalized</p>
+                        <p className="vacancy-details__doc-approved">Подтверждено</p>
                       )}
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="vacancy-details__hint-text">Для этой вакансии пока нет cover letter versions.</p>
+                <p className="vacancy-details__hint-text">Для этой вакансии пока нет версии сопроводительного письма.</p>
               )}
             </article>
           </div>
@@ -854,7 +854,7 @@ export default function VacancyDetailsPage() {
 
         <p className="vacancy-details__hint-text">
           Need advanced edits?{' '}
-          <Link className="vacancy-details__link" to="/settings">Open full editor in Settings</Link>
+          <Link className="vacancy-details__link" to="/settings">Открыть полный редактор в настройках</Link>
         </p>
       </section>
     </section>

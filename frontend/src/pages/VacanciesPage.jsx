@@ -163,9 +163,14 @@ export default function VacanciesPage() {
 
   return (
     <section className="page-stack">
-      <h1>Vacancies</h1>
+      <header className="page-header">
+        <div>
+          <h1>Вакансии</h1>
+          <p className="page-header__subtitle">Собирайте вакансии и поддерживайте чистый шортлист для мэтчинга.</p>
+        </div>
+      </header>
 
-      <div className="vacancies-toolbar">
+      <div className="toolbar vacancies-toolbar">
         <button
           className="recommendations-toolbar__button"
           type="button"
@@ -189,14 +194,14 @@ export default function VacanciesPage() {
 
       {importError ? <ErrorBanner message={importError} /> : null}
 
-      <div className="vacancy-filters" aria-label="Vacancy filters">
+      <div className="toolbar toolbar--subtle vacancy-filters" aria-label="Vacancy filters">
         <input
           className="vacancy-filters__search"
           type="search"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search by title, company or location"
-          aria-label="Search vacancies"
+          placeholder="Поиск по названию, компании или локации"
+          aria-label="Поиск вакансий"
         />
         <label className="vacancy-filters__toggle">
           <input
@@ -204,11 +209,11 @@ export default function VacanciesPage() {
             checked={onlyOpen}
             onChange={(event) => setOnlyOpen(event.target.checked)}
           />
-          <span>Only open</span>
+          <span>Только открытые</span>
         </label>
       </div>
 
-      {loading ? <Loading message="Loading vacancies..." /> : null}
+      {loading ? <Loading message="Загружаем вакансии..." /> : null}
       {!loading && error ? <ErrorBanner message={error} /> : null}
 
       {!loading && !error ? (
@@ -217,9 +222,9 @@ export default function VacanciesPage() {
             {filteredVacancies.map((vacancy) => (
               <VacancyCard
                 key={vacancy.id}
-                title={getSafeText(vacancy.title, 'Vacancy title not specified')}
-                company={getSafeText(vacancy.company_name ?? vacancy.company, 'Company not specified')}
-                location={getSafeText(vacancy.location, 'Location not specified')}
+                title={getSafeText(vacancy.title, 'Название вакансии не указано')}
+                company={getSafeText(vacancy.company_name ?? vacancy.company, 'Компания не указана')}
+                location={getSafeText(vacancy.location, 'Локация не указана')}
                 salary={formatSalary(vacancy)}
                 createdAt={formatDateTime(vacancy.created_at)}
                 updatedAt={formatDateTime(vacancy.updated_at)}
@@ -228,7 +233,7 @@ export default function VacanciesPage() {
             ))}
           </div>
         ) : (
-          <p className="loading">{emptyStateMessage}</p>
+          <p className="empty-state">{emptyStateMessage}</p>
         )
       ) : null}
     </section>

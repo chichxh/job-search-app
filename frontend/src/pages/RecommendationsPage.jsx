@@ -139,9 +139,14 @@ export default function RecommendationsPage() {
 
   return (
     <section className="page-stack">
-      <h1>Recommendations</h1>
+      <header className="page-header">
+        <div>
+          <h1>Рекомендации</h1>
+          <p className="page-header__subtitle">Пересчитывайте ранжирование и фокусируйтесь на сильнейших вакансиях.</p>
+        </div>
+      </header>
 
-      <div className="recommendations-toolbar" aria-label="Recommendations controls">
+      <div className="toolbar recommendations-toolbar" aria-label="Recommendations controls">
         <button
           className="recommendations-toolbar__button"
           type="button"
@@ -165,18 +170,16 @@ export default function RecommendationsPage() {
             checked={hideWeak}
             onChange={(event) => setHideWeak(event.target.checked)}
           />
-          <span>Скрывать weak</span>
+          <span>Скрывать слабые</span>
         </label>
       </div>
 
-      <p className="loading">
-        limit: {settings.recommendationsLimit} · hideReject: {settings.hideReject ? 'on' : 'off'}
-      </p>
+      <p className="info-banner">лимит: {settings.recommendationsLimit} · hideReject: {settings.hideReject ? 'вкл' : 'выкл'}</p>
 
       {taskId ? (
-        <p className="loading">Задача {taskId}: {taskState}</p>
+        <p className="info-banner">Задача {taskId}: {taskState}</p>
       ) : taskState === 'SUCCESS' ? (
-        <p className="loading">Рекомендации пересчитаны.</p>
+        <p className="success-banner">Рекомендации пересчитаны.</p>
       ) : null}
 
       {taskState === 'SUCCESS' && !taskId ? (
@@ -187,7 +190,7 @@ export default function RecommendationsPage() {
 
       {taskError ? <ErrorBanner message={taskError} /> : null}
 
-      {loading ? <Loading message="Loading recommendations..." /> : null}
+      {loading ? <Loading message="Загружаем рекомендации..." /> : null}
       {!loading && error ? <ErrorBanner message={error} /> : null}
 
       {!loading && !error ? (
@@ -196,27 +199,27 @@ export default function RecommendationsPage() {
             {visibleRecommendations.map((item) => (
               <article className="recommendations-item" key={item.id}>
                 <VacancyCard
-                  title={getSafeText(item.title, 'Vacancy title not specified')}
-                  company={getSafeText(item.company_name ?? item.company, 'Company not specified')}
-                  location={getSafeText(item.location, 'Location not specified')}
-                  salary="Open vacancy"
+                  title={getSafeText(item.title, 'Название вакансии не указано')}
+                  company={getSafeText(item.company_name ?? item.company, 'Компания не указана')}
+                  location={getSafeText(item.location, 'Локация не указана')}
+                  salary="Открытая вакансия"
                   createdAt={formatDateTime(item.created_at)}
                   updatedAt={formatDateTime(item.updated_at)}
                   to={`/vacancies/${item.id}`}
                 />
                 <div className="recommendations-item__score">
                   <p className="recommendations-item__metric">
-                    final_score: <strong>{formatScore(item.final_score)}</strong>
+                    итоговый_скор:  <strong>{formatScore(item.final_score)}</strong>
                   </p>
                   <p className={`recommendations-item__verdict recommendations-item__verdict--${item.verdict}`}>
-                    verdict: {item.verdict}
+                    вердикт: {item.verdict}
                   </p>
                 </div>
               </article>
             ))}
           </div>
         ) : (
-          <p className="loading">
+          <p className="empty-state">
             {recommendations.length === 0
               ? 'Пока нет рекомендаций. Нажмите «Пересчитать рекомендации».'
               : 'Нет рекомендаций по текущим фильтрам. Попробуйте отключить фильтр weak/reject.'}

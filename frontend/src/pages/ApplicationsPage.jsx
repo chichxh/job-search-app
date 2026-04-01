@@ -91,7 +91,7 @@ export default function ApplicationsPage() {
       setResumeVersions(resumeResponse);
       setCoverLetters(coverResponse);
     } catch (requestError) {
-      setError(requestError.message || 'Failed to load applications');
+      setError(requestError.message || 'Не удалось загрузить отклики');
     } finally {
       setLoading(false);
     }
@@ -195,12 +195,12 @@ export default function ApplicationsPage() {
     try {
       const created = await createApplication(profileId, { vacancy_id: Number(selectedVacancyId) });
       setApplications((current) => [created, ...current]);
-      setCreateSuccess('Application added to funnel.');
+      setCreateSuccess('Отклик добавлен в воронку.');
       setSelectedVacancyId('');
       setSelectedApplicationId(created.id);
       await openDetails(created.id);
     } catch (requestError) {
-      setCreateError(requestError.message || 'Failed to create application');
+      setCreateError(requestError.message || 'Не удалось создать отклик');
     }
   };
 
@@ -213,7 +213,7 @@ export default function ApplicationsPage() {
       }
       await refreshHistory(applicationId);
     } catch (requestError) {
-      setError(requestError.message || 'Failed to change status');
+      setError(requestError.message || 'Не удалось изменить статус');
     }
   };
 
@@ -232,7 +232,7 @@ export default function ApplicationsPage() {
       setSelectedApplication(updated);
       await refreshHistory(selectedApplicationId);
     } catch (requestError) {
-      setError(requestError.message || 'Failed to save application');
+      setError(requestError.message || 'Не удалось сохранить отклик');
     }
   };
 
@@ -245,12 +245,12 @@ export default function ApplicationsPage() {
         setSelectedApplication(null);
       }
     } catch (requestError) {
-      setError(requestError.message || 'Failed to delete application');
+      setError(requestError.message || 'Не удалось удалить отклик');
     }
   };
 
   if (loading) {
-    return <Loading text="Loading applications..." />;
+    return <Loading message="Загружаем отклики..." />;
   }
 
   const selectedHistory = selectedApplicationId ? historyByApplicationId[selectedApplicationId] || [] : [];
@@ -263,75 +263,75 @@ export default function ApplicationsPage() {
 
   return (
     <section className="page-stack">
-      <h1>Applications funnel</h1>
+      <h1>Воронка откликов</h1>
       {error ? <ErrorBanner message={error} /> : null}
 
-      <section className="applications-summary" aria-label="Applications summary">
+      <section className="applications-summary" aria-label="Сводка по откликам">
         <article>
-          <p>Total applications</p>
+          <p>Всего откликов</p>
           <strong>{summary.total}</strong>
         </article>
         <article>
-          <p>Active</p>
+          <p>Активные</p>
           <strong>{summary.active}</strong>
         </article>
         <article>
-          <p>Applied</p>
+          <p>Отправлено</p>
           <strong>{summary.applied}</strong>
         </article>
         <article>
-          <p>Interview stage</p>
+          <p>Этап интервью</p>
           <strong>{summary.interview}</strong>
         </article>
         <article>
-          <p>Offers</p>
+          <p>Офферы</p>
           <strong>{summary.offers}</strong>
         </article>
       </section>
 
       <article className="vacancy-details">
-        <h2 className="vacancy-details__section-title">Create from vacancy</h2>
+        <h2 className="vacancy-details__section-title">Создать из вакансии</h2>
         <div className="applications-create-row">
           <select value={selectedVacancyId} onChange={(event) => setSelectedVacancyId(event.target.value)}>
-            <option value="">Select vacancy</option>
+            <option value="">Выберите вакансию</option>
             {vacancies.map((vacancy) => (
               <option key={vacancy.id} value={vacancy.id}>
-                {vacancy.title} — {vacancy.company_name || 'Unknown company'}
+                {vacancy.title} — {vacancy.company_name || 'Неизвестная компания'}
               </option>
             ))}
           </select>
-          <button className="recommendations-toolbar__button" type="button" onClick={handleCreate}>Add to applications</button>
+          <button className="recommendations-toolbar__button" type="button" onClick={handleCreate}>Добавить в отклики</button>
         </div>
         {createSuccess ? <p className="vacancy-details__docgen-success">{createSuccess}</p> : null}
         {createError ? <ErrorBanner message={createError} /> : null}
       </article>
 
       <article className="vacancy-details">
-        <h2 className="vacancy-details__section-title">Filters & sorting</h2>
+        <h2 className="vacancy-details__section-title">Фильтры и сортировка</h2>
         <div className="applications-filters">
           <label>
-            Search vacancy / company
+            Поиск по вакансии / компании
             <input
               type="search"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="e.g. Frontend, Acme"
+              placeholder="например: Frontend, Acme"
             />
           </label>
           <label>
             Status
             <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-              <option value="all">All statuses</option>
+              <option value="all">Все статусы</option>
               {STATUSES.map((statusValue) => (
                 <option key={statusValue} value={statusValue}>{statusValue}</option>
               ))}
             </select>
           </label>
           <label>
-            Sort by updated
+            Сортировка по обновлению
             <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value)}>
-              <option value="updated_desc">Newest first</option>
-              <option value="updated_asc">Oldest first</option>
+              <option value="updated_desc">Сначала новые</option>
+              <option value="updated_asc">Сначала старые</option>
             </select>
           </label>
           <label className="applications-filters__checkbox">
@@ -340,7 +340,7 @@ export default function ApplicationsPage() {
               checked={hideArchived}
               onChange={(event) => setHideArchived(event.target.checked)}
             />
-            Hide archived
+            Скрывать архивные
           </label>
         </div>
       </article>
@@ -353,7 +353,7 @@ export default function ApplicationsPage() {
               <span>{(grouped[status] || []).length}</span>
             </h3>
             <div className="applications-column__items">
-              {(grouped[status] || []).length === 0 ? <p className="applications-column__empty">No applications</p> : null}
+              {(grouped[status] || []).length === 0 ? <p className="applications-column__empty">Нет откликов</p> : null}
               {(grouped[status] || []).map((application) => {
                 const vacancy = vacancyMap.get(application.vacancy_id);
                 const resume = application.resume_version_id ? resumeMap.get(application.resume_version_id) : null;
@@ -363,18 +363,18 @@ export default function ApplicationsPage() {
 
                 return (
                   <div className="applications-card" key={application.id}>
-                    <p className="applications-card__title"><strong>{vacancy?.title ?? `Vacancy #${application.vacancy_id}`}</strong></p>
-                    <p>{vacancy?.company_name || 'Unknown company'}</p>
-                    <p>Status: <span className="applications-card__status">{application.status}</span></p>
-                    <p>Updated: {formatDateTime(application.updated_at) ?? '—'}</p>
-                    <p>Note: {getNotePreview(application.note)}</p>
+                    <p className="applications-card__title"><strong>{vacancy?.title ?? `Вакансия #${application.vacancy_id}`}</strong></p>
+                    <p>{vacancy?.company_name || 'Неизвестная компания'}</p>
+                    <p>Статус: <span className="applications-card__status">{application.status}</span></p>
+                    <p>Обновлено: {formatDateTime(application.updated_at) ?? '—'}</p>
+                    <p>Заметка: {getNotePreview(application.note)}</p>
                     <p>
-                      Resume: {resume?.title || 'Not linked'}
-                      {resume?.status === 'approved' ? <span className="applications-card__approved">Approved</span> : null}
+                      Резюме: {resume?.title || 'Не привязано'}
+                      {resume?.status === 'approved' ? <span className="applications-card__approved">Подтверждено</span> : null}
                     </p>
                     <p>
-                      Cover letter: {cover?.title || 'Not linked'}
-                      {cover?.status === 'approved' ? <span className="applications-card__approved">Approved</span> : null}
+                      Сопроводительное письмо: {cover?.title || 'Не привязано'}
+                      {cover?.status === 'approved' ? <span className="applications-card__approved">Подтверждено</span> : null}
                     </p>
                     <div className="applications-card__actions">
                       <select
@@ -385,21 +385,21 @@ export default function ApplicationsPage() {
                           <option key={statusValue} value={statusValue}>{statusValue}</option>
                         ))}
                       </select>
-                      <button type="button" onClick={() => openDetails(application.id)}>Details</button>
-                      <button type="button" onClick={() => handleDelete(application.id)}>Delete</button>
-                      <Link to={`/vacancies/${application.vacancy_id}`}>Vacancy</Link>
+                      <button type="button" onClick={() => openDetails(application.id)}>Детали</button>
+                      <button type="button" onClick={() => handleDelete(application.id)}>Удалить</button>
+                      <Link to={`/vacancies/${application.vacancy_id}`}>Вакансия</Link>
                     </div>
                     <details className="applications-card__history" onToggle={(event) => {
                       if (event.currentTarget.open) {
                         ensureHistoryLoaded(application.id);
                       }
                     }}>
-                      <summary>Status history</summary>
-                      {isHistoryLoading ? <p>Loading history...</p> : null}
-                      {history.length === 0 ? <p>No history events yet.</p> : null}
+                      <summary>История статусов</summary>
+                      {isHistoryLoading ? <p>Загружаем историю...</p> : null}
+                      {history.length === 0 ? <p>Пока нет событий истории.</p> : null}
                       {history.map((item) => (
                         <p key={item.id}>
-                          {formatDateTime(item.created_at) ?? '—'}: {item.from_status || '—'} → {item.to_status} ({item.note || 'no note'})
+                          {formatDateTime(item.created_at) ?? '—'}: {item.from_status || '—'} → {item.to_status} ({item.note || 'без заметки'})
                         </p>
                       ))}
                     </details>
@@ -413,8 +413,8 @@ export default function ApplicationsPage() {
 
       {selectedApplicationId ? (
         <article className="vacancy-details">
-          <h2 className="vacancy-details__section-title">Application details #{selectedApplicationId}</h2>
-          {detailsLoading ? <Loading text="Loading details..." /> : null}
+          <h2 className="vacancy-details__section-title">Детали отклика #{selectedApplicationId}</h2>
+          {detailsLoading ? <Loading message="Загружаем детали..." /> : null}
           {selectedApplication ? (
             <>
               <div className="applications-status-quickbar">
@@ -448,7 +448,7 @@ export default function ApplicationsPage() {
                     .filter((item) => item.vacancy_id == null || item.vacancy_id === selectedApplication.vacancy_id)
                     .map((item) => (
                       <option key={item.id} value={item.id}>
-                        {(item.title || `Resume #${item.id}`)}{item.status === 'approved' ? ' • approved' : ''}
+                        {(item.title || `Резюме #${item.id}`)}{item.status === 'approved' ? ' • подтверждено' : ''}
                       </option>
                     ))}
                 </select>
@@ -464,42 +464,42 @@ export default function ApplicationsPage() {
                     .filter((item) => item.vacancy_id == null || item.vacancy_id === selectedApplication.vacancy_id)
                     .map((item) => (
                       <option key={item.id} value={item.id}>
-                        {(item.title || `Cover letter #${item.id}`)}{item.status === 'approved' ? ' • approved' : ''}
+                        {(item.title || `Сопроводительное письмо #${item.id}`)}{item.status === 'approved' ? ' • подтверждено' : ''}
                       </option>
                     ))}
                 </select>
               </label>
               <button className="recommendations-toolbar__button" type="button" onClick={handleSaveDetails}>Save changes</button>
 
-              <h3 className="vacancy-details__section-title">Linked documents</h3>
+              <h3 className="vacancy-details__section-title">Связанные документы</h3>
               <ul>
                 <li>
                   Resume:{' '}
                   {selectedResume ? (
                     <>
-                      {selectedResume.title || `Resume #${selectedResume.id}`} ({selectedResume.status}) · <Link to="/settings">open in Settings</Link>
+                      {selectedResume.title || `Резюме #${selectedResume.id}`} ({selectedResume.status}) · <Link to="/settings">открыть в настройках</Link>
                     </>
                   ) : (
-                    'Not attached yet'
+                    'Пока не прикреплено'
                   )}
                 </li>
                 <li>
                   Cover letter:{' '}
                   {selectedCover ? (
                     <>
-                      {selectedCover.title || `Cover letter #${selectedCover.id}`} ({selectedCover.status}) · <Link to="/settings">open in Settings</Link>
+                      {selectedCover.title || `Сопроводительное письмо #${selectedCover.id}`} ({selectedCover.status}) · <Link to="/settings">открыть в настройках</Link>
                     </>
                   ) : (
-                    'Not attached yet'
+                    'Пока не прикреплено'
                   )}
                 </li>
               </ul>
 
-              <h3 className="vacancy-details__section-title">Status history</h3>
+              <h3 className="vacancy-details__section-title">История статусов</h3>
               <ul>
                 {selectedHistory.map((item) => (
                   <li key={item.id}>
-                    {formatDateTime(item.created_at) ?? '—'}: {item.from_status || '—'} → {item.to_status} ({item.note || 'no note'})
+                    {formatDateTime(item.created_at) ?? '—'}: {item.from_status || '—'} → {item.to_status} ({item.note || 'без заметки'})
                   </li>
                 ))}
               </ul>

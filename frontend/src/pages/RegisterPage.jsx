@@ -32,7 +32,7 @@ export default function RegisterPage() {
   return (
     <section className="auth-page">
       <form className="auth-card" onSubmit={handleSubmit}>
-        <h1>Register</h1>
+        <h1>Регистрация</h1>
         <p className="auth-card__hint">После регистрации автоматически создастся профиль и откроется приложение.</p>
         {error ? <ErrorBanner message={error} /> : null}
 
@@ -47,7 +47,7 @@ export default function RegisterPage() {
         </label>
 
         <button className="recommendations-toolbar__button" type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Creating account...' : 'Create account'}
+          {isSubmitting ? 'Создаём аккаунт...' : 'Создать аккаунт'}
         </button>
 
         <p className="auth-card__footer">

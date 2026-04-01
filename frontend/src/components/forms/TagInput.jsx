@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-export default function TagInput({ label, value = [], onChange, placeholder = 'tag1, tag2' }) {
+export default function TagInput({ label, value = [], onChange, placeholder = 'тег1, тег2' }) {
   const text = useMemo(() => value.join(', '), [value]);
 
   function handleChange(event) {
