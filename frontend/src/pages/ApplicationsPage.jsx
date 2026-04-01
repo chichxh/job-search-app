@@ -17,6 +17,8 @@ import {
 } from '../api/endpoints.js';
 import { formatDateTime } from '../utils/formatters.js';
 import { useAuth } from '../auth/useAuth.js';
+import PageHeader from '../components/ui/PageHeader.jsx';
+import SectionCard from '../components/ui/SectionCard.jsx';
 
 const STATUSES = [
   'saved',
@@ -279,13 +281,11 @@ export default function ApplicationsPage() {
 
   return (
     <section className="page-stack applications-page">
-      <header className="product-page-header">
-        <div>
-          <p className="product-page-header__eyebrow">Workflow</p>
-          <h1>Воронка откликов</h1>
-          <p className="product-page-header__subtitle">Компактная доска по статусам, быстрые правки и связка с документами.</p>
-        </div>
-      </header>
+      <PageHeader
+        eyebrow="Workflow"
+        title="Воронка откликов"
+        subtitle="Компактная доска по статусам, быстрые правки и связка с документами."
+      />
       {error ? <ErrorBanner message={error} /> : null}
 
       <section className="applications-summary" aria-label="Сводка по откликам">
@@ -296,8 +296,7 @@ export default function ApplicationsPage() {
         <article><p>Offers</p><strong>{summary.offers}</strong></article>
       </section>
 
-      <article className="vacancy-details">
-        <h2 className="vacancy-details__section-title">Создать отклик</h2>
+      <SectionCard title="Создать отклик" subtitle="Добавьте вакансию в воронку и сразу откройте детали.">
         <div className="applications-create-row">
           <select value={selectedVacancyId} onChange={(event) => setSelectedVacancyId(event.target.value)}>
             <option value="">Выберите вакансию</option>
@@ -307,14 +306,13 @@ export default function ApplicationsPage() {
               </option>
             ))}
           </select>
-          <button className="recommendations-toolbar__button" type="button" onClick={handleCreate}>Добавить в воронку</button>
+          <button className="button" type="button" onClick={handleCreate}>Добавить в воронку</button>
         </div>
         {createSuccess ? <p className="vacancy-details__docgen-success">{createSuccess}</p> : null}
         {createError ? <ErrorBanner message={createError} /> : null}
-      </article>
+      </SectionCard>
 
-      <article className="vacancy-details">
-        <h2 className="vacancy-details__section-title">Фильтры</h2>
+      <SectionCard title="Фильтры" subtitle="Сузьте доску по статусу, тексту и дате обновления.">
         <div className="applications-filters">
           <label>
             Поиск
@@ -341,7 +339,7 @@ export default function ApplicationsPage() {
             Скрывать archived
           </label>
         </div>
-      </article>
+      </SectionCard>
 
       <div className="applications-board">
         {STATUSES.map((status) => {
@@ -466,7 +464,7 @@ export default function ApplicationsPage() {
                   </select>
                 </label>
               </div>
-              <button className="recommendations-toolbar__button" type="button" onClick={handleSaveDetails}>Save changes</button>
+              <button className="button" type="button" onClick={handleSaveDetails}>Save changes</button>
 
               <h3 className="vacancy-details__section-title">Связанные документы</h3>
               <ul>

@@ -12,12 +12,24 @@ import LoginPage from './pages/LoginPage.jsx';
 import RegisterPage from './pages/RegisterPage.jsx';
 import Loading from './components/Loading.jsx';
 
+function AuthStateScreen({ title, message }) {
+  return (
+    <section className="auth-page auth-page--status">
+      <article className="auth-status-card">
+        <p className="auth-card__eyebrow">Session</p>
+        <h1>{title}</h1>
+        <Loading message={message} />
+      </article>
+    </section>
+  );
+}
+
 function ProtectedRoute() {
   const { isAuthenticated, isBootstrapping } = useAuth();
   const location = useLocation();
 
   if (isBootstrapping) {
-    return <Loading message="Проверяем сессию..." />;
+    return <AuthStateScreen title="Проверяем доступ" message="Проверяем сессию и права доступа..." />;
   }
 
   if (!isAuthenticated) {
@@ -31,7 +43,7 @@ function PublicOnlyRoute({ children }) {
   const { isAuthenticated, isBootstrapping } = useAuth();
 
   if (isBootstrapping) {
-    return <Loading message="Проверяем сессию..." />;
+    return <AuthStateScreen title="Подготавливаем вход" message="Проверяем активную сессию..." />;
   }
 
   if (isAuthenticated) {

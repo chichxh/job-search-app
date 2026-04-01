@@ -177,7 +177,7 @@ export default function VacanciesPage() {
         subtitle="Запускает фоновую задачу импорта и обновляет список вакансий после завершения."
         actions={(
           <button
-            className="recommendations-toolbar__button"
+            className="button"
             type="button"
             onClick={handleStartImport}
             disabled={isImporting}

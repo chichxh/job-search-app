@@ -157,10 +157,10 @@ export default function RecommendationsPage() {
         subtitle="Обновите ranking на основе текущего профиля и лимита рекомендаций."
         actions={(
           <div className="button-group">
-            <button className="recommendations-toolbar__button" type="button" onClick={handleRecompute} disabled={Boolean(taskId)}>
+            <button className="button" type="button" onClick={handleRecompute} disabled={Boolean(taskId)}>
               Пересчитать рекомендации
             </button>
-            <button className="recommendations-toolbar__button recommendations-toolbar__button--secondary" type="button" onClick={handleReloadSettings}>
+            <button className="button button--secondary" type="button" onClick={handleReloadSettings}>
               Обновить настройки
             </button>
           </div>

@@ -34,29 +34,43 @@ export default function LoginPage() {
 
   return (
     <section className="auth-page">
-      <form className="auth-card" onSubmit={handleSubmit}>
-        <h1>Вход</h1>
-        <p className="auth-card__hint">Войдите, чтобы открыть рабочий профиль и страницы приложения.</p>
-        {error ? <ErrorBanner message={error} /> : null}
+      <div className="auth-layout">
+        <aside className="auth-layout__side">
+          <p className="auth-layout__eyebrow">Job Search OS</p>
+          <h1>Вход в рабочее пространство</h1>
+          <p className="auth-layout__copy">Продолжайте поиск вакансий, обновляйте ranking и ведите воронку откликов в одном месте.</p>
+          <ul className="auth-layout__list">
+            <li>Актуальные вакансии и фильтры без лишнего шума</li>
+            <li>Понятный next step для каждой рекомендации</li>
+            <li>Связка документов и статусов откликов</li>
+          </ul>
+        </aside>
 
-        <label>
-          Email
-          <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
-        </label>
+        <form className="auth-card" onSubmit={handleSubmit}>
+          <p className="auth-card__eyebrow">Sign in</p>
+          <h2>С возвращением</h2>
+          <p className="auth-card__hint">Используйте аккаунт, чтобы открыть профиль и рабочие разделы приложения.</p>
+          {error ? <ErrorBanner message={error} /> : null}
 
-        <label>
-          Password
-          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
-        </label>
+          <label>
+            Email
+            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+          </label>
 
-        <button className="recommendations-toolbar__button" type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Выполняем вход...' : 'Войти'}
-        </button>
+          <label>
+            Password
+            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+          </label>
 
-        <p className="auth-card__footer">
-          Нет аккаунта? <Link to="/register">Создать аккаунт</Link>
-        </p>
-      </form>
+          <button className="button" type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Выполняем вход...' : 'Войти'}
+          </button>
+
+          <p className="auth-card__footer">
+            Нет аккаунта? <Link className="inline-link" to="/register">Создать аккаунт</Link>
+          </p>
+        </form>
+      </div>
     </section>
   );
 }
