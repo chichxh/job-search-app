@@ -30,6 +30,18 @@ const STATUSES = [
   'archived',
 ];
 
+const STATUS_META = {
+  saved: { label: 'Saved', tone: 'neutral' },
+  planned: { label: 'Planned', tone: 'info' },
+  applied: { label: 'Applied', tone: 'info' },
+  hr_screen: { label: 'HR screen', tone: 'info' },
+  tech_interview: { label: 'Tech interview', tone: 'accent' },
+  test_task: { label: 'Test task', tone: 'accent' },
+  offer: { label: 'Offer', tone: 'success' },
+  rejected: { label: 'Rejected', tone: 'danger' },
+  archived: { label: 'Archived', tone: 'muted' },
+};
+
 const ACTIVE_EXCLUDED_STATUSES = new Set(['rejected', 'archived']);
 const INTERVIEW_STATUSES = new Set(['hr_screen', 'tech_interview', 'test_task']);
 
@@ -46,12 +58,16 @@ function groupByStatus(items) {
 
 function getNotePreview(note) {
   if (!note) {
-    return '—';
+    return 'No notes yet';
   }
-  if (note.length <= 90) {
+  if (note.length <= 100) {
     return note;
   }
-  return `${note.slice(0, 90)}…`;
+  return `${note.slice(0, 100)}…`;
+}
+
+function getStatusMeta(status) {
+  return STATUS_META[status] || { label: status, tone: 'neutral' };
 }
 
 export default function ApplicationsPage() {
@@ -262,35 +278,26 @@ export default function ApplicationsPage() {
     : null;
 
   return (
-    <section className="page-stack">
-      <h1>Воронка откликов</h1>
+    <section className="page-stack applications-page">
+      <header className="product-page-header">
+        <div>
+          <p className="product-page-header__eyebrow">Workflow</p>
+          <h1>Воронка откликов</h1>
+          <p className="product-page-header__subtitle">Компактная доска по статусам, быстрые правки и связка с документами.</p>
+        </div>
+      </header>
       {error ? <ErrorBanner message={error} /> : null}
 
       <section className="applications-summary" aria-label="Сводка по откликам">
-        <article>
-          <p>Всего откликов</p>
-          <strong>{summary.total}</strong>
-        </article>
-        <article>
-          <p>Активные</p>
-          <strong>{summary.active}</strong>
-        </article>
-        <article>
-          <p>Отправлено</p>
-          <strong>{summary.applied}</strong>
-        </article>
-        <article>
-          <p>Этап интервью</p>
-          <strong>{summary.interview}</strong>
-        </article>
-        <article>
-          <p>Офферы</p>
-          <strong>{summary.offers}</strong>
-        </article>
+        <article><p>Всего</p><strong>{summary.total}</strong></article>
+        <article><p>Активные</p><strong>{summary.active}</strong></article>
+        <article><p>Applied</p><strong>{summary.applied}</strong></article>
+        <article><p>Interview</p><strong>{summary.interview}</strong></article>
+        <article><p>Offers</p><strong>{summary.offers}</strong></article>
       </section>
 
       <article className="vacancy-details">
-        <h2 className="vacancy-details__section-title">Создать из вакансии</h2>
+        <h2 className="vacancy-details__section-title">Создать отклик</h2>
         <div className="applications-create-row">
           <select value={selectedVacancyId} onChange={(event) => setSelectedVacancyId(event.target.value)}>
             <option value="">Выберите вакансию</option>
@@ -300,119 +307,117 @@ export default function ApplicationsPage() {
               </option>
             ))}
           </select>
-          <button className="recommendations-toolbar__button" type="button" onClick={handleCreate}>Добавить в отклики</button>
+          <button className="recommendations-toolbar__button" type="button" onClick={handleCreate}>Добавить в воронку</button>
         </div>
         {createSuccess ? <p className="vacancy-details__docgen-success">{createSuccess}</p> : null}
         {createError ? <ErrorBanner message={createError} /> : null}
       </article>
 
       <article className="vacancy-details">
-        <h2 className="vacancy-details__section-title">Фильтры и сортировка</h2>
+        <h2 className="vacancy-details__section-title">Фильтры</h2>
         <div className="applications-filters">
           <label>
-            Поиск по вакансии / компании
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="например: Frontend, Acme"
-            />
+            Поиск
+            <input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="вакансия или компания" />
           </label>
           <label>
             Status
             <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
               <option value="all">Все статусы</option>
               {STATUSES.map((statusValue) => (
-                <option key={statusValue} value={statusValue}>{statusValue}</option>
+                <option key={statusValue} value={statusValue}>{getStatusMeta(statusValue).label}</option>
               ))}
             </select>
           </label>
           <label>
-            Сортировка по обновлению
+            Сортировка
             <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value)}>
               <option value="updated_desc">Сначала новые</option>
               <option value="updated_asc">Сначала старые</option>
             </select>
           </label>
           <label className="applications-filters__checkbox">
-            <input
-              type="checkbox"
-              checked={hideArchived}
-              onChange={(event) => setHideArchived(event.target.checked)}
-            />
-            Скрывать архивные
+            <input type="checkbox" checked={hideArchived} onChange={(event) => setHideArchived(event.target.checked)} />
+            Скрывать archived
           </label>
         </div>
       </article>
 
       <div className="applications-board">
-        {STATUSES.map((status) => (
-          <article className="applications-column" key={status}>
-            <h3>
-              {status}
-              <span>{(grouped[status] || []).length}</span>
-            </h3>
-            <div className="applications-column__items">
-              {(grouped[status] || []).length === 0 ? <p className="applications-column__empty">Нет откликов</p> : null}
-              {(grouped[status] || []).map((application) => {
-                const vacancy = vacancyMap.get(application.vacancy_id);
-                const resume = application.resume_version_id ? resumeMap.get(application.resume_version_id) : null;
-                const cover = application.cover_letter_version_id ? coverMap.get(application.cover_letter_version_id) : null;
-                const history = historyByApplicationId[application.id] || [];
-                const isHistoryLoading = historyLoadingIds.includes(application.id);
+        {STATUSES.map((status) => {
+          const items = grouped[status] || [];
+          const statusMeta = getStatusMeta(status);
+          return (
+            <article className="applications-column" key={status}>
+              <h3>
+                <span className={`applications-status-chip applications-status-chip--${statusMeta.tone}`}>{statusMeta.label}</span>
+                <span>{items.length}</span>
+              </h3>
+              <div className="applications-column__items">
+                {items.length === 0 ? <p className="applications-column__empty">Нет откликов</p> : null}
+                {items.map((application) => {
+                  const vacancy = vacancyMap.get(application.vacancy_id);
+                  const resume = application.resume_version_id ? resumeMap.get(application.resume_version_id) : null;
+                  const cover = application.cover_letter_version_id ? coverMap.get(application.cover_letter_version_id) : null;
+                  const history = historyByApplicationId[application.id] || [];
+                  const isHistoryLoading = historyLoadingIds.includes(application.id);
+                  const appStatusMeta = getStatusMeta(application.status);
 
-                return (
-                  <div className="applications-card" key={application.id}>
-                    <p className="applications-card__title"><strong>{vacancy?.title ?? `Вакансия #${application.vacancy_id}`}</strong></p>
-                    <p>{vacancy?.company_name || 'Неизвестная компания'}</p>
-                    <p>Статус: <span className="applications-card__status">{application.status}</span></p>
-                    <p>Обновлено: {formatDateTime(application.updated_at) ?? '—'}</p>
-                    <p>Заметка: {getNotePreview(application.note)}</p>
-                    <p>
-                      Резюме: {resume?.title || 'Не привязано'}
-                      {resume?.status === 'approved' ? <span className="applications-card__approved">Подтверждено</span> : null}
-                    </p>
-                    <p>
-                      Сопроводительное письмо: {cover?.title || 'Не привязано'}
-                      {cover?.status === 'approved' ? <span className="applications-card__approved">Подтверждено</span> : null}
-                    </p>
-                    <div className="applications-card__actions">
-                      <select
-                        value={application.status}
-                        onChange={(event) => handleStatusQuickChange(application.id, event.target.value)}
-                      >
-                        {STATUSES.map((statusValue) => (
-                          <option key={statusValue} value={statusValue}>{statusValue}</option>
-                        ))}
-                      </select>
-                      <button type="button" onClick={() => openDetails(application.id)}>Детали</button>
-                      <button type="button" onClick={() => handleDelete(application.id)}>Удалить</button>
-                      <Link to={`/vacancies/${application.vacancy_id}`}>Вакансия</Link>
+                  return (
+                    <div className="applications-card" key={application.id}>
+                      <p className="applications-card__title"><strong>{vacancy?.title ?? `Вакансия #${application.vacancy_id}`}</strong></p>
+                      <p className="applications-card__company">{vacancy?.company_name || 'Неизвестная компания'}</p>
+                      <div className="applications-card__meta-row">
+                        <span className={`applications-status-chip applications-status-chip--${appStatusMeta.tone}`}>{appStatusMeta.label}</span>
+                        <span className="muted-text">{formatDateTime(application.updated_at) ?? '—'}</span>
+                      </div>
+                      <p className="applications-card__note">{getNotePreview(application.note)}</p>
+
+                      <div className="applications-card__docs">
+                        <p>Resume: {resume?.title || 'Не привязано'} {resume?.status === 'approved' ? <span className="doc-state-badge doc-state-badge--approved">approved</span> : null}</p>
+                        <p>Cover letter: {cover?.title || 'Не привязано'} {cover?.status === 'approved' ? <span className="doc-state-badge doc-state-badge--approved">approved</span> : null}</p>
+                      </div>
+
+                      <div className="applications-card__actions">
+                        <select value={application.status} onChange={(event) => handleStatusQuickChange(application.id, event.target.value)}>
+                          {STATUSES.map((statusValue) => (
+                            <option key={statusValue} value={statusValue}>{getStatusMeta(statusValue).label}</option>
+                          ))}
+                        </select>
+                        <button type="button" onClick={() => openDetails(application.id)}>Детали</button>
+                        <Link to={`/vacancies/${application.vacancy_id}`}>Вакансия</Link>
+                        <button type="button" className="button--danger" onClick={() => handleDelete(application.id)}>Удалить</button>
+                      </div>
+
+                      <details className="applications-card__history" onToggle={(event) => {
+                        if (event.currentTarget.open) {
+                          ensureHistoryLoaded(application.id);
+                        }
+                      }}>
+                        <summary>История статусов</summary>
+                        {isHistoryLoading ? <p>Загружаем историю...</p> : null}
+                        {history.length === 0 ? <p>Пока нет событий истории.</p> : null}
+                        <ul className="history-timeline">
+                          {history.map((item) => (
+                            <li key={item.id}>
+                              <span>{formatDateTime(item.created_at) ?? '—'}</span>
+                              <span>{getStatusMeta(item.from_status || 'saved').label} → {getStatusMeta(item.to_status).label}</span>
+                              <span>{item.note || 'без заметки'}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
                     </div>
-                    <details className="applications-card__history" onToggle={(event) => {
-                      if (event.currentTarget.open) {
-                        ensureHistoryLoaded(application.id);
-                      }
-                    }}>
-                      <summary>История статусов</summary>
-                      {isHistoryLoading ? <p>Загружаем историю...</p> : null}
-                      {history.length === 0 ? <p>Пока нет событий истории.</p> : null}
-                      {history.map((item) => (
-                        <p key={item.id}>
-                          {formatDateTime(item.created_at) ?? '—'}: {item.from_status || '—'} → {item.to_status} ({item.note || 'без заметки'})
-                        </p>
-                      ))}
-                    </details>
-                  </div>
-                );
-              })}
-            </div>
-          </article>
-        ))}
+                  );
+                })}
+              </div>
+            </article>
+          );
+        })}
       </div>
 
       {selectedApplicationId ? (
-        <article className="vacancy-details">
+        <article className="vacancy-details applications-detail-panel">
           <h2 className="vacancy-details__section-title">Детали отклика #{selectedApplicationId}</h2>
           {detailsLoading ? <Loading message="Загружаем детали..." /> : null}
           {selectedApplication ? (
@@ -425,81 +430,57 @@ export default function ApplicationsPage() {
                     className={statusValue === selectedApplication.status ? 'applications-status-quickbar__active' : ''}
                     onClick={() => handleStatusQuickChange(selectedApplication.id, statusValue)}
                   >
-                    {statusValue}
+                    {getStatusMeta(statusValue).label}
                   </button>
                 ))}
               </div>
               <label>
                 Note
-                <textarea
-                  value={editForm.note}
-                  onChange={(event) => setEditForm((current) => ({ ...current, note: event.target.value }))}
-                  rows={3}
-                />
+                <textarea value={editForm.note} onChange={(event) => setEditForm((current) => ({ ...current, note: event.target.value }))} rows={4} />
               </label>
-              <label>
-                Resume version
-                <select
-                  value={editForm.resume_version_id}
-                  onChange={(event) => setEditForm((current) => ({ ...current, resume_version_id: event.target.value }))}
-                >
-                  <option value="">Not linked</option>
-                  {resumeVersions
-                    .filter((item) => item.vacancy_id == null || item.vacancy_id === selectedApplication.vacancy_id)
-                    .map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {(item.title || `Резюме #${item.id}`)}{item.status === 'approved' ? ' • подтверждено' : ''}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <label>
-                Cover letter version
-                <select
-                  value={editForm.cover_letter_version_id}
-                  onChange={(event) => setEditForm((current) => ({ ...current, cover_letter_version_id: event.target.value }))}
-                >
-                  <option value="">Not linked</option>
-                  {coverLetters
-                    .filter((item) => item.vacancy_id == null || item.vacancy_id === selectedApplication.vacancy_id)
-                    .map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {(item.title || `Сопроводительное письмо #${item.id}`)}{item.status === 'approved' ? ' • подтверждено' : ''}
-                      </option>
-                    ))}
-                </select>
-              </label>
+              <div className="settings-grid settings-grid--two">
+                <label>
+                  Resume version
+                  <select value={editForm.resume_version_id} onChange={(event) => setEditForm((current) => ({ ...current, resume_version_id: event.target.value }))}>
+                    <option value="">Not linked</option>
+                    {resumeVersions
+                      .filter((item) => item.vacancy_id == null || item.vacancy_id === selectedApplication.vacancy_id)
+                      .map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {(item.title || `Резюме #${item.id}`)}{item.status === 'approved' ? ' • approved' : ''}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label>
+                  Cover letter version
+                  <select value={editForm.cover_letter_version_id} onChange={(event) => setEditForm((current) => ({ ...current, cover_letter_version_id: event.target.value }))}>
+                    <option value="">Not linked</option>
+                    {coverLetters
+                      .filter((item) => item.vacancy_id == null || item.vacancy_id === selectedApplication.vacancy_id)
+                      .map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {(item.title || `Сопроводительное письмо #${item.id}`)}{item.status === 'approved' ? ' • approved' : ''}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              </div>
               <button className="recommendations-toolbar__button" type="button" onClick={handleSaveDetails}>Save changes</button>
 
               <h3 className="vacancy-details__section-title">Связанные документы</h3>
               <ul>
-                <li>
-                  Resume:{' '}
-                  {selectedResume ? (
-                    <>
-                      {selectedResume.title || `Резюме #${selectedResume.id}`} ({selectedResume.status}) · <Link to="/settings">открыть в настройках</Link>
-                    </>
-                  ) : (
-                    'Пока не прикреплено'
-                  )}
-                </li>
-                <li>
-                  Cover letter:{' '}
-                  {selectedCover ? (
-                    <>
-                      {selectedCover.title || `Сопроводительное письмо #${selectedCover.id}`} ({selectedCover.status}) · <Link to="/settings">открыть в настройках</Link>
-                    </>
-                  ) : (
-                    'Пока не прикреплено'
-                  )}
-                </li>
+                <li>Resume: {selectedResume ? <>{selectedResume.title || `Резюме #${selectedResume.id}`} ({selectedResume.status}) · <Link to="/settings">открыть в настройках</Link></> : 'Пока не прикреплено'}</li>
+                <li>Cover letter: {selectedCover ? <>{selectedCover.title || `Сопроводительное письмо #${selectedCover.id}`} ({selectedCover.status}) · <Link to="/settings">открыть в настройках</Link></> : 'Пока не прикреплено'}</li>
               </ul>
 
               <h3 className="vacancy-details__section-title">История статусов</h3>
-              <ul>
+              <ul className="history-timeline history-timeline--panel">
                 {selectedHistory.map((item) => (
                   <li key={item.id}>
-                    {formatDateTime(item.created_at) ?? '—'}: {item.from_status || '—'} → {item.to_status} ({item.note || 'без заметки'})
+                    <span>{formatDateTime(item.created_at) ?? '—'}</span>
+                    <span>{getStatusMeta(item.from_status || 'saved').label} → {getStatusMeta(item.to_status).label}</span>
+                    <span>{item.note || 'без заметки'}</span>
                   </li>
                 ))}
               </ul>
