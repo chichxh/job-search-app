@@ -35,7 +35,7 @@ export default function LoginPage() {
   return (
     <section className="auth-page">
       <form className="auth-card" onSubmit={handleSubmit}>
-        <h1>Login</h1>
+        <h1>Вход</h1>
         <p className="auth-card__hint">Войдите, чтобы открыть рабочий профиль и страницы приложения.</p>
         {error ? <ErrorBanner message={error} /> : null}
 
@@ -50,7 +50,7 @@ export default function LoginPage() {
         </label>
 
         <button className="recommendations-toolbar__button" type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Signing in...' : 'Sign in'}
+          {isSubmitting ? 'Выполняем вход...' : 'Войти'}
         </button>
 
         <p className="auth-card__footer">

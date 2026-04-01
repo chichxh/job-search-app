@@ -17,7 +17,7 @@ function ProtectedRoute() {
   const location = useLocation();
 
   if (isBootstrapping) {
-    return <Loading message="Checking auth session..." />;
+    return <Loading message="Проверяем сессию..." />;
   }
 
   if (!isAuthenticated) {
@@ -31,7 +31,7 @@ function PublicOnlyRoute({ children }) {
   const { isAuthenticated, isBootstrapping } = useAuth();
 
   if (isBootstrapping) {
-    return <Loading message="Checking auth session..." />;
+    return <Loading message="Проверяем сессию..." />;
   }
 
   if (isAuthenticated) {

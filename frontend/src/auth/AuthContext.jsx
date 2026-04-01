@@ -59,7 +59,7 @@ export function AuthProvider({ children }) {
     try {
       await applyToken(response.access_token);
     } catch (error) {
-      throw new Error(parseError(error, 'Login succeeded, but failed to load current user.'));
+      throw new Error(parseError(error, 'Вход выполнен, но не удалось загрузить данные текущего пользователя.'));
     }
   }, [applyToken]);
 
@@ -68,7 +68,7 @@ export function AuthProvider({ children }) {
     try {
       await applyToken(response.access_token);
     } catch (error) {
-      throw new Error(parseError(error, 'Registration succeeded, but failed to load current user.'));
+      throw new Error(parseError(error, 'Регистрация прошла, но не удалось загрузить данные текущего пользователя.'));
     }
   }, [applyToken]);
 

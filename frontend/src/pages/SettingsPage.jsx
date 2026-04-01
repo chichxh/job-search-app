@@ -72,20 +72,20 @@ import { DEFAULT_LIMIT } from '../config.js';
 import { useAuth } from '../auth/useAuth.js';
 
 const EMPLOYMENT_OPTIONS = [
-  { value: 'full_time', label: 'Full-time' },
-  { value: 'part_time', label: 'Part-time' },
-  { value: 'contract', label: 'Contract' },
-  { value: 'internship', label: 'Internship' },
-  { value: 'project', label: 'Project' },
-  { value: 'volunteer', label: 'Volunteer' },
+  { value: 'full_time', label: 'Полная занятость' },
+  { value: 'part_time', label: 'Частичная занятость' },
+  { value: 'contract', label: 'Контракт' },
+  { value: 'internship', label: 'Стажировка' },
+  { value: 'project', label: 'Проектная работа' },
+  { value: 'volunteer', label: 'Волонтёрство' },
 ];
 
 const SCHEDULE_OPTIONS = [
-  { value: 'full_day', label: 'Full day' },
-  { value: 'shift', label: 'Shift' },
-  { value: 'flexible', label: 'Flexible' },
-  { value: 'remote', label: 'Remote' },
-  { value: 'hybrid', label: 'Hybrid' },
+  { value: 'full_day', label: 'Полный день' },
+  { value: 'shift', label: 'Сменный график' },
+  { value: 'flexible', label: 'Гибкий график' },
+  { value: 'remote', label: 'Удалённо' },
+  { value: 'hybrid', label: 'Гибрид' },
 ];
 const SUPPORTED_RESUME_IMPORT_EXTENSIONS = ['txt', 'md', 'docx', 'pdf', 'rtf'];
 
@@ -683,7 +683,7 @@ export default function SettingsPage() {
         <Link to="/recommendations" className="button button--ghost">Перейти к рекомендациям</Link>
       </div>
 
-      <Section title="HH Integration (MVP)" defaultOpen>
+      <Section title="Интеграция HH (MVP)" defaultOpen>
         <p className="muted-text">
           Импорт выполняется только по явному действию пользователя. Импортируются: основные поля профиля, опыт, навыки,
           языки и ссылки.
@@ -692,10 +692,10 @@ export default function SettingsPage() {
         {hhStatus.last_imported_at ? <p>Последний импорт: {new Date(hhStatus.last_imported_at).toLocaleString()}</p> : null}
         <div className="recommendations-toolbar">
           <button className="button" type="button" onClick={connectHh} disabled={hhBusy}>
-            {hhBusy ? 'Подключение...' : 'Connect HH'}
+            {hhBusy ? 'Подключение...' : 'Подключить HH'}
           </button>
           <button className="button" type="button" onClick={importFromHh} disabled={hhBusy || !hhStatus.connected}>
-            {hhBusy ? 'Импорт...' : 'Import profile from HH'}
+            {hhBusy ? 'Импорт...' : 'Импортировать профиль из HH'}
           </button>
           <button className="button button--ghost" type="button" onClick={disconnectFromHh} disabled={hhBusy || !hhStatus.connected}>
             Disconnect HH
@@ -703,7 +703,7 @@ export default function SettingsPage() {
         </div>
         {hhResumes.length ? (
           <SelectField
-            label="HH resume"
+            label="Резюме HH"
             value={hhResumeId}
             onChange={(e) => setHhResumeId(e.target.value)}
             options={hhResumes.map((item) => ({ value: item.id, label: item.title }))}
@@ -715,12 +715,12 @@ export default function SettingsPage() {
         </p>
         <div className="settings-grid settings-grid--two">
           <label className="field">
-            <span>Upload HH-like JSON</span>
+            <span>Загрузить JSON в формате HH</span>
             <input type="file" accept=".json,application/json" onChange={onHhJsonFileUpload} />
           </label>
         </div>
         <TextAreaField
-          label="HH-like JSON payload"
+          label="JSON payload в формате HH"
           rows={8}
           value={hhJsonRaw}
           onChange={(e) => {
@@ -733,7 +733,7 @@ export default function SettingsPage() {
         {hhJsonParseResult.error ? <ErrorBanner message={hhJsonParseResult.error} /> : null}
         {!hhJsonParseResult.error && hhJsonRaw.trim() ? (
           <div className="muted-text">
-            <p>Preview:</p>
+            <p>Предпросмотр:</p>
             <ul>
               <li>{hhJsonPreview.meFound ? '✓ me найден' : '✗ me не найден'}</li>
               <li>{hhJsonPreview.resumesMineFound ? '✓ resumes_mine.items найден' : '✗ resumes_mine.items не найден'}</li>
@@ -744,7 +744,7 @@ export default function SettingsPage() {
         ) : null}
         {hhJsonPreview.resumes.length > 1 ? (
           <SelectField
-            label="Resume from JSON"
+            label="Резюме из JSON"
             value={resolvedHhJsonResumeId}
             onChange={(e) => setHhJsonResumeId(e.target.value)}
             options={hhJsonPreview.resumes.map((item) => ({ value: item.id, label: `${item.title} (${item.id})` }))}
@@ -765,17 +765,17 @@ export default function SettingsPage() {
             onClick={importFromHhJson}
             disabled={hhJsonBusy || !hhJsonConsent || !hhJsonRaw.trim() || Boolean(hhJsonParseResult.error)}
           >
-            {hhJsonBusy ? 'Импорт JSON...' : 'Import profile from local JSON'}
+            {hhJsonBusy ? 'Импорт JSON...' : 'Импортировать профиль из локального JSON'}
           </button>
         </div>
         {hhJsonError ? <ErrorBanner message={hhJsonError} /> : null}
         {hhJsonImportSummary ? (
           <div className="muted-text">
-            <p>JSON import summary:</p>
+            <p>Сводка импорта JSON:</p>
             <ul>
               <li>resume_id: {hhJsonImportSummary.resume_id ?? '—'}</li>
-              <li>updated fields: {(hhJsonImportSummary.updated_fields ?? []).join(', ') || '—'}</li>
-              <li>replaced sections: {(hhJsonImportSummary.replaced_sections ?? []).join(', ') || '—'}</li>
+              <li>обновлённые поля: {(hhJsonImportSummary.updated_fields ?? []).join(', ') || '—'}</li>
+              <li>заменённые секции: {(hhJsonImportSummary.replaced_sections ?? []).join(', ') || '—'}</li>
               <li>
                 imported_at:{' '}
                 {hhJsonImportSummary.imported_at ? new Date(hhJsonImportSummary.imported_at).toLocaleString() : '—'}
@@ -809,22 +809,22 @@ export default function SettingsPage() {
 
         {resumeImportDraftResponse ? (
           <div className="muted-text">
-            <p>Preview импортируемого черновика:</p>
+            <p>Предпросмотр импортируемого черновика:</p>
             <ul>
               <li>full_name: {resumeImportDraftResponse.draft?.full_name || '—'}</li>
               <li>title: {resumeImportDraftResponse.draft?.title || '—'}</li>
               <li>location: {resumeImportDraftResponse.draft?.location || '—'}</li>
               <li>summary/about: {resumeImportDraftResponse.draft?.summary_about || '—'}</li>
-              <li>experiences count: {resumeImportDraftResponse.draft?.experiences?.length ?? 0}</li>
-              <li>skills count: {resumeImportDraftResponse.draft?.skills?.length ?? 0}</li>
-              <li>languages count: {resumeImportDraftResponse.draft?.languages?.length ?? 0}</li>
-              <li>links count: {resumeImportDraftResponse.draft?.links?.length ?? 0}</li>
-              <li>text length: {resumeImportExtractedTextLength}</li>
+              <li>количество опытов: {resumeImportDraftResponse.draft?.experiences?.length ?? 0}</li>
+              <li>количество навыков: {resumeImportDraftResponse.draft?.skills?.length ?? 0}</li>
+              <li>количество языков: {resumeImportDraftResponse.draft?.languages?.length ?? 0}</li>
+              <li>количество ссылок: {resumeImportDraftResponse.draft?.links?.length ?? 0}</li>
+              <li>длина текста: {resumeImportExtractedTextLength}</li>
               <li>usable draft: {resumeImportDraftResponse.applyability?.has_useful_content ? 'да' : 'нет'}</li>
             </ul>
             {[...(resumeImportExtractionWarnings ?? []), ...(resumeImportDraftResponse.warnings ?? [])].length ? (
               <>
-                <p>Warnings:</p>
+                <p>Предупреждения:</p>
                 <ul>
                   {[...(resumeImportExtractionWarnings ?? []), ...(resumeImportDraftResponse.warnings ?? [])]
                     .map((warning, index) => (
@@ -833,7 +833,7 @@ export default function SettingsPage() {
                 </ul>
               </>
             ) : (
-              <p>Warnings: нет.</p>
+              <p>Предупреждения: нет.</p>
             )}
           </div>
         ) : null}
@@ -853,14 +853,14 @@ export default function SettingsPage() {
           <div className="muted-text">
             <p>Итог импорта:</p>
             <ul>
-              <li>imported file: {resumeImportApplySummary.imported_file_name || '—'}</li>
-              <li>updated sections/fields: {(resumeImportApplySummary.updated_fields ?? []).join(', ') || '—'}</li>
-              <li>replaced sections: {(resumeImportApplySummary.replaced_sections ?? []).join(', ') || '—'}</li>
-              <li>applied at: {resumeImportApplySummary.applied_at ? new Date(resumeImportApplySummary.applied_at).toLocaleString() : '—'}</li>
+              <li>импортированный файл: {resumeImportApplySummary.imported_file_name || '—'}</li>
+              <li>обновлённые секции/поля: {(resumeImportApplySummary.updated_fields ?? []).join(', ') || '—'}</li>
+              <li>заменённые секции: {(resumeImportApplySummary.replaced_sections ?? []).join(', ') || '—'}</li>
+              <li>применено в: {resumeImportApplySummary.applied_at ? new Date(resumeImportApplySummary.applied_at).toLocaleString() : '—'}</li>
             </ul>
             {(resumeImportApplySummary.warnings ?? []).length ? (
               <>
-                <p>Warnings после apply:</p>
+                <p>Предупреждения после применения:</p>
                 <ul>
                   {(resumeImportApplySummary.warnings ?? []).map((warning, index) => (
                     <li key={`${warning}-${index}`}>{warning}</li>
@@ -873,38 +873,38 @@ export default function SettingsPage() {
       </Section>
 
       <div className="settings-grid settings-grid--two">
-        <TextField label="Full name" value={profile.full_name ?? ''} onChange={(e) => updateProfileField('full_name', e.target.value)} />
-        <TextField label="Headline / title" value={profile.title ?? ''} onChange={(e) => updateProfileField('title', e.target.value)} />
+        <TextField label="Полное имя" value={profile.full_name ?? ''} onChange={(e) => updateProfileField('full_name', e.target.value)} />
+        <TextField label="Заголовок / позиция" value={profile.title ?? ''} onChange={(e) => updateProfileField('title', e.target.value)} />
       </div>
-      <TextAreaField label="Summary about" value={profile.summary_about ?? ''} onChange={(e) => updateProfileField('summary_about', e.target.value)} />
+      <TextAreaField label="О себе" value={profile.summary_about ?? ''} onChange={(e) => updateProfileField('summary_about', e.target.value)} />
 
       <Section title="A-G. Поля таблицы profiles" defaultOpen>
         <div className="settings-grid settings-grid--two">
-          <TextField label="Email" value={profile.email ?? ''} onChange={(e) => updateProfileField('email', e.target.value)} />
-          <TextField label="Phone" value={profile.phone ?? ''} onChange={(e) => updateProfileField('phone', e.target.value)} />
+          <TextField label="Почта" value={profile.email ?? ''} onChange={(e) => updateProfileField('email', e.target.value)} />
+          <TextField label="Телефон" value={profile.phone ?? ''} onChange={(e) => updateProfileField('phone', e.target.value)} />
           <TextField label="Telegram" value={profile.telegram ?? ''} onChange={(e) => updateProfileField('telegram', e.target.value)} />
-          <TextField label="Country" value={profile.country ?? ''} onChange={(e) => updateProfileField('country', e.target.value)} />
-          <TextField label="City" value={profile.city ?? ''} onChange={(e) => updateProfileField('city', e.target.value)} />
-          <TextField label="Metro" value={profile.metro ?? ''} onChange={(e) => updateProfileField('metro', e.target.value)} />
-          <SelectField label="Preferred employment" value={profile.preferred_employment ?? ''} options={EMPLOYMENT_OPTIONS} onChange={(e) => updateProfileField('preferred_employment', e.target.value)} />
-          <SelectField label="Preferred schedule" value={profile.preferred_schedule ?? ''} options={SCHEDULE_OPTIONS} onChange={(e) => updateProfileField('preferred_schedule', e.target.value)} />
-          <TextField type="number" label="Notice period (days)" value={profile.notice_period_days ?? ''} onChange={(e) => updateProfileField('notice_period_days', Number(e.target.value || 0))} />
-          <DateField label="Available from" value={profile.available_from ?? ''} onChange={(e) => updateProfileField('available_from', e.target.value)} />
-          <TextField type="number" label="Salary min" value={profile.salary_min ?? ''} onChange={(e) => updateProfileField('salary_min', Number(e.target.value || 0))} />
-          <TextField label="Citizenship" value={profile.citizenship ?? ''} onChange={(e) => updateProfileField('citizenship', e.target.value)} />
-          <TextField label="Work authorization country" value={profile.work_authorization_country ?? ''} onChange={(e) => updateProfileField('work_authorization_country', e.target.value)} />
+          <TextField label="Страна" value={profile.country ?? ''} onChange={(e) => updateProfileField('country', e.target.value)} />
+          <TextField label="Город" value={profile.city ?? ''} onChange={(e) => updateProfileField('city', e.target.value)} />
+          <TextField label="Метро" value={profile.metro ?? ''} onChange={(e) => updateProfileField('metro', e.target.value)} />
+          <SelectField label="Предпочитаемая занятость" value={profile.preferred_employment ?? ''} options={EMPLOYMENT_OPTIONS} onChange={(e) => updateProfileField('preferred_employment', e.target.value)} />
+          <SelectField label="Предпочитаемый график" value={profile.preferred_schedule ?? ''} options={SCHEDULE_OPTIONS} onChange={(e) => updateProfileField('preferred_schedule', e.target.value)} />
+          <TextField type="number" label="Срок выхода (дней)" value={profile.notice_period_days ?? ''} onChange={(e) => updateProfileField('notice_period_days', Number(e.target.value || 0))} />
+          <DateField label="Готов(а) с" value={profile.available_from ?? ''} onChange={(e) => updateProfileField('available_from', e.target.value)} />
+          <TextField type="number" label="Минимальная зарплата" value={profile.salary_min ?? ''} onChange={(e) => updateProfileField('salary_min', Number(e.target.value || 0))} />
+          <TextField label="Гражданство" value={profile.citizenship ?? ''} onChange={(e) => updateProfileField('citizenship', e.target.value)} />
+          <TextField label="Страна разрешения на работу" value={profile.work_authorization_country ?? ''} onChange={(e) => updateProfileField('work_authorization_country', e.target.value)} />
         </div>
         <div className="settings-grid settings-grid--two">
-          <SwitchField label="Remote OK" checked={profile.remote_ok} onChange={(e) => updateProfileField('remote_ok', e.target.checked)} />
-          <SwitchField label="Relocation OK" checked={profile.relocation_ok} onChange={(e) => updateProfileField('relocation_ok', e.target.checked)} />
-          <SwitchField label="Needs sponsorship" checked={profile.needs_sponsorship} onChange={(e) => updateProfileField('needs_sponsorship', e.target.checked)} />
+          <SwitchField label="Удалёнка возможна" checked={profile.remote_ok} onChange={(e) => updateProfileField('remote_ok', e.target.checked)} />
+          <SwitchField label="Готов(а) к релокации" checked={profile.relocation_ok} onChange={(e) => updateProfileField('relocation_ok', e.target.checked)} />
+          <SwitchField label="Нужна виза/спонсорство" checked={profile.needs_sponsorship} onChange={(e) => updateProfileField('needs_sponsorship', e.target.checked)} />
         </div>
 
-        <TagInput label="Preferred industries" value={profile.preferred_industries ?? []} onChange={(value) => updateProfileField('preferred_industries', value)} />
-        <TagInput label="Preferred company types" value={profile.preferred_company_types ?? []} onChange={(value) => updateProfileField('preferred_company_types', value)} />
-        <TagInput label="Interest tags" value={profile.interest_tags ?? []} onChange={(value) => updateProfileField('interest_tags', value)} />
-        <TagInput label="Preferred tech" value={profile.preferred_tech ?? []} onChange={(value) => updateProfileField('preferred_tech', value)} />
-        <TagInput label="Excluded tech" value={profile.excluded_tech ?? []} onChange={(value) => updateProfileField('excluded_tech', value)} />
+        <TagInput label="Предпочитаемые индустрии" value={profile.preferred_industries ?? []} onChange={(value) => updateProfileField('preferred_industries', value)} />
+        <TagInput label="Предпочитаемые типы компаний" value={profile.preferred_company_types ?? []} onChange={(value) => updateProfileField('preferred_company_types', value)} />
+        <TagInput label="Теги интересов" value={profile.interest_tags ?? []} onChange={(value) => updateProfileField('interest_tags', value)} />
+        <TagInput label="Предпочитаемые технологии" value={profile.preferred_tech ?? []} onChange={(value) => updateProfileField('preferred_tech', value)} />
+        <TagInput label="Исключённые технологии" value={profile.excluded_tech ?? []} onChange={(value) => updateProfileField('excluded_tech', value)} />
 
         <TextAreaField
           label="team_preferences_json"
@@ -925,13 +925,13 @@ export default function SettingsPage() {
         remove: (id) => deleteSkill(profileId, id),
       }, (item) => `${item.name_raw || 'Новый навык'} (${item.level || '—'})`, (draft, setDraft) => (
         <div className="settings-grid settings-grid--two">
-          <TextField label="Name" value={draft.name_raw ?? ''} onChange={(e) => setDraft({ ...draft, name_raw: e.target.value })} />
-          <TextField label="Category" value={draft.category ?? ''} onChange={(e) => setDraft({ ...draft, category: e.target.value })} />
-          <TextField label="Level" value={draft.level ?? ''} onChange={(e) => setDraft({ ...draft, level: e.target.value })} />
-          <TextField label="Years" type="number" value={draft.years ?? ''} onChange={(e) => setDraft({ ...draft, years: Number(e.target.value || 0) })} />
-          <TextField label="Last used year" type="number" value={draft.last_used_year ?? ''} onChange={(e) => setDraft({ ...draft, last_used_year: Number(e.target.value || 0) })} />
-          <SwitchField label="Primary" checked={draft.is_primary} onChange={(e) => setDraft({ ...draft, is_primary: e.target.checked })} />
-          <TextAreaField label="Evidence" value={draft.evidence_text ?? ''} onChange={(e) => setDraft({ ...draft, evidence_text: e.target.value })} />
+          <TextField label="Название" value={draft.name_raw ?? ''} onChange={(e) => setDraft({ ...draft, name_raw: e.target.value })} />
+          <TextField label="Категория" value={draft.category ?? ''} onChange={(e) => setDraft({ ...draft, category: e.target.value })} />
+          <TextField label="Уровень" value={draft.level ?? ''} onChange={(e) => setDraft({ ...draft, level: e.target.value })} />
+          <TextField label="Лет опыта" type="number" value={draft.years ?? ''} onChange={(e) => setDraft({ ...draft, years: Number(e.target.value || 0) })} />
+          <TextField label="Последний год использования" type="number" value={draft.last_used_year ?? ''} onChange={(e) => setDraft({ ...draft, last_used_year: Number(e.target.value || 0) })} />
+          <SwitchField label="Ключевой" checked={draft.is_primary} onChange={(e) => setDraft({ ...draft, is_primary: e.target.checked })} />
+          <TextAreaField label="Подтверждение" value={draft.evidence_text ?? ''} onChange={(e) => setDraft({ ...draft, evidence_text: e.target.value })} />
         </div>
       ), savingByKey, saveItem, removeItem)}
 
@@ -941,15 +941,15 @@ export default function SettingsPage() {
         remove: (id) => deleteExperience(profileId, id),
       }, (item) => `${item.company_name || 'Новый опыт'} — ${item.position_title || '—'}`, (draft, setDraft) => (
         <div className="settings-grid settings-grid--two">
-          <TextField label="Company" value={draft.company_name ?? ''} onChange={(e) => setDraft({ ...draft, company_name: e.target.value })} />
-          <TextField label="Position" value={draft.position_title ?? ''} onChange={(e) => setDraft({ ...draft, position_title: e.target.value })} />
-          <TextField label="Location" value={draft.location ?? ''} onChange={(e) => setDraft({ ...draft, location: e.target.value })} />
-          <DateField label="Start date" value={draft.start_date ?? ''} onChange={(e) => setDraft({ ...draft, start_date: e.target.value })} />
-          <DateField label="End date" value={draft.end_date ?? ''} onChange={(e) => setDraft({ ...draft, end_date: e.target.value })} />
-          <SwitchField label="Current" checked={draft.is_current} onChange={(e) => setDraft({ ...draft, is_current: e.target.checked })} />
-          <TextAreaField label="Responsibilities" value={draft.responsibilities_text ?? ''} onChange={(e) => setDraft({ ...draft, responsibilities_text: e.target.value })} />
-          <TextAreaField label="Achievements" value={draft.achievements_text ?? ''} onChange={(e) => setDraft({ ...draft, achievements_text: e.target.value })} />
-          <TextAreaField label="Tech stack" value={draft.tech_stack_text ?? ''} onChange={(e) => setDraft({ ...draft, tech_stack_text: e.target.value })} />
+          <TextField label="Компания" value={draft.company_name ?? ''} onChange={(e) => setDraft({ ...draft, company_name: e.target.value })} />
+          <TextField label="Должность" value={draft.position_title ?? ''} onChange={(e) => setDraft({ ...draft, position_title: e.target.value })} />
+          <TextField label="Локация" value={draft.location ?? ''} onChange={(e) => setDraft({ ...draft, location: e.target.value })} />
+          <DateField label="Дата начала" value={draft.start_date ?? ''} onChange={(e) => setDraft({ ...draft, start_date: e.target.value })} />
+          <DateField label="Дата окончания" value={draft.end_date ?? ''} onChange={(e) => setDraft({ ...draft, end_date: e.target.value })} />
+          <SwitchField label="Текущее место" checked={draft.is_current} onChange={(e) => setDraft({ ...draft, is_current: e.target.checked })} />
+          <TextAreaField label="Обязанности" value={draft.responsibilities_text ?? ''} onChange={(e) => setDraft({ ...draft, responsibilities_text: e.target.value })} />
+          <TextAreaField label="Достижения" value={draft.achievements_text ?? ''} onChange={(e) => setDraft({ ...draft, achievements_text: e.target.value })} />
+          <TextAreaField label="Стек технологий" value={draft.tech_stack_text ?? ''} onChange={(e) => setDraft({ ...draft, tech_stack_text: e.target.value })} />
         </div>
       ), savingByKey, saveItem, removeItem)}
 
@@ -957,13 +957,13 @@ export default function SettingsPage() {
         create: (payload) => createProject(profileId, payload), update: (id, payload) => updateProject(profileId, id, payload), remove: (id) => deleteProject(profileId, id),
       }, (item) => item.name || 'Новый проект', (draft, setDraft) => (
         <div className="settings-grid settings-grid--two">
-          <TextField label="Name" value={draft.name ?? ''} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-          <TextField label="Role" value={draft.role ?? ''} onChange={(e) => setDraft({ ...draft, role: e.target.value })} />
-          <DateField label="Start date" value={draft.start_date ?? ''} onChange={(e) => setDraft({ ...draft, start_date: e.target.value })} />
-          <DateField label="End date" value={draft.end_date ?? ''} onChange={(e) => setDraft({ ...draft, end_date: e.target.value })} />
-          <TextAreaField label="Description" value={draft.description_text ?? ''} onChange={(e) => setDraft({ ...draft, description_text: e.target.value })} />
-          <TextAreaField label="Tech stack" value={draft.tech_stack_text ?? ''} onChange={(e) => setDraft({ ...draft, tech_stack_text: e.target.value })} />
-          <TextField label="URL" value={draft.url ?? ''} onChange={(e) => setDraft({ ...draft, url: e.target.value })} />
+          <TextField label="Название" value={draft.name ?? ''} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+          <TextField label="Роль" value={draft.role ?? ''} onChange={(e) => setDraft({ ...draft, role: e.target.value })} />
+          <DateField label="Дата начала" value={draft.start_date ?? ''} onChange={(e) => setDraft({ ...draft, start_date: e.target.value })} />
+          <DateField label="Дата окончания" value={draft.end_date ?? ''} onChange={(e) => setDraft({ ...draft, end_date: e.target.value })} />
+          <TextAreaField label="Описание" value={draft.description_text ?? ''} onChange={(e) => setDraft({ ...draft, description_text: e.target.value })} />
+          <TextAreaField label="Стек технологий" value={draft.tech_stack_text ?? ''} onChange={(e) => setDraft({ ...draft, tech_stack_text: e.target.value })} />
+          <TextField label="Ссылка" value={draft.url ?? ''} onChange={(e) => setDraft({ ...draft, url: e.target.value })} />
         </div>
       ), savingByKey, saveItem, removeItem)}
 
@@ -971,12 +971,12 @@ export default function SettingsPage() {
         create: (payload) => createAchievement(profileId, payload), update: (id, payload) => updateAchievement(profileId, id, payload), remove: (id) => deleteAchievement(profileId, id),
       }, (item) => item.title || 'Новое достижение', (draft, setDraft) => (
         <div className="settings-grid settings-grid--two">
-          <TextField label="Title" value={draft.title ?? ''} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
-          <TextField label="Metric" value={draft.metric ?? ''} onChange={(e) => setDraft({ ...draft, metric: e.target.value })} />
-          <DateField label="Achieved at" value={draft.achieved_at ?? ''} onChange={(e) => setDraft({ ...draft, achieved_at: e.target.value })} />
-          <SelectField label="Related experience" options={experienceOptions} value={String(draft.related_experience_id ?? '')} onChange={(e) => setDraft({ ...draft, related_experience_id: Number(e.target.value || 0) || null })} />
-          <SelectField label="Related project" options={projectOptions} value={String(draft.related_project_id ?? '')} onChange={(e) => setDraft({ ...draft, related_project_id: Number(e.target.value || 0) || null })} />
-          <TextAreaField label="Description" value={draft.description_text ?? ''} onChange={(e) => setDraft({ ...draft, description_text: e.target.value })} />
+          <TextField label="Название" value={draft.title ?? ''} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
+          <TextField label="Метрика" value={draft.metric ?? ''} onChange={(e) => setDraft({ ...draft, metric: e.target.value })} />
+          <DateField label="Дата достижения" value={draft.achieved_at ?? ''} onChange={(e) => setDraft({ ...draft, achieved_at: e.target.value })} />
+          <SelectField label="Связанный опыт" options={experienceOptions} value={String(draft.related_experience_id ?? '')} onChange={(e) => setDraft({ ...draft, related_experience_id: Number(e.target.value || 0) || null })} />
+          <SelectField label="Связанный проект" options={projectOptions} value={String(draft.related_project_id ?? '')} onChange={(e) => setDraft({ ...draft, related_project_id: Number(e.target.value || 0) || null })} />
+          <TextAreaField label="Описание" value={draft.description_text ?? ''} onChange={(e) => setDraft({ ...draft, description_text: e.target.value })} />
         </div>
       ), savingByKey, saveItem, removeItem)}
 
@@ -984,13 +984,13 @@ export default function SettingsPage() {
         create: (payload) => createEducation(profileId, payload), update: (id, payload) => updateEducation(profileId, id, payload), remove: (id) => deleteEducation(profileId, id),
       }, (item) => item.institution || 'Новое образование', (draft, setDraft) => (
         <div className="settings-grid settings-grid--two">
-          <TextField label="Institution" value={draft.institution ?? ''} onChange={(e) => setDraft({ ...draft, institution: e.target.value })} />
-          <TextField label="Degree" value={draft.degree_level ?? ''} onChange={(e) => setDraft({ ...draft, degree_level: e.target.value })} />
-          <TextField label="Field of study" value={draft.field_of_study ?? ''} onChange={(e) => setDraft({ ...draft, field_of_study: e.target.value })} />
-          <TextField type="number" label="Start year" value={draft.start_year ?? ''} onChange={(e) => setDraft({ ...draft, start_year: Number(e.target.value || 0) })} />
-          <TextField type="number" label="End year" value={draft.end_year ?? ''} onChange={(e) => setDraft({ ...draft, end_year: Number(e.target.value || 0) })} />
+          <TextField label="Учебное заведение" value={draft.institution ?? ''} onChange={(e) => setDraft({ ...draft, institution: e.target.value })} />
+          <TextField label="Степень" value={draft.degree_level ?? ''} onChange={(e) => setDraft({ ...draft, degree_level: e.target.value })} />
+          <TextField label="Специальность" value={draft.field_of_study ?? ''} onChange={(e) => setDraft({ ...draft, field_of_study: e.target.value })} />
+          <TextField type="number" label="Год начала" value={draft.start_year ?? ''} onChange={(e) => setDraft({ ...draft, start_year: Number(e.target.value || 0) })} />
+          <TextField type="number" label="Год окончания" value={draft.end_year ?? ''} onChange={(e) => setDraft({ ...draft, end_year: Number(e.target.value || 0) })} />
           <TextField type="number" label="GPA" value={draft.gpa ?? ''} onChange={(e) => setDraft({ ...draft, gpa: Number(e.target.value || 0) })} />
-          <TextAreaField label="Description" value={draft.description_text ?? ''} onChange={(e) => setDraft({ ...draft, description_text: e.target.value })} />
+          <TextAreaField label="Описание" value={draft.description_text ?? ''} onChange={(e) => setDraft({ ...draft, description_text: e.target.value })} />
         </div>
       ), savingByKey, saveItem, removeItem)}
 
@@ -998,11 +998,11 @@ export default function SettingsPage() {
         create: (payload) => createCertificate(profileId, payload), update: (id, payload) => updateCertificate(profileId, id, payload), remove: (id) => deleteCertificate(profileId, id),
       }, (item) => item.name || 'Новый сертификат', (draft, setDraft) => (
         <div className="settings-grid settings-grid--two">
-          <TextField label="Name" value={draft.name ?? ''} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-          <TextField label="Issuer" value={draft.issuer ?? ''} onChange={(e) => setDraft({ ...draft, issuer: e.target.value })} />
-          <DateField label="Issued at" value={draft.issued_at ?? ''} onChange={(e) => setDraft({ ...draft, issued_at: e.target.value })} />
-          <DateField label="Expires at" value={draft.expires_at ?? ''} onChange={(e) => setDraft({ ...draft, expires_at: e.target.value })} />
-          <TextField label="URL" value={draft.url ?? ''} onChange={(e) => setDraft({ ...draft, url: e.target.value })} />
+          <TextField label="Название" value={draft.name ?? ''} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+          <TextField label="Выдавшая организация" value={draft.issuer ?? ''} onChange={(e) => setDraft({ ...draft, issuer: e.target.value })} />
+          <DateField label="Дата выдачи" value={draft.issued_at ?? ''} onChange={(e) => setDraft({ ...draft, issued_at: e.target.value })} />
+          <DateField label="Срок действия" value={draft.expires_at ?? ''} onChange={(e) => setDraft({ ...draft, expires_at: e.target.value })} />
+          <TextField label="Ссылка" value={draft.url ?? ''} onChange={(e) => setDraft({ ...draft, url: e.target.value })} />
         </div>
       ), savingByKey, saveItem, removeItem)}
 
@@ -1010,8 +1010,8 @@ export default function SettingsPage() {
         create: (payload) => createLanguage(profileId, payload), update: (id, payload) => updateLanguage(profileId, id, payload), remove: (id) => deleteLanguage(profileId, id),
       }, (item) => `${item.language || 'Язык'} (${item.level || '—'})`, (draft, setDraft) => (
         <div className="settings-grid settings-grid--two">
-          <TextField label="Language" value={draft.language ?? ''} onChange={(e) => setDraft({ ...draft, language: e.target.value })} />
-          <TextField label="Level" value={draft.level ?? ''} onChange={(e) => setDraft({ ...draft, level: e.target.value })} />
+          <TextField label="Язык" value={draft.language ?? ''} onChange={(e) => setDraft({ ...draft, language: e.target.value })} />
+          <TextField label="Уровень" value={draft.level ?? ''} onChange={(e) => setDraft({ ...draft, level: e.target.value })} />
         </div>
       ), savingByKey, saveItem, removeItem)}
 
@@ -1019,9 +1019,9 @@ export default function SettingsPage() {
         create: (payload) => createLink(profileId, payload), update: (id, payload) => updateLink(profileId, id, payload), remove: (id) => deleteLink(profileId, id),
       }, (item) => item.label || item.url || 'Новая ссылка', (draft, setDraft) => (
         <div className="settings-grid settings-grid--two">
-          <TextField label="Type" value={draft.type ?? ''} onChange={(e) => setDraft({ ...draft, type: e.target.value })} />
-          <TextField label="URL" value={draft.url ?? ''} onChange={(e) => setDraft({ ...draft, url: e.target.value })} />
-          <TextField label="Label" value={draft.label ?? ''} onChange={(e) => setDraft({ ...draft, label: e.target.value })} />
+          <TextField label="Тип" value={draft.type ?? ''} onChange={(e) => setDraft({ ...draft, type: e.target.value })} />
+          <TextField label="Ссылка" value={draft.url ?? ''} onChange={(e) => setDraft({ ...draft, url: e.target.value })} />
+          <TextField label="Подпись" value={draft.label ?? ''} onChange={(e) => setDraft({ ...draft, label: e.target.value })} />
         </div>
       ), savingByKey, saveItem, removeItem)}
 
@@ -1093,11 +1093,11 @@ function renderDocCards(sectionKey, items, setItems, ops, savingByKey, saveItem,
             renderFields={(draft, setDraft) => (
               <div>
                 <div className="settings-grid settings-grid--two">
-                  <TextField label="Title" value={draft.title ?? ''} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
-                  {'subject' in draft ? <TextField label="Subject" value={draft.subject ?? ''} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} /> : null}
-                  <TextField label="Vacancy ID" type="number" value={draft.vacancy_id ?? ''} onChange={(e) => setDraft({ ...draft, vacancy_id: Number(e.target.value || 0) || null })} />
+                  <TextField label="Название" value={draft.title ?? ''} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
+                  {'subject' in draft ? <TextField label="Тема" value={draft.subject ?? ''} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} /> : null}
+                  <TextField label="ID вакансии" type="number" value={draft.vacancy_id ?? ''} onChange={(e) => setDraft({ ...draft, vacancy_id: Number(e.target.value || 0) || null })} />
                 </div>
-                <TextAreaField label="Content" rows={8} value={draft.content_text ?? ''} onChange={(e) => setDraft({ ...draft, content_text: e.target.value })} />
+                <TextAreaField label="Содержимое" rows={8} value={draft.content_text ?? ''} onChange={(e) => setDraft({ ...draft, content_text: e.target.value })} />
                 {draft.id ? (
                   <button type="button" className="button button--ghost" onClick={() => approveDoc(sectionKey, draft.id)}>
                     Approve
