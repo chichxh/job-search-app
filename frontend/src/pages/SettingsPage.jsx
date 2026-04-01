@@ -88,6 +88,11 @@ const SCHEDULE_OPTIONS = [
   { value: 'hybrid', label: 'Гибрид' },
 ];
 const SUPPORTED_RESUME_IMPORT_EXTENSIONS = ['txt', 'md', 'docx', 'pdf', 'rtf'];
+const DOCUMENT_STATUS_META = {
+  draft: { label: 'Draft', tone: 'draft' },
+  approved: { label: 'Approved', tone: 'approved' },
+  archived: { label: 'Archived', tone: 'archived' },
+};
 
 const emptyBySection = {
   skills: { name_raw: '', category: '', level: '', years: '', last_used_year: '', is_primary: false, evidence_text: '' },
@@ -662,6 +667,17 @@ export default function SettingsPage() {
 
   const visibleResumes = approvedOnlyResume ? resumes.filter((item) => item.status === 'approved') : resumes;
   const visibleLetters = approvedOnlyLetter ? letters.filter((item) => item.status === 'approved') : letters;
+  const profileCompleteness = useMemo(() => {
+    const points = [
+      Boolean(profile.full_name),
+      Boolean(profile.title),
+      Boolean(profile.summary_about),
+      experiences.length > 0,
+      skills.length > 0,
+      resumes.length > 0,
+    ];
+    return Math.round((points.filter(Boolean).length / points.length) * 100);
+  }, [experiences.length, profile.full_name, profile.summary_about, profile.title, resumes.length, skills.length]);
 
   if (loading) {
     return <Loading message="Загрузка /settings..." />;
@@ -669,9 +685,23 @@ export default function SettingsPage() {
 
   return (
     <section className="page-stack">
-      <h1>{`Settings (profile_id=${profileId})`}</h1>
+      <header className="product-page-header">
+        <div>
+          <p className="product-page-header__eyebrow">Profile workspace</p>
+          <h1>{`Settings (profile_id=${profileId})`}</h1>
+          <p className="product-page-header__subtitle">Управляйте профилем, документами и интеграциями в едином рабочем модуле.</p>
+        </div>
+      </header>
       {error ? <ErrorBanner message={error} /> : null}
       {toast ? <p className="success-banner">{toast}</p> : null}
+
+      <section className="applications-summary">
+        <article><p>Профиль</p><strong>{profileCompleteness}%</strong></article>
+        <article><p>Skills</p><strong>{skills.length}</strong></article>
+        <article><p>Experience</p><strong>{experiences.length}</strong></article>
+        <article><p>Resume versions</p><strong>{resumes.length}</strong></article>
+        <article><p>Cover letters</p><strong>{letters.length}</strong></article>
+      </section>
 
       <div className="recommendations-toolbar">
         <button className="button" type="button" onClick={() => recomputeRecommendations(profileId, DEFAULT_LIMIT)}>
@@ -872,13 +902,15 @@ export default function SettingsPage() {
         ) : null}
       </Section>
 
-      <div className="settings-grid settings-grid--two">
-        <TextField label="Полное имя" value={profile.full_name ?? ''} onChange={(e) => updateProfileField('full_name', e.target.value)} />
-        <TextField label="Заголовок / позиция" value={profile.title ?? ''} onChange={(e) => updateProfileField('title', e.target.value)} />
-      </div>
-      <TextAreaField label="О себе" value={profile.summary_about ?? ''} onChange={(e) => updateProfileField('summary_about', e.target.value)} />
+      <Section title="Profile basics" defaultOpen>
+        <div className="settings-grid settings-grid--two">
+          <TextField label="Полное имя" value={profile.full_name ?? ''} onChange={(e) => updateProfileField('full_name', e.target.value)} />
+          <TextField label="Заголовок / позиция" value={profile.title ?? ''} onChange={(e) => updateProfileField('title', e.target.value)} />
+        </div>
+        <TextAreaField label="О себе" value={profile.summary_about ?? ''} onChange={(e) => updateProfileField('summary_about', e.target.value)} />
+      </Section>
 
-      <Section title="A-G. Поля таблицы profiles" defaultOpen>
+      <Section title="Preferences & profile settings" defaultOpen>
         <div className="settings-grid settings-grid--two">
           <TextField label="Почта" value={profile.email ?? ''} onChange={(e) => updateProfileField('email', e.target.value)} />
           <TextField label="Телефон" value={profile.phone ?? ''} onChange={(e) => updateProfileField('phone', e.target.value)} />
@@ -917,6 +949,10 @@ export default function SettingsPage() {
         <button className="button" type="button" onClick={saveProfile} disabled={profileSaving || Boolean(teamPreferencesError)}>
           {profileSaving ? 'Сохранение...' : 'Сохранить профиль'}
         </button>
+      </Section>
+
+      <Section title="Structured profile entities" defaultOpen>
+        <p className="muted-text">Редактируйте структуру профиля по блокам: навыки, опыт, проекты, образование и ссылки.</p>
       </Section>
 
       {renderCards('Навыки', 'skills', skills, setSkills, {
@@ -1026,6 +1062,7 @@ export default function SettingsPage() {
       ), savingByKey, saveItem, removeItem)}
 
       <Section title="Документы" defaultOpen>
+        <p className="muted-text">Рабочий модуль версий резюме и cover letters: черновики, согласование и быстрые правки.</p>
         <SwitchField label="Только approved резюме" checked={approvedOnlyResume} onChange={(e) => setApprovedOnlyResume(e.target.checked)} />
         {renderDocCards('resumes', visibleResumes, setResumes, {
           create: (payload) => createResumeVersion(profileId, payload),
@@ -1081,17 +1118,22 @@ function renderDocCards(sectionKey, items, setItems, ops, savingByKey, saveItem,
       {items.map((item, index) => {
         const localId = item.id ?? `new-${index}`;
         const key = `${sectionKey}-${localId}`;
+        const statusMeta = DOCUMENT_STATUS_META[item.status] || { label: item.status || 'Draft', tone: 'draft' };
         return (
           <InlineEditorCard
             key={key}
-            title={`${item.title || 'Без названия'} [${item.status}]`}
-            summary={`created_at: ${item.created_at || '—'}, vacancy_id: ${item.vacancy_id || '—'}`}
+            title={`${item.title || 'Без названия'}`}
+            summary={`Статус: ${statusMeta.label} · created_at: ${item.created_at || '—'} · vacancy_id: ${item.vacancy_id || '—'}`}
             value={item}
             disabled={Boolean(savingByKey[key])}
             onSave={(draft) => saveItem(sectionKey, draft, { ...ops, setItems })}
             onDelete={(id) => removeItem(sectionKey, id, { ...ops, setItems })}
             renderFields={(draft, setDraft) => (
-              <div>
+              <div className="document-editor">
+                <div className="inline-status-row">
+                  <span className={`doc-state-badge doc-state-badge--${statusMeta.tone}`}>{statusMeta.label}</span>
+                  <span className="muted-text">source: {draft.source || 'user'}</span>
+                </div>
                 <div className="settings-grid settings-grid--two">
                   <TextField label="Название" value={draft.title ?? ''} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
                   {'subject' in draft ? <TextField label="Тема" value={draft.subject ?? ''} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} /> : null}
@@ -1100,7 +1142,7 @@ function renderDocCards(sectionKey, items, setItems, ops, savingByKey, saveItem,
                 <TextAreaField label="Содержимое" rows={8} value={draft.content_text ?? ''} onChange={(e) => setDraft({ ...draft, content_text: e.target.value })} />
                 {draft.id ? (
                   <button type="button" className="button button--ghost" onClick={() => approveDoc(sectionKey, draft.id)}>
-                    Approve
+                    Approve version
                   </button>
                 ) : null}
               </div>
