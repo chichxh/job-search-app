@@ -117,7 +117,7 @@ function GenerationResultBlock({ result, onRegenerate }) {
       <p><strong>title:</strong> {getSafeText(document.title, '—')}</p>
       <p className="vacancy-details__doc-meta"><strong>генерация:</strong> {renderMetadataCompact(document.метаданные_генерации)}</p>
       <button
-        className="recommendations-toolbar__button recommendations-toolbar__button--secondary"
+        className="button button--secondary"
         type="button"
         onClick={() => onRegenerate(type)}
       >
@@ -490,7 +490,7 @@ export default function VacancyDetailsPage() {
             <MetricTile label="Обновлено" value={formatDateTime(vacancy.updated_at) ?? '—'} hint={`Создано: ${formatDateTime(vacancy.created_at) ?? '—'}`} />
           </div>
           <div className="vacancy-details__docgen-actions">
-            <button className="recommendations-toolbar__button" type="button" onClick={handleTrackApplication} disabled={isTrackingApplication}>
+            <button className="button" type="button" onClick={handleTrackApplication} disabled={isTrackingApplication}>
               {isTrackingApplication ? 'Добавляем...' : 'Добавить в отклики'}
             </button>
             <Link className="vacancy-details__link" to="/applications">Открыть воронку откликов</Link>
@@ -509,7 +509,7 @@ export default function VacancyDetailsPage() {
           title="Matching & explanation"
           subtitle="Читаемое объяснение: итоговый скор, вердикт, пробелы и evidence."
           actions={(
-            <button className="recommendations-toolbar__button" type="button" onClick={refreshTailoring} disabled={loading || isRefreshingTailoring}>
+            <button className="button" type="button" onClick={refreshTailoring} disabled={loading || isRefreshingTailoring}>
               Обновить мэтчинг
             </button>
           )}
@@ -583,13 +583,13 @@ export default function VacancyDetailsPage() {
 
         <SectionCard className="vacancy-details__documents" title="Document generation" subtitle="Сгенерируйте и согласуйте резюме/cover letter без выхода с экрана.">
           <div className="vacancy-details__docgen-actions">
-            <button className="recommendations-toolbar__button" type="button" onClick={handleResumeGeneration} disabled={isGeneratingResume}>
+            <button className="button" type="button" onClick={handleResumeGeneration} disabled={isGeneratingResume}>
               {isGeneratingResume ? 'Генерируем резюме...' : (resumeDocuments.length ? 'Перегенерировать resume draft' : 'Сгенерировать resume draft')}
             </button>
-            <button className="recommendations-toolbar__button recommendations-toolbar__button--secondary" type="button" onClick={handleCoverLetterGeneration} disabled={isGeneratingCoverLetter}>
+            <button className="button button--secondary" type="button" onClick={handleCoverLetterGeneration} disabled={isGeneratingCoverLetter}>
               {isGeneratingCoverLetter ? 'Генерируем cover letter...' : (coverLetterDocuments.length ? 'Перегенерировать cover letter draft' : 'Сгенерировать cover letter draft')}
             </button>
-            <button className="recommendations-toolbar__button recommendations-toolbar__button--secondary" type="button" onClick={refreshDocuments} disabled={documentsLoading || isRefreshingDocuments}>
+            <button className="button button--secondary" type="button" onClick={refreshDocuments} disabled={documentsLoading || isRefreshingDocuments}>
               {isRefreshingDocuments ? 'Обновляем...' : 'Обновить документы'}
             </button>
           </div>
@@ -620,7 +620,7 @@ export default function VacancyDetailsPage() {
                           <p className="vacancy-details__doc-meta"><strong>генерация:</strong> {renderMetadataCompact(item.метаданные_генерации)}</p>
                           <pre className="vacancy-details__description">{toPreviewText(item.content_text)}</pre>
                           {item.status === 'draft' ? (
-                            <button className="recommendations-toolbar__button recommendations-toolbar__button--secondary" type="button" onClick={() => startEditingDocument(type, item)}>Edit</button>
+                            <button className="button button--secondary" type="button" onClick={() => startEditingDocument(type, item)}>Edit</button>
                           ) : null}
                           {editingDocumentKey === `${type}:${item.id}` ? (
                             <div className="vacancy-details__edit-panel">
@@ -629,16 +629,16 @@ export default function VacancyDetailsPage() {
                               <label className="field-label" htmlFor={`${type}-content-${item.id}`}>Текст</label>
                               <textarea id={`${type}-content-${item.id}`} className="textarea" rows={8} value={editDraft.content_text} onChange={(event) => setEditDraft((current) => ({ ...current, content_text: event.target.value }))} />
                               <div className="vacancy-details__edit-actions">
-                                <button className="recommendations-toolbar__button" type="button" onClick={() => saveEditingDocument(type, item.id)} disabled={Boolean(savingEditByKey[`${type}:${item.id}`])}>
+                                <button className="button" type="button" onClick={() => saveEditingDocument(type, item.id)} disabled={Boolean(savingEditByKey[`${type}:${item.id}`])}>
                                   {savingEditByKey[`${type}:${item.id}`] ? 'Сохраняем...' : 'Сохранить'}
                                 </button>
-                                <button className="recommendations-toolbar__button recommendations-toolbar__button--secondary" type="button" onClick={cancelEditingDocument} disabled={Boolean(savingEditByKey[`${type}:${item.id}`])}>Cancel</button>
+                                <button className="button button--secondary" type="button" onClick={cancelEditingDocument} disabled={Boolean(savingEditByKey[`${type}:${item.id}`])}>Cancel</button>
                               </div>
                             </div>
                           ) : null}
                           {item.status === 'draft' ? (
                             <button
-                              className="recommendations-toolbar__button"
+                              className="button"
                               type="button"
                               onClick={() => (type === 'resume' ? handleApproveResume(item.id) : handleApproveCoverLetter(item.id))}
                               disabled={Boolean(type === 'resume' ? approvingResumeById[item.id] : approvingCoverLetterById[item.id])}
