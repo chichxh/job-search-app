@@ -97,6 +97,7 @@ def _entities() -> tuple[SimpleNamespace, SimpleNamespace, SimpleNamespace, Simp
         hh_resume_external_id="abc123",
         hh_resume_url="https://hh.ru/resume/abc123",
         title="Python Developer",
+        auto_hide_from_all_enabled=False,
     )
     vacancy = SimpleNamespace(url="https://hh.ru/vacancy/123", external_ref="123")
     return connection, apply_run, managed_resume, vacancy
@@ -348,3 +349,108 @@ def test_apply_entry_not_found_is_normalized() -> None:
         )
 
     assert exc.value.code == "apply_entry_not_found"
+
+
+def test_apply_privacy_precheck_hides_public_resume_before_submit() -> None:
+    page = FakePage(
+        visible={
+            "css:[data-qa='applicant-dashboard']": 1,
+            "css:[data-qa='vacancy-title']": 1,
+            "role:button:Откликнуться": 1,
+            "css:[data-qa='vacancy-response-popup']": 1,
+            "css:[data-qa='resume-list']": 1,
+            "css:a[href*='/resume/abc123']": 1,
+            "css:[data-qa*='resume-actions']": 1,
+            "text:Изменить видимость": 1,
+            "text:Видимость резюме": 1,
+            "text:Видно всем работодателям": 1,
+            "text:Просто скрыть от всех": 1,
+            "role:button:Сохранить": 1,
+            "label:Резюме": 1,
+            "role:button:Отправить": 1,
+        }
+    )
+    page.click_actions["role:button:Сохранить"] = lambda p: p.visible.__setitem__("text:Скрыто от всех", 1)
+    page.click_actions["role:button:Отправить"] = lambda p: p.visible.__setitem__("text:Ваш отклик отправлен", 1)
+
+    client = _client(page)
+    connection, apply_run, managed_resume, vacancy = _entities()
+    managed_resume.auto_hide_from_all_enabled = True
+
+    result = client.apply_to_vacancy(
+        user_id=1,
+        connection=connection,
+        apply_run=apply_run,
+        managed_resume=managed_resume,
+        vacancy=vacancy,
+        cover_letter_text=None,
+        dry_run=False,
+    )
+
+    assert result.result_type == "submitted"
+    assert "text:Просто скрыть от всех" in page.clicked
+    assert "role:button:Сохранить" in page.clicked
+
+
+def test_apply_privacy_precondition_failure_blocks_submit() -> None:
+    page = FakePage(
+        visible={
+            "css:[data-qa='applicant-dashboard']": 1,
+            "css:[data-qa='vacancy-title']": 1,
+            "role:button:Откликнуться": 1,
+            "css:[data-qa='vacancy-response-popup']": 1,
+            "css:[data-qa='resume-list']": 1,
+            "css:a[href*='/resume/abc123']": 1,
+            "css:[data-qa*='resume-actions']": 1,
+            "text:Изменить видимость": 1,
+            "text:Видимость резюме": 1,
+            "role:button:Отправить": 1,
+        }
+    )
+    client = _client(page)
+    connection, apply_run, managed_resume, vacancy = _entities()
+    managed_resume.auto_hide_from_all_enabled = True
+
+    with pytest.raises(HHApplyAutomationError) as exc:
+        client.apply_to_vacancy(
+            user_id=1,
+            connection=connection,
+            apply_run=apply_run,
+            managed_resume=managed_resume,
+            vacancy=vacancy,
+            cover_letter_text=None,
+            dry_run=False,
+        )
+
+    assert exc.value.code == "visibility_precondition_failed"
+    assert "role:button:Отправить" not in page.clicked
+
+
+def test_apply_privacy_opt_out_skips_enforcement() -> None:
+    page = FakePage(
+        visible={
+            "css:[data-qa='applicant-dashboard']": 1,
+            "css:[data-qa='vacancy-title']": 1,
+            "role:button:Откликнуться": 1,
+            "css:[data-qa='vacancy-response-popup']": 1,
+            "role:button:Отправить": 1,
+            "text:Ваш отклик отправлен": 1,
+        }
+    )
+
+    client = _client(page)
+    connection, apply_run, managed_resume, vacancy = _entities()
+    managed_resume.auto_hide_from_all_enabled = False
+
+    result = client.apply_to_vacancy(
+        user_id=1,
+        connection=connection,
+        apply_run=apply_run,
+        managed_resume=managed_resume,
+        vacancy=vacancy,
+        cover_letter_text=None,
+        dry_run=False,
+    )
+
+    assert result.result_type == "submitted"
+    assert "text:Изменить видимость" not in page.clicked

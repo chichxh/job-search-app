@@ -75,6 +75,10 @@ _FAILURE_DIAGNOSTIC_MAP: dict[str, HHFailureDiagnostic] = {
         reason="visibility_controls_not_found",
         guidance="Inspect resume visibility selectors/page object layer and retry.",
     ),
+    "visibility_precondition_failed": HHFailureDiagnostic(
+        reason="visibility_precondition_failed",
+        guidance="Privacy precheck could not enforce hidden-from-all mode. Run resume visibility action and retry apply.",
+    ),
 }
 
 
