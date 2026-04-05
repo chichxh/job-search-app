@@ -14,13 +14,14 @@ from app.schemas.hh_browser_integration import (
     HHBrowserSubmitPasswordRequest,
 )
 from app.services.hh_browser_connect_service import HHBrowserConnectService, InMemoryRuntimeRegistry, LocalSessionStorage
-from app.services.hh_browser_playwright import PlaywrightAdapterFactory
+from app.services.hh_browser_playwright import PlaywrightAdapterFactory, PlaywrightSessionProbeFactory
 
 router = APIRouter(prefix="/integrations/hh-browser", tags=["hh-browser"], dependencies=[Depends(get_current_user)])
 
 _runtime_registry = InMemoryRuntimeRegistry(timeout_seconds=600)
 _session_storage = LocalSessionStorage()
 _adapter_factory = PlaywrightAdapterFactory()
+_probe_factory = PlaywrightSessionProbeFactory()
 
 
 def get_hh_connect_service(db: Session = Depends(get_db)) -> HHBrowserConnectService:
@@ -29,6 +30,7 @@ def get_hh_connect_service(db: Session = Depends(get_db)) -> HHBrowserConnectSer
         adapter_factory=_adapter_factory,
         runtime_registry=_runtime_registry,
         session_storage=_session_storage,
+        session_probe_factory=_probe_factory,
     )
 
 
@@ -86,6 +88,22 @@ def hh_browser_connect_cancel(
     service: HHBrowserConnectService = Depends(get_hh_connect_service),
 ) -> HHBrowserConnectionSummary:
     return service.cancel(user_id=current_user.id)
+
+
+@router.post("/session/restore", response_model=HHBrowserConnectionSummary)
+def hh_browser_session_restore(
+    current_user: User = Depends(get_current_user),
+    service: HHBrowserConnectService = Depends(get_hh_connect_service),
+) -> HHBrowserConnectionSummary:
+    return service.restore_session(user_id=current_user.id)
+
+
+@router.post("/session/check", response_model=HHBrowserConnectionSummary)
+def hh_browser_session_check(
+    current_user: User = Depends(get_current_user),
+    service: HHBrowserConnectService = Depends(get_hh_connect_service),
+) -> HHBrowserConnectionSummary:
+    return service.check_session(user_id=current_user.id)
 
 
 # Backward-compatible aliases for foundation endpoints used by existing product wiring.

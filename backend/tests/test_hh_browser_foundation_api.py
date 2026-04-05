@@ -3,7 +3,7 @@ from __future__ import annotations
 from app.api.routers.hh_browser_integration import get_hh_connect_service
 from app.db import models
 from app.main import app
-from app.services.hh_browser_connect_service import HHBrowserConnectService, InMemoryRuntimeRegistry, LocalSessionStorage
+from app.services.hh_browser_connect_service import HHBrowserConnectService, InMemoryRuntimeRegistry
 
 
 class FakeAdapter:
@@ -43,16 +43,48 @@ class FakeFactory:
         return self.adapters.pop(0)
 
 
-class MemoryStorage(LocalSessionStorage):
+class MemoryStorage:
     def __init__(self) -> None:
         self.saved: list[dict] = []
+        self.by_ref: dict[str, dict] = {}
+        self.deleted: list[str] = []
 
     def save(self, *, user_id: int, connection_id: int, state: dict) -> str:
-        self.saved.append({"user_id": user_id, "connection_id": connection_id, "state": state})
-        return f"local://hh-browser-session/{user_id}-{connection_id}"
+        ref = f"local://hh-browser-session/{user_id}-{connection_id}-{len(self.saved)+1}"
+        self.saved.append({"user_id": user_id, "connection_id": connection_id, "state": state, "ref": ref})
+        self.by_ref[ref] = state
+        return ref
+
+    def load(self, *, ref: str) -> dict:
+        if ref not in self.by_ref:
+            raise FileNotFoundError(ref)
+        return self.by_ref[ref]
+
+    def delete(self, *, ref: str) -> None:
+        self.deleted.append(ref)
+        self.by_ref.pop(ref, None)
 
 
-def _override_service(fake_db, factory: FakeFactory, storage: MemoryStorage):
+class FakeProbe:
+    def __init__(self, *, authenticated: bool = True) -> None:
+        self.authenticated = authenticated
+
+    def check_authenticated(self) -> bool:
+        return self.authenticated
+
+    def close(self) -> None:
+        return None
+
+
+class FakeProbeFactory:
+    def __init__(self, responses: list[bool] | None = None) -> None:
+        self.responses = responses or [True]
+
+    def create(self, *, storage_state: dict) -> FakeProbe:
+        return FakeProbe(authenticated=self.responses.pop(0))
+
+
+def _override_service(fake_db, factory: FakeFactory, storage: MemoryStorage, probe_factory: FakeProbeFactory | None = None):
     runtime_registry = InMemoryRuntimeRegistry(timeout_seconds=120)
 
     def _factory_override():
@@ -61,6 +93,7 @@ def _override_service(fake_db, factory: FakeFactory, storage: MemoryStorage):
             adapter_factory=factory,
             runtime_registry=runtime_registry,
             session_storage=storage,
+            session_probe_factory=probe_factory or FakeProbeFactory([True]),
         )
 
     return _factory_override
@@ -133,14 +166,22 @@ def test_foreign_user_access_isolated(client, auth_headers, foreign_auth_headers
 def test_cancel_moves_to_disconnected(client, auth_headers, fake_db) -> None:
     factory = FakeFactory()
     storage = MemoryStorage()
-    factory.push(FakeAdapter(["awaiting_identifier"]))
+    factory.push(FakeAdapter(["awaiting_identifier", "awaiting_code", "connected"]))
     app.dependency_overrides[get_hh_connect_service] = _override_service(fake_db, factory, storage)
 
     client.post("/api/v1/integrations/hh-browser/connect/start", headers=auth_headers, json={})
+    client.post(
+        "/api/v1/integrations/hh-browser/connect/identifier",
+        headers=auth_headers,
+        json={"identifier_type": "email", "identifier": "user@example.com"},
+    )
+    client.post("/api/v1/integrations/hh-browser/connect/code", headers=auth_headers, json={"code": "1234"})
     cancel = client.post("/api/v1/integrations/hh-browser/connect/cancel", headers=auth_headers)
 
     assert cancel.status_code == 200
     assert cancel.json()["status"] == "disconnected"
+    assert cancel.json()["session_present"] is False
+    assert storage.deleted
 
 
 def test_secrets_not_persisted_in_db(client, auth_headers, fake_db) -> None:
@@ -172,3 +213,49 @@ def test_secrets_not_persisted_in_db(client, auth_headers, fake_db) -> None:
     assert "top-secret" not in body
     assert "999999" not in body
     assert "private@example.com" not in body
+
+
+def test_session_restore_and_check_endpoints(client, auth_headers, fake_db) -> None:
+    factory = FakeFactory()
+    storage = MemoryStorage()
+    probe_factory = FakeProbeFactory([True, True])
+    factory.push(FakeAdapter(["awaiting_identifier", "awaiting_code", "connected"]))
+    app.dependency_overrides[get_hh_connect_service] = _override_service(fake_db, factory, storage, probe_factory)
+
+    client.post("/api/v1/integrations/hh-browser/connect/start", headers=auth_headers, json={})
+    client.post(
+        "/api/v1/integrations/hh-browser/connect/identifier",
+        headers=auth_headers,
+        json={"identifier_type": "email", "identifier": "user@example.com"},
+    )
+    client.post("/api/v1/integrations/hh-browser/connect/code", headers=auth_headers, json={"code": "0000"})
+
+    restore = client.post("/api/v1/integrations/hh-browser/session/restore", headers=auth_headers)
+    check = client.post("/api/v1/integrations/hh-browser/session/check", headers=auth_headers)
+    assert restore.status_code == 200
+    assert restore.json()["status"] == "connected"
+    assert check.status_code == 200
+    assert check.json()["status"] == "connected"
+
+
+def test_foreign_user_cannot_restore_owners_session(client, auth_headers, foreign_auth_headers, fake_db) -> None:
+    factory = FakeFactory()
+    storage = MemoryStorage()
+    probe_factory = FakeProbeFactory([True])
+    factory.push(FakeAdapter(["awaiting_identifier", "awaiting_code", "connected"]))
+    app.dependency_overrides[get_hh_connect_service] = _override_service(fake_db, factory, storage, probe_factory)
+
+    client.post("/api/v1/integrations/hh-browser/connect/start", headers=auth_headers, json={})
+    client.post(
+        "/api/v1/integrations/hh-browser/connect/identifier",
+        headers=auth_headers,
+        json={"identifier_type": "email", "identifier": "owner@example.com"},
+    )
+    client.post("/api/v1/integrations/hh-browser/connect/code", headers=auth_headers, json={"code": "1111"})
+
+    foreign_restore = client.post("/api/v1/integrations/hh-browser/session/restore", headers=foreign_auth_headers)
+    foreign_check = client.post("/api/v1/integrations/hh-browser/session/check", headers=foreign_auth_headers)
+    assert foreign_restore.status_code == 200
+    assert foreign_check.status_code == 200
+    assert foreign_restore.json()["status"] == "disconnected"
+    assert foreign_check.json()["status"] == "disconnected"

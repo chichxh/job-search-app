@@ -4,7 +4,12 @@ import os
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from app.services.hh_browser_connect_service import HHBrowserAutomationError, HHLoginPageAdapter, HHLoginStep
+from app.services.hh_browser_connect_service import (
+    HHBrowserAutomationError,
+    HHLoginPageAdapter,
+    HHLoginStep,
+    HHSessionProbeAdapter,
+)
 
 
 @dataclass(frozen=True)
@@ -221,3 +226,45 @@ class PlaywrightHHLoginAdapter(HHLoginPageAdapter):
 class PlaywrightAdapterFactory:
     def create(self) -> HHLoginPageAdapter:
         return PlaywrightHHLoginAdapter()
+
+
+class PlaywrightHHSessionProbe(HHSessionProbeAdapter):
+    def __init__(self, *, storage_state: dict) -> None:
+        try:
+            from playwright.sync_api import Error, TimeoutError, sync_playwright
+        except Exception as exc:  # noqa: BLE001
+            raise HHBrowserAutomationError("PLAYWRIGHT_UNAVAILABLE", "Playwright is not installed") from exc
+
+        self._playwright_error = Error
+        self._playwright_timeout_error = TimeoutError
+        self._sync_playwright = sync_playwright
+        self._pw = self._sync_playwright().start()
+        headless = os.getenv("HH_PLAYWRIGHT_HEADLESS", "true").lower() != "false"
+        self._browser = self._pw.chromium.launch(headless=headless)
+        self._context = self._browser.new_context(storage_state=storage_state)
+        self._page = self._context.new_page()
+        self._timeout_ms = int(os.getenv("HH_LOGIN_NAV_TIMEOUT_MS", "30000"))
+
+    def check_authenticated(self) -> bool:
+        try:
+            self._page.goto("https://hh.ru/applicant/resumes", wait_until="domcontentloaded", timeout=self._timeout_ms)
+            if "/applicant" in self._page.url or "/resume" in self._page.url:
+                return True
+            return self._page.locator("[data-qa='mainmenu_applicantProfile'],a[href*='/applicant']").count() > 0
+        except self._playwright_timeout_error as exc:
+            raise HHBrowserAutomationError("TRANSIENT_NAVIGATION", "Timed out while checking HH session") from exc
+        except self._playwright_error as exc:
+            raise HHBrowserAutomationError("TRANSIENT_NAVIGATION", "Failed while checking HH session") from exc
+
+    def close(self) -> None:
+        try:
+            self._context.close()
+            self._browser.close()
+            self._pw.stop()
+        except Exception:  # noqa: BLE001
+            return
+
+
+class PlaywrightSessionProbeFactory:
+    def create(self, *, storage_state: dict) -> HHSessionProbeAdapter:
+        return PlaywrightHHSessionProbe(storage_state=storage_state)
