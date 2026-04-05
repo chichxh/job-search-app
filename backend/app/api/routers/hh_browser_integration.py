@@ -12,7 +12,6 @@ from app.schemas.hh_browser_integration import (
     HHApplyRequest,
     HHApplyResponse,
     HHApplyRunRead,
-    HHApplyRunSyncResponse,
     HHCreateTargetedResumeRequest,
     HHCreateTargetedResumeResponse,
     HHBrowserConnectStartRequest,
@@ -32,7 +31,7 @@ from app.services.hh_resume_visibility_service import HHResumeVisibilityService
 from app.services.hh_targeted_resume_service import HHCreateTargetedResumeService, HHTargetedPayloadBuilder
 from app.services.hh_targeted_resume_automation import PlaywrightTargetedResumeAutomationClient
 from app.services.hh_browser_playwright import PlaywrightAdapterFactory, PlaywrightSessionProbeFactory
-from app.services.hh_apply_automation import PlaywrightHHApplyAutomationClient
+from app.services.hh_apply_service import HHApplyAutomationClientStub
 
 router = APIRouter(prefix="/integrations/hh-browser", tags=["hh-browser"], dependencies=[Depends(get_current_user)])
 
@@ -42,7 +41,7 @@ _adapter_factory = PlaywrightAdapterFactory()
 _probe_factory = PlaywrightSessionProbeFactory()
 _resume_automation_client = PlaywrightTargetedResumeAutomationClient()
 _resume_visibility_automation_client = PlaywrightResumeVisibilityAutomationClient()
-_apply_automation_client = PlaywrightHHApplyAutomationClient()
+_apply_automation_client = HHApplyAutomationClientStub()
 
 
 def get_hh_connect_service(db: Session = Depends(get_db)) -> HHBrowserConnectService:
@@ -273,20 +272,8 @@ def apply_to_vacancy(
     service: HHApplyService = Depends(get_hh_apply_service),
 ) -> HHApplyResponse:
     outcome = service.apply_with_outcome(user_id=current_user.id, request=payload)
-    linked = None
-    if outcome.sync_result and outcome.sync_result.application:
-        linked = {
-            "id": outcome.sync_result.application.id,
-            "status": outcome.sync_result.application.status,
-            "external_apply_status": outcome.sync_result.application.external_apply_status,
-            "last_hh_apply_run_id": outcome.sync_result.application.last_hh_apply_run_id,
-            "hh_managed_resume_id": outcome.sync_result.application.hh_managed_resume_id,
-        }
     return HHApplyResponse(
         hh_apply_run=HHApplyRunRead.model_validate(outcome.apply_run),
-        linked_application=linked,
-        sync_reason=outcome.sync_result.reason if outcome.sync_result else None,
-        sync_action=outcome.sync_result.action if outcome.sync_result else None,
     )
 
 
@@ -305,22 +292,6 @@ def get_apply_run(
     service: HHApplyService = Depends(get_hh_apply_service),
 ) -> HHApplyRunRead:
     return HHApplyRunRead.model_validate(service.get_run(user_id=current_user.id, apply_run_id=apply_run_id))
-
-
-@router.post("/apply-runs/{apply_run_id}/sync-to-application", response_model=HHApplyRunSyncResponse)
-def sync_apply_run_to_application(
-    apply_run_id: int,
-    current_user: User = Depends(get_current_user),
-    service: HHApplyService = Depends(get_hh_apply_service),
-) -> HHApplyRunSyncResponse:
-    result = service.sync_run_to_application(user_id=current_user.id, apply_run_id=apply_run_id)
-    return HHApplyRunSyncResponse(
-        apply_run_id=apply_run_id,
-        synced=result.synced,
-        reason=result.reason,
-        application_id=result.application.id if result.application else None,
-        application_status=result.application.status if result.application else None,
-    )
 
 
 @router.get("/diagnostics", response_model=HHAutomationDiagnosticsRead)
