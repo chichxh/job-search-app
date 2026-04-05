@@ -132,18 +132,6 @@ const HH_APPLY_RESULT_TYPE_META = {
   already_applied: { label: 'Вы уже откликались', tone: 'info' },
 };
 
-const HH_SYNC_REASON_LABELS = {
-  synced: 'Локальная заявка создана/обновлена из HH apply.',
-  already_applied_mapped: 'HH уже содержит отклик, локальная заявка синхронизирована в applied.',
-  not_syncable_status: 'Для этого статуса HH apply синхронизация в воронку не выполняется.',
-};
-
-const HH_SYNC_ACTION_LABELS = {
-  created: 'Создана локальная заявка',
-  updated: 'Обновлена локальная заявка',
-  skipped: 'Локальная заявка не изменялась',
-};
-
 function isHhSessionActive(status) {
   return Boolean(status?.status === 'connected' && status?.session_present && !status?.requires_reauth);
 }
@@ -395,13 +383,9 @@ export default function VacancyDetailsPage() {
         cover_letter_version_id: selectedCoverLetterId ? Number(selectedCoverLetterId) : null,
       });
       const run = response?.hh_apply_run ?? response;
-      const linkedApplication = response?.linked_application ?? null;
       setHhApplyRuns((current) => [run, ...current.filter((item) => item.id !== run.id)]);
       setHhApplyOutcome({
         run,
-        linkedApplication,
-        syncReason: response?.sync_reason ?? null,
-        syncAction: response?.sync_action ?? null,
         selectedManagedResume: selectedManagedResume ?? null,
         selectedCoverLetter: selectedCoverLetter ?? null,
       });
@@ -410,7 +394,7 @@ export default function VacancyDetailsPage() {
       if (run?.result_type === 'already_applied') {
         setHhApplySuccess(`На HH уже есть отклик. ${safeResultMessage}`);
       } else if (run?.status === 'submitted') {
-        setHhApplySuccess(`Отклик отправлен и сохранён в локальной воронке. ${safeResultMessage}`);
+        setHhApplySuccess(`Отклик отправлен через HH. ${safeResultMessage}`);
       } else if (run?.status === 'retryable_failed') {
         setHhApplySuccess(`Отклик не завершён: ошибку можно исправить и повторить. ${safeResultMessage}`);
       } else {
@@ -632,6 +616,12 @@ export default function VacancyDetailsPage() {
   const hasAnyEligibleManagedResume = managedResumesEligible.length > 0;
   const shouldWarnUnknownVisibility = selectedManagedResume?.current_visibility_mode === 'unknown';
   const applyDisabled = !hhSessionActive || !selectedHhManagedResumeId || hhApplyBusy;
+  const latestRunManagedResume = latestApplyRunForVacancy
+    ? hhManagedResumes.find((item) => item.id === latestApplyRunForVacancy.hh_resume_managed_id) ?? null
+    : null;
+  const latestRunCoverLetter = latestApplyRunForVacancy
+    ? coverLetterDocuments.find((item) => item.id === latestApplyRunForVacancy.source_cover_letter_version_id) ?? null
+    : null;
 
   useEffect(() => {
     if (selectedHhManagedResumeId && managedResumesEligible.some((item) => String(item.id) === selectedHhManagedResumeId)) {
@@ -947,6 +937,13 @@ export default function VacancyDetailsPage() {
               <button className="button" type="button" onClick={handleRunHhApply} disabled={applyDisabled}>
                 {hhApplyBusy ? 'Отправляем отклик через HH...' : 'Откликнуться через HH'}
               </button>
+              {applyDisabled ? (
+                <p className="vacancy-details__hint-text">
+                  {!hhSessionActive
+                    ? 'Кнопка недоступна: сначала подключите активную HH сессию.'
+                    : (!selectedHhManagedResumeId ? 'Кнопка недоступна: выберите HH managed resume.' : 'Идёт запуск apply, подождите завершения.')}
+                </p>
+              ) : null}
             </article>
           </div>
 
@@ -965,8 +962,20 @@ export default function VacancyDetailsPage() {
                   </StatusPill>
                 </div>
                 <ul className="structured-list">
-                  <li><strong>HH resume used:</strong> {latestApplyRunForVacancy.hh_resume_managed_id}</li>
-                  <li><strong>Cover letter used:</strong> {latestApplyRunForVacancy.source_cover_letter_version_id ?? 'без cover letter'}</li>
+                  <li>
+                    <strong>HH resume used:</strong>
+                    {' '}
+                    {latestRunManagedResume
+                      ? `${latestRunManagedResume.title || `HH resume #${latestRunManagedResume.id}`} (#${latestRunManagedResume.id})`
+                      : `#${latestApplyRunForVacancy.hh_resume_managed_id}`}
+                  </li>
+                  <li>
+                    <strong>Cover letter used:</strong>
+                    {' '}
+                    {latestRunCoverLetter
+                      ? `${latestRunCoverLetter.title || `Cover letter #${latestRunCoverLetter.id}`} (#${latestRunCoverLetter.id})`
+                      : (latestApplyRunForVacancy.source_cover_letter_version_id ? `#${latestApplyRunForVacancy.source_cover_letter_version_id}` : 'без cover letter')}
+                  </li>
                   <li><strong>Updated:</strong> {formatDateTime(latestApplyRunForVacancy.updated_at) ?? '—'}</li>
                   <li><strong>Finished:</strong> {formatDateTime(latestApplyRunForVacancy.finished_at) ?? '—'}</li>
                   <li><strong>Safe message:</strong> {getSafeText(latestApplyRunForVacancy.result_message, '—')}</li>
@@ -995,39 +1004,6 @@ export default function VacancyDetailsPage() {
               </div>
               <ul className="structured-list">
                 <li>
-                  <strong>Локальный funnel:</strong>
-                  {' '}
-                  {hhApplyOutcome.linkedApplication ? (
-                    <>
-                      синхронизирован в статус
-                      {' '}
-                      <strong>{hhApplyOutcome.linkedApplication.status}</strong>
-                      {' '}
-                      ·
-                      {' '}
-                      <Link className="vacancy-details__link" to={`/applications`}>Открыть воронку</Link>
-                    </>
-                  ) : (
-                    'не обновлялся'
-                  )}
-                </li>
-                {hhApplyOutcome.linkedApplication?.id ? (
-                  <li>
-                    <strong>Локальная заявка:</strong>
-                    {' '}
-                    #{hhApplyOutcome.linkedApplication.id}
-                    {' '}
-                    ({hhApplyOutcome.syncAction ? HH_SYNC_ACTION_LABELS[hhApplyOutcome.syncAction] ?? hhApplyOutcome.syncAction : 'синхронизирована'})
-                  </li>
-                ) : null}
-                {hhApplyOutcome.syncReason ? (
-                  <li>
-                    <strong>Sync summary:</strong>
-                    {' '}
-                    {HH_SYNC_REASON_LABELS[hhApplyOutcome.syncReason] ?? hhApplyOutcome.syncReason}
-                  </li>
-                ) : null}
-                <li>
                   <strong>HH resume used:</strong>
                   {' '}
                   {hhApplyOutcome.selectedManagedResume
@@ -1044,21 +1020,22 @@ export default function VacancyDetailsPage() {
                 <li><strong>Last apply timestamp:</strong> {formatDateTime(hhApplyOutcome.run.finished_at ?? hhApplyOutcome.run.updated_at) ?? '—'}</li>
                 <li><strong>Result summary:</strong> {getSafeText(hhApplyOutcome.run.result_message, '—')}</li>
               </ul>
+              <p className="info-banner">
+                Этот шаг обновляет только HH apply run. Автоматическая синхронизация в локальную воронку откликов будет добавлена отдельным шагом roadmap.
+              </p>
               {hhApplyOutcome.run.status === 'retryable_failed' ? (
                 <p className="info-banner">
                   Ошибка временная: проверьте HH-сессию/документы и повторите отклик кнопкой «Откликнуться через HH».
-                  Локальная воронка не обновлена, пока запуск не станет submitted/already_applied.
                 </p>
               ) : null}
               {hhApplyOutcome.run.status === 'failed' ? (
                 <p className="error-banner">
-                  Отклик завершился ошибкой без возможности безопасного ретрая. Локальная воронка не обновлена автоматически.
+                  Отклик завершился ошибкой без возможности безопасного ретрая.
                 </p>
               ) : null}
               {hhApplyOutcome.run.result_type === 'already_applied' ? (
                 <p className="info-banner">
                   HH уже содержит ваш отклик на эту вакансию; это не ошибка.
-                  {hhApplyOutcome.linkedApplication ? ' Локальная заявка отражает это состояние.' : ' Локальная заявка не была обновлена.'}
                 </p>
               ) : null}
             </article>
