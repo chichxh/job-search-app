@@ -13,12 +13,20 @@ from app.services.hh_resume_visibility_service import HHResumeVisibilityService
 
 
 class FakeApplyAutomationClient(HHApplyAutomationClient):
-    def __init__(self, *, should_fail: bool = False, retryable: bool = True, result_type: str = "submitted") -> None:
+    def __init__(self, *, should_fail: bool = False, retryable: bool = True, result_type: str = "submitted", visibility_fail: bool = False) -> None:
         self.should_fail = should_fail
         self.retryable = retryable
         self.result_type = result_type
+        self.visibility_fail = visibility_fail
 
     def apply_to_vacancy(self, *, user_id, connection, apply_run, managed_resume, vacancy, cover_letter_text, dry_run):
+        if self.visibility_fail:
+            raise HHApplyAutomationError(
+                code="visibility_precondition_failed",
+                message="privacy guard blocked apply",
+                retryable=False,
+                response_ref={"hh_response_type": "visibility_precondition_failed", "reason": "unknown_visibility_layout"},
+            )
         if self.should_fail:
             raise HHApplyAutomationError(
                 code="transient_wait",
@@ -56,6 +64,7 @@ def _override_service(
     retryable: bool = True,
     result_type: str = "submitted",
     visibility_service: HHResumeVisibilityService | None = None,
+    visibility_fail: bool = False,
 ):
     def _factory_override():
         return HHApplyService(
@@ -64,6 +73,7 @@ def _override_service(
                 should_fail=should_fail,
                 retryable=retryable,
                 result_type=result_type,
+                visibility_fail=visibility_fail,
             ),
             visibility_service=visibility_service,
         )
@@ -267,3 +277,21 @@ def test_apply_opt_out_path_does_not_force_visibility_change(client, auth_header
     assert updated is not None
     assert updated.current_visibility_mode == "public_default"
     assert updated.visibility_status != "inferred_post_apply"
+
+
+def test_apply_visibility_enforcement_failure_blocks_apply(client, auth_headers, fake_db) -> None:
+    _seed_connected_session(fake_db)
+    managed = _seed_managed_resume(fake_db)
+    managed.current_visibility_mode = "unknown"
+    app.dependency_overrides[get_hh_apply_service] = _override_service(fake_db, visibility_fail=True)
+
+    response = client.post(
+        "/api/v1/integrations/hh-browser/apply",
+        headers=auth_headers,
+        json={"vacancy_id": 1, "hh_resume_managed_id": managed.id},
+    )
+    assert response.status_code == 201
+    body = response.json()["hh_apply_run"]
+    assert body["status"] == "failed"
+    assert body["result_type"] == "visibility_precondition_failed"
+    assert body["hh_response_ref"]["hh_response_type"] == "visibility_precondition_failed"

@@ -101,6 +101,7 @@ class ResumesListSelectorGroup:
     visibility_dialog_markers: tuple[SelectorQuery, ...]
     visibility_public_markers: tuple[SelectorQuery, ...]
     visibility_hidden_markers: tuple[SelectorQuery, ...]
+    visibility_selected_employers_markers: tuple[SelectorQuery, ...]
     visibility_hide_from_all: tuple[SelectorQuery, ...]
     visibility_save: tuple[SelectorQuery, ...]
     visibility_success: tuple[SelectorQuery, ...]
@@ -259,6 +260,11 @@ DEFAULT_SELECTORS = SelectorRegistry(
         visibility_hidden_markers=(
             SelectorQuery("text", "Скрыто от всех"),
             SelectorQuery("text", "Только вам"),
+        ),
+        visibility_selected_employers_markers=(
+            SelectorQuery("text", "Видно выбранным работодателям"),
+            SelectorQuery("text", "Доступно выбранным работодателям"),
+            SelectorQuery("text", "Выбранным работодателям"),
         ),
         visibility_hide_from_all=(
             SelectorQuery("role", "Просто скрыть от всех", role="radio"),
@@ -710,6 +716,8 @@ class ResumesListPage(BasePageObject):
     def detect_visibility_mode(self) -> str:
         if self.resolver.find_first(self.selectors.resumes_list.visibility_hidden_markers) is not None:
             return "hidden_from_all"
+        if self.resolver.find_first(self.selectors.resumes_list.visibility_selected_employers_markers) is not None:
+            return "visible_selected_employers"
         if self.resolver.find_first(self.selectors.resumes_list.visibility_public_markers) is not None:
             return "public_default"
         return "unknown"

@@ -82,6 +82,20 @@ class PlaywrightHHApplyAutomationClient:
             if outcome is not None:
                 return outcome
 
+            if self._auto_hide_enabled(managed_resume):
+                self._log_step("privacy_precheck", apply_run_id=apply_run.id, user_id=user_id)
+                self._ensure_resume_hidden_from_all(nav=nav, managed_resume=managed_resume)
+                self._log_step("privacy_precheck_confirmed", apply_run_id=apply_run.id, user_id=user_id)
+                self._log_step("open_vacancy", apply_run_id=apply_run.id, user_id=user_id)
+                nav.open_vacancy(vacancy_url)
+                self._log_step("open_apply_surface", apply_run_id=apply_run.id, user_id=user_id)
+                nav.open_apply_surface()
+                outcome = self._detect_pre_submit_terminal_state(nav=nav, vacancy_url=runtime.page.url)
+                if outcome is not None:
+                    return outcome
+            else:
+                self._log_step("privacy_precheck_skipped", apply_run_id=apply_run.id, user_id=user_id)
+
             self._select_resume(nav=nav, managed_resume=managed_resume)
             self._fill_cover_letter(nav=nav, cover_letter_text=cover_letter_text)
 
@@ -216,6 +230,85 @@ class PlaywrightHHApplyAutomationClient:
         if nav.apply_page.detect_cannot_apply():
             raise HHApplyAutomationError(code="RESPONSE_UNAVAILABLE", message="Response became unavailable during submit")
         return None
+
+
+    def _ensure_resume_hidden_from_all(self, *, nav: HHNavigationHelper, managed_resume: HHManagedResume) -> None:
+        nav.go_to_resumes()
+        if not self._locate_resume(nav=nav, managed_resume=managed_resume):
+            raise HHApplyAutomationError(
+                code="VISIBILITY_PRECONDITION_FAILED",
+                message="Unable to locate target resume card in HH settings",
+                response_ref={"hh_response_type": "visibility_precondition_failed", "reason": "resume_card_not_found"},
+            )
+        if not nav.resumes_page.open_first_actions_menu() or not nav.resumes_page.open_visibility_controls_from_menu():
+            raise HHApplyAutomationError(
+                code="VISIBILITY_PRECONDITION_FAILED",
+                message="Unable to open visibility controls for target resume",
+                response_ref={"hh_response_type": "visibility_precondition_failed", "reason": "visibility_controls_not_found"},
+            )
+        if not nav.resumes_page.visibility_dialog_detected():
+            raise HHApplyAutomationError(
+                code="VISIBILITY_PRECONDITION_FAILED",
+                message="Visibility controls page was not detected",
+                response_ref={"hh_response_type": "visibility_precondition_failed", "reason": "visibility_dialog_not_detected"},
+            )
+        current = nav.resumes_page.detect_visibility_mode()
+        if current == "hidden_from_all":
+            return
+        if current == "unknown":
+            raise HHApplyAutomationError(
+                code="VISIBILITY_PRECONDITION_FAILED",
+                message="Unable to determine current resume visibility mode",
+                response_ref={"hh_response_type": "visibility_precondition_failed", "reason": "unknown_visibility_layout"},
+            )
+        if not nav.resumes_page.select_hide_from_all():
+            raise HHApplyAutomationError(
+                code="VISIBILITY_PRECONDITION_FAILED",
+                message="Hide-from-all option is unavailable in HH layout",
+                response_ref={"hh_response_type": "visibility_precondition_failed", "reason": "hidden_option_unavailable"},
+            )
+        if not nav.resumes_page.save_visibility():
+            raise HHApplyAutomationError(
+                code="VISIBILITY_PRECONDITION_FAILED",
+                message="Visibility save action was not found",
+                response_ref={"hh_response_type": "visibility_precondition_failed", "reason": "save_failed"},
+            )
+        updated = nav.resumes_page.detect_visibility_mode()
+        if not (nav.resumes_page.visibility_success_detected() or updated == "hidden_from_all"):
+            raise HHApplyAutomationError(
+                code="VISIBILITY_PRECONDITION_FAILED",
+                message="Unable to verify hidden visibility mode after save",
+                response_ref={"hh_response_type": "visibility_precondition_failed", "reason": "post_save_verification_failed"},
+            )
+
+    def _locate_resume(self, *, nav: HHNavigationHelper, managed_resume: HHManagedResume) -> bool:
+        external_id = self._derive_external_id(managed_resume)
+        if external_id and self._selector_exists(nav=nav, selector=f"a[href*='/resume/{external_id}']"):
+            return True
+        if managed_resume.title and self._target_link_by_title(nav=nav, title=managed_resume.title):
+            return True
+        if managed_resume.hh_resume_url and self._selector_exists(nav=nav, selector=f"a[href='{managed_resume.hh_resume_url}']"):
+            return True
+        if nav.resumes_page.expand_more_if_available():
+            if external_id and self._selector_exists(nav=nav, selector=f"a[href*='/resume/{external_id}']"):
+                return True
+            if managed_resume.title and self._target_link_by_title(nav=nav, title=managed_resume.title):
+                return True
+            if managed_resume.hh_resume_url and self._selector_exists(nav=nav, selector=f"a[href='{managed_resume.hh_resume_url}']"):
+                return True
+        return False
+
+    def _target_link_by_title(self, *, nav: HHNavigationHelper, title: str) -> bool:
+        title_locator = nav.page.get_by_role("link", name=title)
+        if title_locator.count() > 0:
+            return True
+        return nav.page.get_by_text(title).count() > 0
+
+    def _selector_exists(self, *, nav: HHNavigationHelper, selector: str) -> bool:
+        return nav.page.locator(selector).count() > 0
+
+    def _auto_hide_enabled(self, managed_resume: HHManagedResume) -> bool:
+        return getattr(managed_resume, "auto_hide_from_all_enabled", True) is not False
 
     def _response_ref(self, *, vacancy_url: str, hh_response_type: str, confirmation_summary: str | None = None) -> dict[str, str]:
         payload = {

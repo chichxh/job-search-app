@@ -52,9 +52,32 @@ class PlaywrightResumeVisibilityAutomationClient:
         connection: HHBrowserConnection,
         managed_resume: HHManagedResume,
     ) -> HHResumeVisibilityChangeResult:
+        return self.ensure_resume_hidden_from_all(user_id=user_id, connection=connection, managed_resume=managed_resume)
+
+    def ensure_resume_hidden_from_all(
+        self,
+        *,
+        user_id: int,
+        connection: HHBrowserConnection,
+        managed_resume: HHManagedResume,
+    ) -> HHResumeVisibilityChangeResult:
         runtime, nav = self._open_runtime(connection=connection)
         try:
             self._open_visibility_controls(nav=nav, managed_resume=managed_resume)
+            current_mode = nav.resumes_page.detect_visibility_mode()
+            changed_at = datetime.now(timezone.utc)
+            if current_mode == "hidden_from_all":
+                return HHResumeVisibilityChangeResult(
+                    current_visibility_mode=current_mode,
+                    checked_at=changed_at,
+                    changed_at=changed_at,
+                )
+            if current_mode == "unknown":
+                raise HHResumeVisibilityAutomationError(
+                    code="VISIBILITY_UNKNOWN_LAYOUT",
+                    message="Unable to determine current resume visibility mode",
+                )
+
             if not nav.resumes_page.select_hide_from_all():
                 raise HHResumeVisibilityAutomationError(
                     code="VISIBILITY_HIDE_OPTION_UNAVAILABLE",
@@ -66,7 +89,6 @@ class PlaywrightResumeVisibilityAutomationClient:
                     message="Unable to find visibility save/apply action",
                 )
 
-            changed_at = datetime.now(timezone.utc)
             current_mode = nav.resumes_page.detect_visibility_mode()
             success = nav.resumes_page.visibility_success_detected() or current_mode == "hidden_from_all"
             if not success:

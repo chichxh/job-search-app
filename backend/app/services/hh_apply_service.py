@@ -25,7 +25,6 @@ from app.services.hh_resume_visibility_service import HHResumeVisibilityService
 
 logger = logging.getLogger(__name__)
 
-_SAFE_VISIBILITY_FOR_APPLY = {"hidden_from_all"}
 
 
 class HHApplyAutomationError(Exception):
@@ -314,31 +313,10 @@ class HHApplyService:
         managed_resume: HHManagedResume,
         force_visibility_check: bool,
     ) -> None:
+        _ = user_id
+        _ = force_visibility_check
         auto_hide_enabled = managed_resume.auto_hide_from_all_enabled is not False
-        if not auto_hide_enabled:
-            return
-        managed_resume.desired_visibility_mode = "hidden_from_all"
-        if managed_resume.current_visibility_mode in _SAFE_VISIBILITY_FOR_APPLY:
-            return
-        if self.visibility_service is not None:
-            updated = self.visibility_service.hide_from_all(user_id=user_id, managed_resume_id=managed_resume.id)
-            if updated.current_visibility_mode in _SAFE_VISIBILITY_FOR_APPLY:
-                return
-        if not force_visibility_check:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "code": "VISIBILITY_ENFORCEMENT_REQUIRED",
-                    "message": "Resume must be hidden from all employers before apply",
-                },
-            )
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "VISIBILITY_CONFIRMATION_REQUIRED",
-                "message": "Resume visibility requires confirmation before apply",
-            },
-        )
+        managed_resume.desired_visibility_mode = "hidden_from_all" if auto_hide_enabled else "public_default"
 
     def _mark_post_apply_visibility_transition(self, *, managed_resume: HHManagedResume) -> None:
         if managed_resume.auto_hide_from_all_enabled is False:

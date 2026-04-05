@@ -202,4 +202,26 @@ def test_normalized_error_on_unknown_visibility_layout() -> None:
     with pytest.raises(HHResumeVisibilityAutomationError) as exc:
         client.hide_from_all(user_id=1, connection=_connection(), managed_resume=_managed_resume())
 
-    assert exc.value.code == "VISIBILITY_POST_SAVE_VERIFY_FAILED"
+    assert exc.value.code == "visibility_unknown_layout"
+
+
+def test_visibility_hide_from_all_noop_when_already_hidden() -> None:
+    page = FakePage(
+        visible={
+            "css:[data-qa='resume-list']": 1,
+            "css:a[href*='/resume/abc123']": 1,
+            "css:[data-qa*='resume-actions']": 1,
+            "text:Изменить видимость": 1,
+            "text:Видимость резюме": 1,
+            "text:Скрыто от всех": 1,
+        }
+    )
+    client = PlaywrightResumeVisibilityAutomationClient(
+        session_storage=FakeSessionStorage(),
+        runtime_factory=RuntimeFactory(page),
+    )
+
+    result = client.ensure_resume_hidden_from_all(user_id=1, connection=_connection(), managed_resume=_managed_resume())
+
+    assert result.current_visibility_mode == "hidden_from_all"
+    assert "role:button:Сохранить" not in page.clicked
