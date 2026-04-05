@@ -8,6 +8,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from threading import Lock
 from typing import Any, Literal, Protocol
 
@@ -48,6 +49,18 @@ _ALLOWED_TRANSITIONS: dict[str, set[str]] = {
 
 _RETRYABLE_AUTOMATION_CODES = {"TRANSIENT_NAVIGATION", "TRANSIENT_WAIT", "transient_navigation", "transient_wait"}
 _TRANSIENT_VALIDATION_CODES = {"TRANSIENT_NAVIGATION", "TRANSIENT_WAIT", "NETWORK_ERROR", "transient_navigation", "transient_wait", "network_error"}
+_USER_ERROR_MESSAGES: dict[str, str] = {
+    "PLAYWRIGHT_UNAVAILABLE": "Browser automation runtime is unavailable.",
+    "playwright_unavailable": "Browser automation runtime is unavailable.",
+    "TRANSIENT_NAVIGATION": "HH login page is temporarily unavailable. Retry in a moment.",
+    "transient_navigation": "HH login page is temporarily unavailable. Retry in a moment.",
+    "TRANSIENT_WAIT": "HH login step timed out. Retry in a moment.",
+    "transient_wait": "HH login step timed out. Retry in a moment.",
+    "SESSION_PERSIST_FAILED": "Unable to persist HH session. Restart connect flow.",
+    "session_persist_failed": "Unable to persist HH session. Restart connect flow.",
+    "UNRECOGNIZED_STATE": "Unable to continue HH login flow. Restart connect flow.",
+    "page_not_recognized": "Unable to continue HH login flow. Restart connect flow.",
+}
 
 
 class HHBrowserAutomationError(Exception):
@@ -146,14 +159,35 @@ class InMemoryRuntimeRegistry:
 
 class LocalSessionStorage:
     def __init__(self, base_dir: str | None = None) -> None:
-        self.base_dir = Path(base_dir or os.getenv("HH_BROWSER_SESSION_DIR", "/tmp/hh_browser_sessions"))
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+        configured = base_dir or os.getenv("HH_BROWSER_SESSION_DIR", "/tmp/job-search-app/hh_browser_sessions")
+        self.base_dir = Path(configured).expanduser().resolve()
+        self.base_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            os.chmod(self.base_dir, 0o700)
+        except OSError:
+            logger.warning("HH session dir permission hardening failed for path=%s", redact_text(str(self.base_dir), max_len=80))
 
     def save(self, *, user_id: int, connection_id: int, state: dict) -> str:
+        _ = user_id
+        _ = connection_id
         state_id = uuid.uuid4().hex
-        filepath = self.base_dir / f"u{user_id}_c{connection_id}_{state_id}.json"
-        filepath.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
-        return f"local://hh-browser-session/{filepath.name}"
+        filename = f"session_{state_id}.json"
+        filepath = self.base_dir / filename
+        payload = json.dumps(state, ensure_ascii=False)
+        with NamedTemporaryFile("w", encoding="utf-8", dir=self.base_dir, delete=False) as tmp:
+            tmp.write(payload)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+            tmp_path = Path(tmp.name)
+        try:
+            os.chmod(tmp_path, 0o600)
+            tmp_path.replace(filepath)
+            os.chmod(filepath, 0o600)
+        except OSError:
+            if tmp_path.exists():
+                tmp_path.unlink(missing_ok=True)
+            raise
+        return f"local://hh-browser-session/{filename}"
 
     def load(self, *, ref: str) -> dict:
         filepath = self._resolve_ref(ref)
@@ -171,7 +205,10 @@ class LocalSessionStorage:
         filename = ref.replace(prefix, "", 1)
         if not filename or "/" in filename or ".." in filename:
             raise ValueError("Invalid session reference path")
-        return self.base_dir / filename
+        resolved = (self.base_dir / filename).resolve()
+        if resolved.parent != self.base_dir:
+            raise ValueError("Invalid session reference path")
+        return resolved
 
 
 class HHBrowserConnectService:
@@ -211,6 +248,7 @@ class HHBrowserConnectService:
         self.db.commit()
 
         started_at = time.perf_counter()
+        adapter: HHLoginPageAdapter | None = None
         try:
             adapter = self.adapter_factory.create()
             next_step = self._run_with_retry(lambda: adapter.open_login_page(), operation="open_login_page")
@@ -235,8 +273,10 @@ class HHBrowserConnectService:
             )
             return self._summary(connection)
         except HHBrowserAutomationError as exc:
+            if adapter is not None and self.runtime_registry.get(connection.id) is None:
+                adapter.close()
             self._mark_failed(connection, error_code=exc.code, error_message=exc.message, debug_summary=exc.debug_summary)
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"code": exc.code, "message": exc.message}) from exc
+            self._raise_user_automation_error(exc)
 
     def submit_identifier(self, *, user_id: int, identifier: str, identifier_type: Literal["phone", "email"]) -> HHBrowserConnectionSummary:
         connection = self._ensure_connection(user_id=user_id)
@@ -261,7 +301,7 @@ class HHBrowserConnectService:
             return self._summary(connection)
         except HHBrowserAutomationError as exc:
             self._mark_failed(connection, error_code=exc.code, error_message=exc.message, debug_summary=exc.debug_summary)
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"code": exc.code, "message": exc.message}) from exc
+            self._raise_user_automation_error(exc)
 
     def submit_password(self, *, user_id: int, password: str) -> HHBrowserConnectionSummary:
         connection = self._ensure_connection(user_id=user_id)
@@ -283,7 +323,7 @@ class HHBrowserConnectService:
             return self._summary(connection)
         except HHBrowserAutomationError as exc:
             self._mark_failed(connection, error_code=exc.code, error_message=exc.message, debug_summary=exc.debug_summary)
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"code": exc.code, "message": exc.message}) from exc
+            self._raise_user_automation_error(exc)
 
     def submit_code(self, *, user_id: int, code: str) -> HHBrowserConnectionSummary:
         connection = self._ensure_connection(user_id=user_id)
@@ -305,7 +345,7 @@ class HHBrowserConnectService:
             return self._summary(connection)
         except HHBrowserAutomationError as exc:
             self._mark_failed(connection, error_code=exc.code, error_message=exc.message, debug_summary=exc.debug_summary)
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"code": exc.code, "message": exc.message}) from exc
+            self._raise_user_automation_error(exc)
 
     def cancel(self, *, user_id: int) -> HHBrowserConnectionSummary:
         connection = self._ensure_connection(user_id=user_id)
@@ -399,7 +439,11 @@ class HHBrowserConnectService:
         if step == "connected":
             runtime = self._runtime_or_fail(connection)
             session_state = self._sanitize_storage_state(runtime.adapter.export_storage_state())
-            session_ref = self.session_storage.save(user_id=connection.user_id, connection_id=connection.id, state=session_state)
+            previous_session_ref = connection.session_state_ref
+            try:
+                session_ref = self.session_storage.save(user_id=connection.user_id, connection_id=connection.id, state=session_state)
+            except (OSError, ValueError) as exc:
+                raise HHBrowserAutomationError("SESSION_PERSIST_FAILED", "Unable to store HH session state") from exc
             self._transition(connection, "connected")
             connection.session_state_ref = session_ref
             connection.last_authenticated_at = self._now()
@@ -409,6 +453,8 @@ class HHBrowserConnectService:
             connection.last_error_code = None
             connection.last_error_message = None
             self._close_runtime(connection.id)
+            if previous_session_ref and previous_session_ref != session_ref:
+                self._delete_session_state(previous_session_ref)
             return
 
         if step == "failed":
@@ -706,6 +752,13 @@ class HHBrowserConnectService:
             self.session_storage.delete(ref=ref)
         except (OSError, ValueError):
             logger.warning("Unable to delete HH session state file for ref=%s", redact_text(ref, max_len=80))
+
+    def _raise_user_automation_error(self, exc: HHBrowserAutomationError) -> None:
+        message = _USER_ERROR_MESSAGES.get(exc.code, "HH automation step failed. Restart connect flow.")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": exc.code, "message": message},
+        ) from exc
 
     @staticmethod
     def _now() -> datetime:

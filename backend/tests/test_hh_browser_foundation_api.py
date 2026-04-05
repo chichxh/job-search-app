@@ -132,6 +132,9 @@ def test_connect_flow_state_machine_api(client, auth_headers, fake_db) -> None:
     )
     assert code.status_code == 200
     assert code.json()["status"] == "connected"
+    assert "session_state_ref" not in code.json()
+    assert "cookies" not in str(code.json()).lower()
+    assert "storage_state" not in str(code.json()).lower()
 
     assert storage.saved
 

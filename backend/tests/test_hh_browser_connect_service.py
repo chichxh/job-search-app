@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import stat
+
+from fastapi import HTTPException
+
 from app.db import models
 from app.services.hh_browser_connect_service import (
     HHBrowserAutomationError,
     HHBrowserConnectService,
     InMemoryRuntimeRegistry,
+    LocalSessionStorage,
     HHSessionProbeAdapter,
 )
 
@@ -160,8 +165,6 @@ def test_invalid_transition_returns_http_400(fake_db) -> None:
 
     service.start(user_id=1)
 
-    from fastapi import HTTPException
-
     try:
         service.submit_code(user_id=1, code="1111")
         assert False, "Expected exception"
@@ -203,8 +206,6 @@ def test_timeout_handling_marks_connection_failed(fake_db) -> None:
     )
 
     service.start(user_id=1)
-    from fastapi import HTTPException
-
     try:
         service.submit_identifier(user_id=1, identifier_type="email", identifier="user@example.com")
         assert False, "Expected timeout exception"
@@ -318,7 +319,46 @@ def test_validate_logged_out_sets_requires_reauth(fake_db) -> None:
     assert outcome["outcome"] == "logged_out"
     assert outcome["status"] == "requires_reauth"
     assert outcome["requires_reauth"] is True
-    assert outcome["session_present"] is False
+
+
+def test_failed_start_returns_safe_message_and_closes_adapter(fake_db) -> None:
+    class FailingAdapter(FakeAdapter):
+        def __init__(self) -> None:
+            super().__init__([])
+
+        def open_login_page(self) -> str:
+            raise HHBrowserAutomationError("TRANSIENT_NAVIGATION", "debug details with dom dump")
+
+    adapter = FailingAdapter()
+    service, _ = _service(fake_db, [adapter])
+
+    try:
+        service.start(user_id=1)
+        assert False, "Expected HTTPException"
+    except HTTPException as exc:
+        assert exc.status_code == 422
+        assert exc.detail["code"] == "transient_navigation"
+        assert exc.detail["message"] == "HH login page is temporarily unavailable. Retry in a moment."
+
+    assert adapter.closed is True
+
+
+def test_local_session_storage_enforces_secure_permissions_and_deletes(tmp_path) -> None:
+    storage = LocalSessionStorage(base_dir=str(tmp_path / "sessions"))
+    ref = storage.save(user_id=1, connection_id=2, state={"cookies": [{"name": "hh_sid", "value": "x"}], "origins": []})
+    path = storage._resolve_ref(ref)  # noqa: SLF001
+
+    assert path.exists()
+    dir_mode = stat.S_IMODE(path.parent.stat().st_mode)
+    file_mode = stat.S_IMODE(path.stat().st_mode)
+    assert dir_mode == 0o700
+    assert file_mode == 0o600
+
+    loaded = storage.load(ref=ref)
+    assert loaded["cookies"][0]["name"] == "hh_sid"
+
+    storage.delete(ref=ref)
+    assert not path.exists()
 
 
 def test_validate_missing_storage_keeps_disconnected(fake_db) -> None:

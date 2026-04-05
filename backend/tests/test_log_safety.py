@@ -42,3 +42,21 @@ def test_failure_summary_masks_email_and_phone() -> None:
     assert "anna@example.com" not in summary
     assert "212 333 4444" not in summary
     assert "ValueError" in summary
+
+
+def test_sanitize_for_log_redacts_session_and_content_payloads() -> None:
+    payload = {
+        "cookies": [{"name": "sid", "value": "secret-cookie"}],
+        "storage_state": {"origins": [{"origin": "https://hh.ru", "localStorage": [{"name": "token", "value": "abc"}]}]},
+        "session_state_ref": "local://hh-browser-session/session_abc123.json",
+        "cover_letter_text": "Full cover letter text should never be logged",
+        "raw_resume_text": "Very long raw resume text",
+    }
+
+    sanitized = sanitize_for_log(payload)
+
+    assert sanitized["cookies"] == "[redacted]"
+    assert sanitized["storage_state"] == "[redacted]"
+    assert sanitized["session_state_ref"] == "[redacted]"
+    assert sanitized["cover_letter_text"] == "[redacted]"
+    assert sanitized["raw_resume_text"] == "[redacted]"
