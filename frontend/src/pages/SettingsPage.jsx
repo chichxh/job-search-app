@@ -56,13 +56,14 @@ import {
   updateResumeVersion,
   updateSkill,
   applyResumeImportDraft,
+  cancelHhBrowserConnection,
   disconnectHhBrowserConnection,
   startHhOAuthConnect,
-  getHhBrowserConnectionStatus,
-  initHhBrowserConnection,
-  markHhBrowserAwaitingCode,
-  markHhBrowserConnected,
-  markHhBrowserFailed,
+  getHhBrowserConnectState,
+  startHhBrowserConnection,
+  submitHhBrowserCode,
+  submitHhBrowserIdentifier,
+  submitHhBrowserPassword,
 } from '../api/endpoints.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import Loading from '../components/Loading.jsx';
@@ -100,12 +101,14 @@ const DOCUMENT_STATUS_META = {
   archived: { label: 'Archived', tone: 'archived' },
 };
 const HH_BROWSER_STATUS_META = {
-  disconnected: { label: 'Disconnected', tone: 'muted' },
-  connecting: { label: 'Connecting', tone: 'accent' },
-  awaiting_code: { label: 'Awaiting code', tone: 'info' },
-  connected: { label: 'Connected', tone: 'success' },
-  requires_reauth: { label: 'Requires reauth', tone: 'danger' },
-  failed: { label: 'Failed', tone: 'danger' },
+  disconnected: { label: 'Не подключено', tone: 'muted' },
+  connecting: { label: 'Подключаем сессию', tone: 'accent' },
+  awaiting_identifier: { label: 'Нужен логин (email/телефон)', tone: 'info' },
+  awaiting_password: { label: 'Нужен пароль HH', tone: 'info' },
+  awaiting_code: { label: 'Нужен код подтверждения', tone: 'info' },
+  connected: { label: 'Подключено', tone: 'success' },
+  requires_reauth: { label: 'Требуется переподключение', tone: 'danger' },
+  failed: { label: 'Ошибка подключения', tone: 'danger' },
 };
 
 const emptyBySection = {
@@ -153,6 +156,10 @@ export default function SettingsPage() {
   const [hhBrowserBusy, setHhBrowserBusy] = useState(false);
   const [hhBrowserError, setHhBrowserError] = useState('');
   const [hhBrowserMessage, setHhBrowserMessage] = useState('');
+  const [hhIdentifierType, setHhIdentifierType] = useState('phone');
+  const [hhIdentifier, setHhIdentifier] = useState('');
+  const [hhPassword, setHhPassword] = useState('');
+  const [hhCode, setHhCode] = useState('');
   const [hhResumes, setHhResumes] = useState([]);
   const [hhResumeId, setHhResumeId] = useState('');
   const [hhBusy, setHhBusy] = useState(false);
@@ -171,8 +178,6 @@ export default function SettingsPage() {
   const [resumeImportExtractedFileName, setResumeImportExtractedFileName] = useState('');
   const [resumeImportDraftResponse, setResumeImportDraftResponse] = useState(null);
   const [resumeImportApplySummary, setResumeImportApplySummary] = useState(null);
-  const isHhBrowserFoundationMode = import.meta.env.DEV || import.meta.env.VITE_HH_BROWSER_FOUNDATION_MODE === 'true';
-
   useEffect(() => {
     async function loadData() {
       setLoading(true);
@@ -218,7 +223,7 @@ export default function SettingsPage() {
 
         const [hhConnection, hhBrowserConnection] = await Promise.all([
           getHhConnectionStatus(),
-          getHhBrowserConnectionStatus(),
+          getHhBrowserConnectState(),
         ]);
         setHhStatus(hhConnection);
         setHhBrowserStatus(hhBrowserConnection);
@@ -239,6 +244,19 @@ export default function SettingsPage() {
 
     loadData();
   }, [profileId]);
+
+  useEffect(() => {
+    const status = hhBrowserStatus?.status;
+    if (!status || !['connecting', 'awaiting_identifier', 'awaiting_password', 'awaiting_code'].includes(status)) {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      refreshHhBrowserStatus();
+    }, 3000);
+
+    return () => window.clearInterval(intervalId);
+  }, [hhBrowserStatus?.status]);
 
   const hhJsonParseResult = useMemo(() => {
     if (!hhJsonRaw.trim()) {
@@ -400,13 +418,13 @@ export default function SettingsPage() {
     setHhBrowserLoading(true);
     setHhBrowserError('');
     try {
-      const status = await getHhBrowserConnectionStatus();
+      const status = await getHhBrowserConnectState();
       setHhBrowserStatus(status);
       if (showSuccess) {
-        setHhBrowserMessage('HH Browser status updated.');
+        setHhBrowserMessage('Статус подключения HH обновлён.');
       }
-    } catch (requestError) {
-      setHhBrowserError(requestError.message || 'Не удалось загрузить HH Browser статус.');
+    } catch {
+      setHhBrowserError('Сервис HH временно недоступен. Обновите страницу или попробуйте позже.');
     } finally {
       setHhBrowserLoading(false);
     }
@@ -421,10 +439,78 @@ export default function SettingsPage() {
       setHhBrowserStatus(status);
       setHhBrowserMessage(successMessage);
     } catch (requestError) {
-      setHhBrowserError(requestError.message || 'Операция HH Browser завершилась с ошибкой.');
+      setHhBrowserError(mapHhBrowserError(requestError));
     } finally {
       setHhBrowserBusy(false);
     }
+  }
+
+  function mapHhBrowserError(requestError) {
+    const raw = String(requestError?.message ?? '');
+    if (raw.includes('INVALID_CREDENTIALS')) {
+      return 'Неверный логин или пароль HH. Проверьте данные и попробуйте снова.';
+    }
+    if (raw.includes('INVALID_CODE') || raw.includes('CODE_EXPIRED')) {
+      return 'Код подтверждения неверный или устарел. Запросите новый код и повторите вход.';
+    }
+    if (raw.includes('SESSION_TIMEOUT')) {
+      return 'Сессия подключения истекла. Нажмите «Подключить HH» и начните заново.';
+    }
+    if (raw.includes('UNRECOGNIZED_STATE')) {
+      return 'Не удалось определить шаг входа HH. Попробуйте переподключить интеграцию.';
+    }
+    if (raw.includes('INVALID_TRANSITION')) {
+      return 'Шаг устарел относительно состояния сервера. Обновите статус и продолжите.';
+    }
+    if (raw.includes('Failed to fetch') || raw.includes('502') || raw.includes('503') || raw.includes('504')) {
+      return 'Backend HH недоступен. Повторите попытку чуть позже.';
+    }
+    return 'Подключение HH завершилось ошибкой. Повторите попытку.';
+  }
+
+  async function startHhConnectWizard(forceRestart = false) {
+    setHhBrowserError('');
+    setHhBrowserMessage('');
+    setHhPassword('');
+    setHhCode('');
+    await runHhBrowserAction(
+      () => startHhBrowserConnection({ force_restart: forceRestart }),
+      'Сессия HH запущена. Следуйте шагам ниже.',
+    );
+  }
+
+  async function submitHhIdentifierForm(event) {
+    event.preventDefault();
+    setHhBrowserError('');
+    setHhBrowserMessage('');
+    await runHhBrowserAction(
+      () => submitHhBrowserIdentifier({ identifier_type: hhIdentifierType, identifier: hhIdentifier.trim() }),
+      'Логин отправлен в HH. Проверьте следующий шаг.',
+    );
+  }
+
+  async function submitHhPasswordForm(event) {
+    event.preventDefault();
+    const passwordToSubmit = hhPassword;
+    setHhPassword('');
+    setHhBrowserError('');
+    setHhBrowserMessage('');
+    await runHhBrowserAction(
+      () => submitHhBrowserPassword({ password: passwordToSubmit }),
+      'Пароль отправлен. Если нужен код, появится следующий шаг.',
+    );
+  }
+
+  async function submitHhCodeForm(event) {
+    event.preventDefault();
+    const codeToSubmit = hhCode;
+    setHhCode('');
+    setHhBrowserError('');
+    setHhBrowserMessage('');
+    await runHhBrowserAction(
+      () => submitHhBrowserCode({ code: codeToSubmit }),
+      'Код подтверждения отправлен. Проверяем результат.',
+    );
   }
 
   async function connectHh() {
@@ -779,43 +865,52 @@ export default function SettingsPage() {
         <Link to="/recommendations" className="button button--ghost">Перейти к рекомендациям</Link>
       </div>
 
-      <Section title="HH Browser connection (foundation)" defaultOpen>
+      <Section title="Интеграция HH через браузерную сессию" defaultOpen>
         <p className="muted-text">
-          Foundation-only status panel. HH пароль не хранится в этом интерфейсе; реальный login/OTP flow будет добавлен
-          следующим шагом.
+          Подключение выполняется через живую браузерную сессию HH. Это не OAuth-поток: вы проходите стандартные шаги входа HH.
         </p>
+        <p className="muted-text">Пароль и код подтверждения используются только для текущего шага и не сохраняются в хранилище приложения.</p>
+        <p className="muted-text">После успешного входа используется серверное session state HH для дальнейших операций.</p>
         {hhBrowserLoading ? <Loading message="Обновляем HH Browser статус..." /> : null}
         {hhBrowserError ? <ErrorBanner message={hhBrowserError} /> : null}
         {hhBrowserMessage ? <p className="success-banner">{hhBrowserMessage}</p> : null}
 
         <div className="settings-grid settings-grid--two">
           <p>
-            <strong>Status:</strong>{' '}
+            <strong>Статус:</strong>{' '}
             <span className={`applications-status-chip applications-status-chip--${hhBrowserStatusMeta.tone}`}>
               {hhBrowserStatusMeta.label}
             </span>
           </p>
-          <p><strong>Session present:</strong> {hhBrowserStatus?.session_present ? 'Yes' : 'No'}</p>
-          <p><strong>Last authenticated:</strong> {formatDateTime(hhBrowserStatus?.last_authenticated_at)}</p>
-          <p><strong>Last error:</strong> {hhBrowserStatus?.last_error_message || '—'}</p>
+          <p><strong>Серверная сессия:</strong> {hhBrowserStatus?.session_present ? 'Активна' : 'Нет'}</p>
+          <p><strong>Последняя авторизация:</strong> {formatDateTime(hhBrowserStatus?.last_authenticated_at)}</p>
+          <p><strong>Ошибка:</strong> {hhBrowserStatus?.last_error_message || '—'}</p>
         </div>
 
         <div className="recommendations-toolbar">
           <button
             className="button"
             type="button"
-            onClick={() => runHhBrowserAction(initHhBrowserConnection, 'HH Browser connection initiated.')}
+            onClick={() => startHhConnectWizard(false)}
             disabled={hhBrowserBusy || hhBrowserLoading}
           >
-            {hhBrowserBusy ? 'Updating...' : 'Connect HH'}
+            {hhBrowserBusy ? 'Обновление...' : 'Подключить HH'}
           </button>
           <button
             className="button button--ghost"
             type="button"
-            onClick={() => runHhBrowserAction(disconnectHhBrowserConnection, 'HH Browser disconnected.')}
+            onClick={() => startHhConnectWizard(true)}
             disabled={hhBrowserBusy || hhBrowserLoading}
           >
-            Disconnect HH
+            Переподключить
+          </button>
+          <button
+            className="button button--ghost button--danger"
+            type="button"
+            onClick={() => runHhBrowserAction(disconnectHhBrowserConnection, 'HH отключён.')}
+            disabled={hhBrowserBusy || hhBrowserLoading}
+          >
+            Отключить HH
           </button>
           <button
             className="button button--ghost"
@@ -823,42 +918,87 @@ export default function SettingsPage() {
             onClick={() => refreshHhBrowserStatus({ showSuccess: true })}
             disabled={hhBrowserBusy || hhBrowserLoading}
           >
-            Refresh status
+            Обновить статус
+          </button>
+          <button
+            className="button button--ghost"
+            type="button"
+            onClick={() => runHhBrowserAction(cancelHhBrowserConnection, 'Текущий шаг подключения отменён.')}
+            disabled={hhBrowserBusy || hhBrowserLoading}
+          >
+            Отмена
           </button>
         </div>
 
-        {isHhBrowserFoundationMode ? (
-          <>
-            <p className="muted-text">
-              Dev/foundation placeholders for backend status transition checks (not final product UX).
-            </p>
+        {hhBrowserStatus?.status === 'awaiting_identifier' ? (
+          <form className="settings-grid settings-grid--two" onSubmit={submitHhIdentifierForm}>
+            <SelectField
+              label="Тип логина"
+              value={hhIdentifierType}
+              onChange={(event) => setHhIdentifierType(event.target.value)}
+              options={[
+                { value: 'phone', label: 'Телефон' },
+                { value: 'email', label: 'Email' },
+              ]}
+            />
+            <TextField
+              label={hhIdentifierType === 'phone' ? 'Телефон HH' : 'Email HH'}
+              value={hhIdentifier}
+              onChange={(event) => setHhIdentifier(event.target.value)}
+              placeholder={hhIdentifierType === 'phone' ? '+7...' : 'name@example.com'}
+            />
             <div className="recommendations-toolbar">
-              <button
-                className="button button--ghost"
-                type="button"
-                onClick={() => runHhBrowserAction(markHhBrowserAwaitingCode, 'HH Browser marked as awaiting code.')}
-                disabled={hhBrowserBusy || hhBrowserLoading}
-              >
-                Mark awaiting code
-              </button>
-              <button
-                className="button button--ghost"
-                type="button"
-                onClick={() => runHhBrowserAction(markHhBrowserConnected, 'HH Browser marked as connected.')}
-                disabled={hhBrowserBusy || hhBrowserLoading}
-              >
-                Mark connected
-              </button>
-              <button
-                className="button button--ghost button--danger"
-                type="button"
-                onClick={() => runHhBrowserAction(markHhBrowserFailed, 'HH Browser marked as failed.')}
-                disabled={hhBrowserBusy || hhBrowserLoading}
-              >
-                Mark failed
+              <button className="button" type="submit" disabled={hhBrowserBusy || !hhIdentifier.trim()}>
+                Продолжить
               </button>
             </div>
-          </>
+          </form>
+        ) : null}
+
+        {hhBrowserStatus?.status === 'awaiting_password' ? (
+          <form className="settings-grid settings-grid--two" onSubmit={submitHhPasswordForm}>
+            <TextField
+              label="Пароль HH"
+              type="password"
+              autoComplete="current-password"
+              value={hhPassword}
+              onChange={(event) => setHhPassword(event.target.value)}
+              placeholder="Введите пароль HH"
+            />
+            <div className="recommendations-toolbar">
+              <button className="button" type="submit" disabled={hhBrowserBusy || !hhPassword}>
+                Отправить пароль
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        {hhBrowserStatus?.status === 'awaiting_code' ? (
+          <form className="settings-grid settings-grid--two" onSubmit={submitHhCodeForm}>
+            <TextField
+              label="Код подтверждения"
+              value={hhCode}
+              onChange={(event) => setHhCode(event.target.value)}
+              placeholder="Код из SMS/приложения"
+            />
+            <div className="recommendations-toolbar">
+              <button className="button" type="submit" disabled={hhBrowserBusy || !hhCode.trim()}>
+                Подтвердить код
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        {hhBrowserStatus?.status === 'connected' ? (
+          <p className="muted-text">
+            HH подключён. Сессия активна на сервере, можно переходить к следующим шагам автоматизации.
+          </p>
+        ) : null}
+
+        {hhBrowserStatus?.status === 'failed' || hhBrowserStatus?.status === 'requires_reauth' ? (
+          <p className="muted-text">
+            Подключение требует повторного запуска. Нажмите «Переподключить», чтобы открыть новый вход в HH.
+          </p>
         ) : null}
       </Section>
 
