@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import HHBrowserConnection, HHManagedResume
 from app.services.hh_action_control_service import HHActionControlService
+from app.services.hh_automation_diagnostics_service import diagnostic_for_code
 
 logger = logging.getLogger(__name__)
 
@@ -137,11 +138,14 @@ class HHResumeVisibilityService:
                     safe_summary=f"Visibility check failed with code={exc.code[:32]}",
                     context_ref={"managed_resume_id": managed.id},
                 )
+                diag = diagnostic_for_code(exc.code)
                 logger.warning(
-                    "hh_resume_visibility_check_failed user_id=%s managed_resume_id=%s code=%s duration_ms=%s",
+                    "hh_resume_visibility_check_failed user_id=%s managed_resume_id=%s code=%s reason=%s next_step=%s duration_ms=%s",
                     user_id,
                     managed.id,
                     exc.code[:64],
+                    diag.reason,
+                    diag.guidance,
                     int((time.perf_counter() - started) * 1000),
                 )
                 return managed
@@ -233,11 +237,14 @@ class HHResumeVisibilityService:
                     safe_summary=f"Visibility hide failed with code={exc.code[:32]}",
                     context_ref={"managed_resume_id": managed.id},
                 )
+                diag = diagnostic_for_code(exc.code)
                 logger.warning(
-                    "hh_resume_visibility_hide_failed user_id=%s managed_resume_id=%s code=%s duration_ms=%s",
+                    "hh_resume_visibility_hide_failed user_id=%s managed_resume_id=%s code=%s reason=%s next_step=%s duration_ms=%s",
                     user_id,
                     managed.id,
                     exc.code[:64],
+                    diag.reason,
+                    diag.guidance,
                     int((time.perf_counter() - started) * 1000),
                 )
                 return managed

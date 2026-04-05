@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Protocol
@@ -21,6 +22,9 @@ from app.db.models import (
 )
 from app.schemas.hh_browser_integration import HHCreateTargetedResumeRequest, HHTargetedResumePayload
 from app.services.hh_action_control_service import HHActionControlService
+from app.services.hh_automation_diagnostics_service import diagnostic_for_code
+
+logger = logging.getLogger(__name__)
 
 
 class HHResumeAutomationError(Exception):
@@ -324,12 +328,22 @@ class HHCreateTargetedResumeService:
                 managed.last_error_message = "HH automation failed. Reconnect and retry."
                 self.db.commit()
                 self.db.refresh(managed)
+                diag = diagnostic_for_code(exc.code)
                 self.action_control.finish_action(
                     action_run=action_decision.action_run,
                     status_value="retryable_failed",
                     operation_code="HH_TARGETED_RESUME_RETRYABLE_FAILED",
                     safe_summary=f"Targeted resume creation failed with code={exc.code[:32]}",
                     context_ref={"managed_resume_id": managed.id},
+                )
+                logger.warning(
+                    "hh_targeted_resume_failed user_id=%s profile_id=%s managed_resume_id=%s code=%s reason=%s next_step=%s",
+                    user_id,
+                    profile.id,
+                    managed.id,
+                    exc.code[:64],
+                    diag.reason,
+                    diag.guidance,
                 )
                 return managed, payload
 
@@ -348,6 +362,13 @@ class HHCreateTargetedResumeService:
                 operation_code="HH_TARGETED_RESUME_CREATED",
                 safe_summary="Targeted resume created and linked to HH external resume",
                 context_ref={"managed_resume_id": managed.id},
+            )
+            logger.info(
+                "hh_targeted_resume_created user_id=%s profile_id=%s managed_resume_id=%s hh_resume_external_id_present=%s",
+                user_id,
+                profile.id,
+                managed.id,
+                bool(managed.hh_resume_external_id),
             )
             return managed, payload
         except HTTPException:

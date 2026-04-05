@@ -7,6 +7,7 @@
 Минимальный backend smoke/integration suite и инструкции запуска: `TESTING.md`.
 Операционная памятка по наблюдаемости фоновых задач: `backend/docs/background_tasks_observability.md`.
 Короткий reproducible runbook запуска/health/smoke: `backend/docs/operational_runbook.md`.
+Там же добавлен раздел HH automation diagnostics/troubleshooting (`/integrations/hh-browser/diagnostics`).
 Документация по Auth MVP (JWT + user↔profile ownership): `backend/docs/auth_mvp.md`.
 
 Минимальный воспроизводимый smoke-check для базовой версии: `verification-checklist.md`.

@@ -20,6 +20,7 @@ from app.db.models import (
 from app.schemas.hh_browser_integration import HHApplyRequest
 from app.services.hh_action_control_service import HHActionControlService
 from app.services.hh_apply_application_sync_service import HHApplyApplicationSyncService
+from app.services.hh_automation_diagnostics_service import diagnostic_for_code
 
 logger = logging.getLogger(__name__)
 
@@ -183,12 +184,13 @@ class HHApplyService:
                 context_ref={"apply_run_id": apply_run.id},
             )
             logger.info(
-                "hh_apply_run_submitted user_id=%s vacancy_id=%s hh_resume_managed_id=%s apply_run_id=%s result_type=%s duration_ms=%s",
+                "hh_apply_run_submitted user_id=%s vacancy_id=%s hh_resume_managed_id=%s apply_run_id=%s result_type=%s reason=%s duration_ms=%s",
                 user_id,
                 vacancy.id,
                 managed_resume.id,
                 apply_run.id,
                 apply_run.result_type,
+                diagnostic_for_code(apply_run.result_type).reason,
                 int((time.perf_counter() - started_perf) * 1000),
             )
             return HHApplyExecutionOutcome(apply_run=apply_run, sync_result=sync_result)
@@ -216,13 +218,16 @@ class HHApplyService:
                 safe_summary=f"HH apply failed with code={exc.code[:32]}",
                 context_ref={"apply_run_id": apply_run.id},
             )
+            diag = diagnostic_for_code(exc.code)
             logger.warning(
-                "hh_apply_run_failed user_id=%s vacancy_id=%s hh_resume_managed_id=%s apply_run_id=%s result_type=%s duration_ms=%s",
+                "hh_apply_run_failed user_id=%s vacancy_id=%s hh_resume_managed_id=%s apply_run_id=%s result_type=%s reason=%s next_step=%s duration_ms=%s",
                 user_id,
                 vacancy.id,
                 managed_resume.id,
                 apply_run.id,
                 apply_run.result_type,
+                diag.reason,
+                diag.guidance,
                 int((time.perf_counter() - started_perf) * 1000),
             )
             return HHApplyExecutionOutcome(apply_run=apply_run, sync_result=sync_result)

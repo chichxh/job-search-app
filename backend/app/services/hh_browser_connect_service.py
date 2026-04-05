@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.db.models import HHBrowserConnection
 from app.schemas.hh_browser_integration import HHBrowserConnectionDebug, HHBrowserConnectionSummary
 from app.services.hh_action_control_service import HHActionControlService
+from app.services.hh_automation_diagnostics_service import diagnostic_for_code
 from app.services.hh_browser_error_taxonomy import normalize_automation_error_code
 from app.utils.log_safety import redact_text
 
@@ -530,10 +531,12 @@ class HHBrowserConnectService:
         self._close_runtime(connection.id)
         self.db.commit()
         logger.warning(
-            "HH connect failed | user_id=%s connection_id=%s code=%s message=%s debug=%s",
+            "HH connect failed | user_id=%s connection_id=%s code=%s reason=%s next_step=%s message=%s debug=%s",
             connection.user_id,
             connection.id,
             connection.last_error_code,
+            diagnostic_for_code(connection.last_error_code).reason,
+            diagnostic_for_code(connection.last_error_code).guidance,
             connection.last_error_message,
             self._sanitize_debug(debug_summary or {}),
         )
@@ -671,6 +674,14 @@ class HHBrowserConnectService:
                 self._delete_session_state(connection.session_state_ref)
                 connection.session_state_ref = None
                 connection.session_expires_at = None
+            logger.warning(
+                "hh_session_requires_reauth user_id=%s connection_id=%s outcome=%s code=%s reason=%s",
+                connection.user_id,
+                connection.id,
+                result.outcome,
+                connection.last_error_code,
+                diagnostic_for_code(connection.last_error_code).reason,
+            )
             return
 
         if result.outcome == "invalid_storage":
