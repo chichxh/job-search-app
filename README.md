@@ -221,6 +221,38 @@ Import policy (MVP):
 
 
 
+## Targeted HH resume creation (frontend MVP)
+
+Добавлен компактный frontend flow в `Settings` для запуска создания targeted HH-резюме и просмотра результата:
+
+- точка входа: `/settings` → секция **Targeted HH-резюме (MVP foundation)**;
+- перед запуском показывается preview: `target title`, `source profile`, `source resume version`, `skills count`, `experiences count`, vacancy context;
+- поддержан dry-run preview (`POST /api/v1/integrations/hh-browser/resumes/create-targeted` с `dry_run=true`);
+- action `Создать HH-резюме` запускает реальный create flow;
+- после запуска отображается результат: title/status/external HH link/created/updated timestamps;
+- рядом показан компактный список локально отслеживаемых `HH managed resumes`.
+
+### Ограничения текущего MVP
+
+- поддерживается только **create targeted HH resume**;
+- управление visibility пока отсутствует (планируется следующим шагом);
+- apply automation из этого UX не включён;
+- полноценный editor/CRM dashboard для managed HH resumes не входит в scope этого этапа.
+
+⚠️ Важно: по умолчанию новое HH-резюме на стороне HH может быть видно всем работодателям, пока отдельный visibility step не реализован в продукте.
+
+### Manual verification checklist (targeted HH resume)
+
+1. Открыть `/settings`, в секции **Интеграция HH через браузерную сессию** подключить HH до статуса `connected`.
+2. Перейти в секцию **Targeted HH-резюме (MVP foundation)**.
+3. Проверить preview (title/source profile/source resume/skills/experiences/vacancy context).
+4. Нажать `Обновить preview (dry-run)` и убедиться, что отображается краткая сводка dry-run.
+5. Нажать `Создать HH-резюме` и дождаться завершения.
+6. Проверить блок результата (title/status/HH link/created/updated).
+7. Проверить таблицу tracked managed resumes (включая vacancy context/source resume/status/updated/HH link).
+8. Отключить HH session и проверить, что создание блокируется и показывается CTA `Переподключить HH`.
+
+
 ### HH fallback JSON import (dev fixtures)
 
 Для разработки/демо без live HH API используйте documented fallback flow:

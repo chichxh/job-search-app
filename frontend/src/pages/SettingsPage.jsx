@@ -58,8 +58,11 @@ import {
   applyResumeImportDraft,
   cancelHhBrowserConnection,
   checkHhBrowserSession,
+  createHhTargetedResume,
   disconnectHhBrowserConnection,
+  getVacancies,
   restoreHhBrowserSession,
+  listHhManagedResumes,
   startHhOAuthConnect,
   getHhBrowserConnectState,
   startHhBrowserConnection,
@@ -154,6 +157,13 @@ const HH_BROWSER_SESSION_HEALTH_META = {
     tone: 'info',
   },
 };
+const HH_MANAGED_RESUME_STATUS_META = {
+  draft_local: { label: 'Локальный preview', tone: 'muted' },
+  creating: { label: 'Создаётся', tone: 'accent' },
+  created: { label: 'Создано', tone: 'success' },
+  failed: { label: 'Ошибка', tone: 'danger' },
+  stale: { label: 'Требует обновления', tone: 'info' },
+};
 
 const emptyBySection = {
   skills: { name_raw: '', category: '', level: '', years: '', last_used_year: '', is_primary: false, evidence_text: '' },
@@ -204,6 +214,20 @@ export default function SettingsPage() {
   const [hhIdentifier, setHhIdentifier] = useState('');
   const [hhPassword, setHhPassword] = useState('');
   const [hhCode, setHhCode] = useState('');
+  const [vacancies, setVacancies] = useState([]);
+  const [hhManagedResumes, setHhManagedResumes] = useState([]);
+  const [targetVacancyId, setTargetVacancyId] = useState('');
+  const [targetResumeVersionId, setTargetResumeVersionId] = useState('');
+  const [targetTitle, setTargetTitle] = useState('');
+  const [targetSkillsFocusRaw, setTargetSkillsFocusRaw] = useState('');
+  const [targetMaxExperiences, setTargetMaxExperiences] = useState('4');
+  const [targetIncludeSkillLevels, setTargetIncludeSkillLevels] = useState(false);
+  const [targetSummary, setTargetSummary] = useState('');
+  const [hhTargetPreview, setHhTargetPreview] = useState(null);
+  const [hhTargetLastResult, setHhTargetLastResult] = useState(null);
+  const [hhTargetBusy, setHhTargetBusy] = useState(false);
+  const [hhTargetError, setHhTargetError] = useState('');
+  const [hhTargetMessage, setHhTargetMessage] = useState('');
   const [hhResumes, setHhResumes] = useState([]);
   const [hhResumeId, setHhResumeId] = useState('');
   const [hhBusy, setHhBusy] = useState(false);
@@ -239,6 +263,8 @@ export default function SettingsPage() {
           linksData,
           resumeData,
           letterData,
+          vacanciesData,
+          managedResumesData,
         ] = await Promise.all([
           getProfile(profileId),
           listExperiences(profileId),
@@ -251,6 +277,8 @@ export default function SettingsPage() {
           listLinks(profileId),
           listResumeVersions(profileId),
           listCoverLetterVersions(profileId),
+          getVacancies(),
+          listHhManagedResumes(),
         ]);
         setProfile(profileData);
         setTeamPreferencesText(JSON.stringify(profileData.team_preferences_json ?? {}, null, 2));
@@ -264,6 +292,8 @@ export default function SettingsPage() {
         setLinks(linksData);
         setResumes(resumeData);
         setLetters(letterData);
+        setVacancies(vacanciesData);
+        setHhManagedResumes(managedResumesData);
 
         const [hhConnection, hhBrowserConnection] = await Promise.all([
           getHhConnectionStatus(),
@@ -873,6 +903,84 @@ export default function SettingsPage() {
     }
   }
 
+  function buildTargetedResumePayload({ dryRun }) {
+    return {
+      profile_id: profileId,
+      vacancy_id: targetVacancyId ? Number(targetVacancyId) : null,
+      source_resume_version_id: targetResumeVersionId ? Number(targetResumeVersionId) : null,
+      target_title: targetTitle.trim() || null,
+      summary: targetSummary.trim() || null,
+      skills_focus: normalizedSkillsFocus,
+      include_skill_levels: targetIncludeSkillLevels,
+      max_experiences: Math.max(1, Math.min(10, Number(targetMaxExperiences) || 4)),
+      dry_run: dryRun,
+    };
+  }
+
+  function mapTargetedResumeError(requestError) {
+    const raw = String(requestError?.message ?? '');
+    if (raw.includes('Active HH browser session required')) {
+      return 'Нет активной HH-сессии. Переподключите HH и повторите.';
+    }
+    if (raw.includes('Vacancy not found')) {
+      return 'Выбранная вакансия не найдена. Обновите страницу и выберите вакансию снова.';
+    }
+    if (raw.includes('Resume version not found')) {
+      return 'Выбранная версия внутреннего резюме не найдена.';
+    }
+    if (raw.includes('another profile')) {
+      return 'Источник резюме принадлежит другому профилю. Выберите верную версию.';
+    }
+    if (raw.includes('Failed to fetch') || raw.includes('502') || raw.includes('503') || raw.includes('504')) {
+      return 'Сервис HH временно недоступен. Повторите попытку позже.';
+    }
+    return formatApiError(requestError, 'Не удалось создать targeted HH-резюме.');
+  }
+
+  async function refreshManagedResumesList() {
+    try {
+      const items = await listHhManagedResumes();
+      setHhManagedResumes(items);
+    } catch {
+      setHhTargetError('Не удалось обновить список локально отслеживаемых HH-резюме.');
+    }
+  }
+
+  async function runTargetedPreview() {
+    setHhTargetBusy(true);
+    setHhTargetError('');
+    setHhTargetMessage('');
+    setHhTargetLastResult(null);
+    try {
+      const response = await createHhTargetedResume(buildTargetedResumePayload({ dryRun: true }));
+      setHhTargetPreview(response.payload_preview ?? null);
+      setHhTargetMessage('Preview обновлён. Можно запускать создание HH-резюме.');
+      await refreshManagedResumesList();
+    } catch (requestError) {
+      setHhTargetError(mapTargetedResumeError(requestError));
+    } finally {
+      setHhTargetBusy(false);
+    }
+  }
+
+  async function runTargetedCreate() {
+    setHhTargetBusy(true);
+    setHhTargetError('');
+    setHhTargetMessage('');
+    setHhTargetLastResult(null);
+    try {
+      const response = await createHhTargetedResume(buildTargetedResumePayload({ dryRun: false }));
+      setHhTargetLastResult(response.managed_resume ?? null);
+      setHhTargetMessage('Создание HH-резюме завершено. Результат ниже.');
+      await refreshManagedResumesList();
+      await refreshHhBrowserStatus();
+    } catch (requestError) {
+      setHhTargetError(mapTargetedResumeError(requestError));
+    } finally {
+      setHhTargetBusy(false);
+    }
+  }
+
   const experienceOptions = useMemo(
     () => experiences.map((item) => ({ value: String(item.id), label: `${item.company_name} — ${item.position_title}` })),
     [experiences],
@@ -881,6 +989,23 @@ export default function SettingsPage() {
   const projectOptions = useMemo(
     () => projects.map((item) => ({ value: String(item.id), label: item.name })),
     [projects],
+  );
+  const vacancyOptions = useMemo(
+    () => vacancies.map((item) => ({ value: String(item.id), label: `${item.title} (${item.company_name || 'Компания не указана'})` })),
+    [vacancies],
+  );
+  const targetResumeOptions = useMemo(
+    () => resumes.map((item) => ({ value: String(item.id), label: `${item.title || `Resume #${item.id}`} (${item.status})` })),
+    [resumes],
+  );
+  const managedResumeRows = useMemo(
+    () => hhManagedResumes.map((item) => ({
+      ...item,
+      vacancy: vacancies.find((vacancy) => vacancy.id === item.vacancy_id) ?? null,
+      sourceResume: resumes.find((resume) => resume.id === item.source_resume_version_id) ?? null,
+      statusMeta: HH_MANAGED_RESUME_STATUS_META[item.status] ?? { label: item.status, tone: 'neutral' },
+    })),
+    [hhManagedResumes, resumes, vacancies],
   );
 
   const visibleResumes = approvedOnlyResume ? resumes.filter((item) => item.status === 'approved') : resumes;
@@ -898,6 +1023,32 @@ export default function SettingsPage() {
   const showReauthCta = hhBrowserStatus?.requires_reauth || hhBrowserStatus?.status === 'failed';
   const showRestoreAction = hhBrowserStatus?.status === 'disconnected' && !hhBrowserStatus?.session_present;
   const showCheckSessionAction = ['connected', 'requires_reauth', 'failed'].includes(hhBrowserStatus?.status);
+  const hhSessionActive = hhBrowserStatus?.status === 'connected' && hhBrowserStatus?.session_present && !hhBrowserStatus?.requires_reauth;
+  const selectedTargetVacancy = vacancies.find((item) => String(item.id) === targetVacancyId) ?? null;
+  const selectedTargetResumeVersion = resumes.find((item) => String(item.id) === targetResumeVersionId) ?? null;
+  const normalizedSkillsFocus = targetSkillsFocusRaw
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const targetedPreviewSummary = useMemo(() => ({
+    targetTitle: targetTitle.trim() || selectedTargetVacancy?.title || profile.title || 'Специалист',
+    sourceProfile: profile.full_name || profile.title || `profile_id=${profileId}`,
+    sourceResumeTitle: selectedTargetResumeVersion?.title || 'Не выбран',
+    selectedSkillsCount: normalizedSkillsFocus.length || skills.length,
+    experiencesCount: Math.min(Number(targetMaxExperiences) || 4, experiences.length),
+    vacancyContext: selectedTargetVacancy ? `${selectedTargetVacancy.title} · ${selectedTargetVacancy.company_name || '—'}` : 'Без вакансии',
+  }), [
+    experiences.length,
+    normalizedSkillsFocus.length,
+    profile.full_name,
+    profile.title,
+    profileId,
+    selectedTargetResumeVersion?.title,
+    selectedTargetVacancy,
+    skills.length,
+    targetMaxExperiences,
+    targetTitle,
+  ]);
   const isTransientSessionIssue = ['TRANSIENT_NAVIGATION', 'TRANSIENT_WAIT', 'NETWORK_ERROR', 'SESSION_PROBE_UNAVAILABLE'].includes(
     hhBrowserStatus?.last_error_code,
   );
@@ -1113,6 +1264,170 @@ export default function SettingsPage() {
             Текущая HH-сессия больше не подходит. Нажмите «Переподключить HH», чтобы пройти вход заново.
           </p>
         ) : null}
+      </Section>
+
+      <Section title="Targeted HH-резюме (MVP foundation)" defaultOpen>
+        <p className="muted-text">
+          Этот экран запускает только создание targeted HH-резюме. Visibility management и apply automation будут добавлены следующими шагами.
+        </p>
+        <p className="muted-text">
+          Важно: по умолчанию новое HH-резюме может быть видно всем работодателям, пока не добавлен отдельный шаг управления видимостью.
+        </p>
+        {!hhSessionActive ? (
+          <div className="error-banner">
+            <p><strong>Нужна активная HH browser session.</strong> Без неё создание targeted HH-резюме недоступно.</p>
+            <button
+              className="button"
+              type="button"
+              onClick={() => startHhConnectWizard(true)}
+              disabled={hhTargetBusy || hhBrowserBusy || hhBrowserLoading}
+            >
+              Переподключить HH
+            </button>
+          </div>
+        ) : null}
+        {hhTargetError ? <ErrorBanner message={hhTargetError} /> : null}
+        {hhTargetMessage ? <p className="success-banner">{hhTargetMessage}</p> : null}
+        <div className="settings-grid settings-grid--two">
+          <SelectField
+            label="Вакансия (опционально)"
+            value={targetVacancyId}
+            onChange={(event) => setTargetVacancyId(event.target.value)}
+            options={[{ value: '', label: 'Без привязки к вакансии' }, ...vacancyOptions]}
+          />
+          <SelectField
+            label="Источник: версия внутреннего резюме (опционально)"
+            value={targetResumeVersionId}
+            onChange={(event) => setTargetResumeVersionId(event.target.value)}
+            options={[{ value: '', label: 'Использовать профиль без конкретной версии' }, ...targetResumeOptions]}
+          />
+          <TextField
+            label="Target title (опционально)"
+            value={targetTitle}
+            onChange={(event) => setTargetTitle(event.target.value)}
+            placeholder={selectedTargetVacancy?.title || profile.title || 'Например, Backend Engineer'}
+          />
+          <TextField
+            label="Skills focus (через запятую)"
+            value={targetSkillsFocusRaw}
+            onChange={(event) => setTargetSkillsFocusRaw(event.target.value)}
+            placeholder="Python, FastAPI, PostgreSQL"
+          />
+          <TextField
+            label="Максимум experiences в HH"
+            type="number"
+            value={targetMaxExperiences}
+            onChange={(event) => setTargetMaxExperiences(event.target.value)}
+            min={1}
+            max={10}
+          />
+          <SwitchField
+            label="Добавлять hints по уровню навыков"
+            checked={targetIncludeSkillLevels}
+            onChange={(event) => setTargetIncludeSkillLevels(event.target.checked)}
+          />
+        </div>
+        <TextAreaField
+          label="Summary override (опционально)"
+          rows={3}
+          value={targetSummary}
+          onChange={(event) => setTargetSummary(event.target.value)}
+          placeholder="Если оставить пустым, summary будет собрано из профиля + внутреннего резюме + контекста вакансии."
+        />
+        <article className="hh-targeted-preview-card">
+          <h3 className="hh-targeted-preview-card__title">Preview перед запуском</h3>
+          <ul className="hh-targeted-preview-list">
+            <li><strong>Target title:</strong> {targetedPreviewSummary.targetTitle}</li>
+            <li><strong>Source profile:</strong> {targetedPreviewSummary.sourceProfile}</li>
+            <li><strong>Source internal resume version:</strong> {targetedPreviewSummary.sourceResumeTitle}</li>
+            <li><strong>Selected/highlighted skills:</strong> {targetedPreviewSummary.selectedSkillsCount}</li>
+            <li><strong>Experiences:</strong> {targetedPreviewSummary.experiencesCount}</li>
+            <li><strong>Vacancy context:</strong> {targetedPreviewSummary.vacancyContext}</li>
+          </ul>
+          {hhTargetPreview ? (
+            <p className="muted-text">
+              Dry-run preview: skills={hhTargetPreview.skills?.length ?? 0}, experiences={hhTargetPreview.work_experience?.length ?? 0},
+              emphasis={hhTargetPreview.targeted_emphasis?.length ?? 0}.
+            </p>
+          ) : null}
+          <div className="recommendations-toolbar">
+            <button
+              className="button button--ghost"
+              type="button"
+              onClick={runTargetedPreview}
+              disabled={!hhSessionActive || hhTargetBusy}
+            >
+              {hhTargetBusy ? 'Готовим preview...' : 'Обновить preview (dry-run)'}
+            </button>
+            <button
+              className="button"
+              type="button"
+              onClick={runTargetedCreate}
+              disabled={!hhSessionActive || hhTargetBusy}
+            >
+              {hhTargetBusy ? 'Создаём HH-резюме...' : 'Создать HH-резюме'}
+            </button>
+          </div>
+        </article>
+        {hhTargetLastResult ? (
+          <article className="editor-card">
+            <h3 className="hh-targeted-preview-card__title">Результат последнего запуска</h3>
+            <p><strong>HH resume title:</strong> {hhTargetLastResult.title || '—'}</p>
+            <p>
+              <strong>Status:</strong>{' '}
+              <span className={`applications-status-chip applications-status-chip--${HH_MANAGED_RESUME_STATUS_META[hhTargetLastResult.status]?.tone || 'neutral'}`}>
+                {HH_MANAGED_RESUME_STATUS_META[hhTargetLastResult.status]?.label || hhTargetLastResult.status}
+              </span>
+            </p>
+            <p><strong>External URL:</strong> {hhTargetLastResult.hh_resume_url ? <a href={hhTargetLastResult.hh_resume_url} target="_blank" rel="noreferrer">Открыть на HH</a> : '—'}</p>
+            <p><strong>Created:</strong> {formatDateTime(hhTargetLastResult.created_at)}</p>
+            <p><strong>Updated:</strong> {formatDateTime(hhTargetLastResult.updated_at)}</p>
+          </article>
+        ) : null}
+
+        <article className="editor-card">
+          <div className="editor-card__header">
+            <h3 className="hh-targeted-preview-card__title">Локально отслеживаемые HH managed resumes</h3>
+            <button className="button button--ghost button--sm" type="button" onClick={refreshManagedResumesList} disabled={hhTargetBusy}>
+              Обновить список
+            </button>
+          </div>
+          {!managedResumeRows.length ? <p className="muted-text">Пока нет tracked HH managed resumes.</p> : null}
+          {managedResumeRows.length ? (
+            <div className="hh-managed-table-wrap">
+              <table className="hh-managed-table">
+                <thead>
+                  <tr>
+                    <th>Title</th>
+                    <th>Vacancy context</th>
+                    <th>Source resume version</th>
+                    <th>Status</th>
+                    <th>Updated</th>
+                    <th>HH link</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {managedResumeRows.map((item) => (
+                    <tr key={item.id}>
+                      <td>{item.title || `Managed #${item.id}`}</td>
+                      <td>
+                        {item.vacancy ? <Link to={`/vacancies/${item.vacancy.id}`}>{item.vacancy.title}</Link> : '—'}
+                      </td>
+                      <td>{item.sourceResume?.title || '—'}</td>
+                      <td>
+                        <span className={`applications-status-chip applications-status-chip--${item.statusMeta.tone}`}>
+                          {item.statusMeta.label}
+                        </span>
+                      </td>
+                      <td>{formatDateTime(item.updated_at)}</td>
+                      <td>{item.hh_resume_url ? <a href={item.hh_resume_url} target="_blank" rel="noreferrer">HH</a> : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </article>
       </Section>
 
       <Section title="Интеграция HH (MVP)" defaultOpen>
