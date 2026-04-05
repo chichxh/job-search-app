@@ -57,3 +57,29 @@ class HHBrowserConnectionSummary(BaseModel):
         if value not in HH_BROWSER_STATUSES:
             raise ValueError("Unsupported status")
         return value
+
+
+HH_SESSION_VALIDATION_OUTCOMES = (
+    "valid",
+    "expired",
+    "logged_out",
+    "invalid_storage",
+    "network/transient_failure",
+)
+
+
+class HHBrowserSessionValidationResponse(BaseModel):
+    outcome: str
+    status: str
+    requires_reauth: bool
+    last_checked_at: datetime | None = None
+    session_present: bool
+    last_error_code: str | None = None
+    last_error_message: str | None = None
+
+    @field_validator("outcome")
+    @classmethod
+    def validate_outcome(cls, value: str) -> str:
+        if value not in HH_SESSION_VALIDATION_OUTCOMES:
+            raise ValueError("Unsupported validation outcome")
+        return value

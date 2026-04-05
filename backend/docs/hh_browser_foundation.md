@@ -88,12 +88,15 @@ Happy-path:
 - raw input payloads connect flow;
 - session blob в DB (в БД только reference).
 
-### Restore/check flow
+### Validate/restore/check flow
 
 Новые endpoints:
 
 - `POST /api/v1/integrations/hh-browser/session/restore`
 - `POST /api/v1/integrations/hh-browser/session/check`
+- `POST /api/v1/integrations/hh-browser/session/validate`
+- `POST /api/v1/integrations/hh-browser/session/refresh-status`
+- `POST /api/v1/integrations/hh-browser/session/require-reauth` (manual override)
 
 Оба endpoint:
 
@@ -103,13 +106,32 @@ Happy-path:
 4. Определяют authenticated vs unauthenticated;
 5. Возвращают нормализованный `HHBrowserConnectionSummary` (без cookies/tokens).
 
-Политика состояний:
+### Явная lifecycle policy (validation outcome -> state transition)
 
-- restore/check success -> `connected`;
-- отсутствует `session_state_ref` -> `disconnected` + `SESSION_STATE_MISSING`;
-- ref указывает на отсутствующий файл -> `requires_reauth` + `SESSION_STATE_NOT_FOUND`;
-- storage state повреждён -> `requires_reauth` + `SESSION_STATE_CORRUPTED`;
-- HH показывает logout state -> `requires_reauth` + `SESSION_UNAUTHENTICATED`.
+Validation service возвращает нормализованный outcome:
+
+- `valid`
+- `expired`
+- `logged_out`
+- `invalid_storage`
+- `network/transient_failure`
+
+Transition policy:
+
+- `valid` -> `connected`, `requires_reauth=false`, обновляет `last_authenticated_at`, очищает `last_error_*`.
+- `expired` -> `requires_reauth`, `requires_reauth=true`, `SESSION_EXPIRED`, очищает `session_state_ref`.
+- `logged_out` -> `requires_reauth`, `requires_reauth=true`, `SESSION_LOGGED_OUT`, очищает `session_state_ref`.
+- `invalid_storage`:
+  - `SESSION_STATE_MISSING` -> `disconnected` (сессии нет),
+  - `SESSION_STATE_NOT_FOUND` / `SESSION_STATE_CORRUPTED` -> `requires_reauth` + очистка `session_state_ref`.
+- `network/transient_failure` -> `failed`, `requires_reauth=false`, session ref не очищается (можно повторить validate позже).
+
+Во всех исходах обновляется `last_checked_at`. `session_expires_at` обновляется только если удаётся безопасно вывести expiry из cookie metadata.
+
+### `requires_reauth` vs `failed`
+
+- `requires_reauth` — пользовательское действие обязательно (HH разлогинил, cookie истекли, или persisted state негоден для восстановления).
+- `failed` — техническая/временная проблема в момент проверки (navigation timeout, transient browser/network failure). Пользователь может подождать и повторить validate без немедленного re-login.
 
 ### Disconnect cleanup
 
@@ -153,3 +175,30 @@ Happy-path:
 1. Вызвать `POST /connect/start` (при необходимости с `force_restart=true`).
 2. Убедиться, что client не держит flow idle дольше runtime TTL.
 3. Повторить шаги логина.
+
+### 4) HH logged user out
+
+Симптом: `SESSION_LOGGED_OUT`, статус `requires_reauth`.
+
+Действия:
+
+1. Запустить `connect/start`.
+2. Пройти login flow заново.
+
+### 5) Storage invalid
+
+Симптом: `SESSION_STATE_NOT_FOUND` или `SESSION_STATE_CORRUPTED`.
+
+Действия:
+
+1. Считать persisted session непригодной.
+2. Переподключить HH через обычный connect flow.
+
+### 6) Temporary validation failure
+
+Симптом: статус `failed` + transient код (например `TRANSIENT_NAVIGATION`).
+
+Действия:
+
+1. Повторить `session/validate` или `session/refresh-status`.
+2. Если ошибка стабильная — проверить доступность HH и окружения Playwright.
