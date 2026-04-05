@@ -41,3 +41,17 @@ Build a coherent product shell for a daily job-search workflow (not a marketing 
 - unified `.button` variants.
 - shared banners for loading/error/success/empty states.
 - dense card/list surfaces for board and recommendation contexts.
+
+## HH session lifecycle UX (Settings)
+- HH browser integration card now surfaces compact session health metadata: connection status, session present/missing, `last_authenticated_at`, `last_checked_at`, and `requires_reauth`.
+- The UI shows safe, user-facing session diagnostics (no storage refs, tokens, or debug payloads).
+- Primary lifecycle actions:
+  - **Проверить сессию** — explicit session health re-check.
+  - **Переподключить HH** — shown when state indicates `requires_reauth` / failed flow.
+  - **Отключить HH** — clear disconnect path.
+  - **Восстановить сессию** — optional action in disconnected state when no session is currently attached.
+- Guidance is stateful:
+  - connected → calm confirmation that session is active;
+  - requires_reauth → clear next step to reconnect;
+  - transient check failures → retry guidance without treating it as logout;
+  - disconnected → direct path to connect flow.

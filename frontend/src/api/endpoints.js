@@ -200,6 +200,8 @@ export const submitHhBrowserCode = (payload) =>
   });
 export const cancelHhBrowserConnection = () => apiFetch('/integrations/hh-browser/connect/cancel', { method: 'POST' });
 export const disconnectHhBrowserConnection = () => apiFetch('/integrations/hh-browser/disconnect', { method: 'POST' });
+export const checkHhBrowserSession = () => apiFetch('/integrations/hh-browser/session/check', { method: 'POST' });
+export const restoreHhBrowserSession = () => apiFetch('/integrations/hh-browser/session/restore', { method: 'POST' });
 
 export const extractResumeImportFile = (profileId, file) => {
   const formData = new FormData();
