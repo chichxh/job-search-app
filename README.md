@@ -165,7 +165,26 @@ Manual сценарий MVP:
 - позволяет опционально выбрать существующую `cover letter version`;
 - показывает короткий preview выбранного cover letter;
 - запускает `POST /api/v1/integrations/hh-browser/apply`;
-- показывает последний apply run по текущей вакансии (`status`, `result`, `finished_at`, safe message).
+- показывает последний apply run по текущей вакансии (`status`, `result`, `finished_at`, safe message);
+- после запуска показывает расширенный post-apply summary: связанную локальную application, sync action/reason, HH resume + cover letter, `last apply timestamp`.
+
+### Post-apply synced UX (vacancy page)
+
+После успешного apply пользователь видит не только факт отправки, но и приземлённый результат синхронизации:
+
+- локальный funnel status (обычно `applied`);
+- ссылку в `/applications`;
+- какой `HH managed resume` использовался;
+- какая `cover letter version` использовалась (или что отклик был без письма);
+- итоговый safe summary и timestamp последнего external apply.
+
+Для `already_applied` UI показывает **информационное** состояние (без generic red error): HH уже содержит отклик, и отдельно видно, была ли локальная заявка создана/обновлена из этого события.
+
+Для `retryable_failed` и `failed` состояния разведены явно:
+
+- `retryable_failed` — есть понятный путь повторить запуск;
+- `failed` — показывается как финальная ошибка без «ложного» сообщения, что funnel уже обновлён;
+- если локальный sync не произошёл, это явно указано в summary.
 
 ### Prerequisites
 
@@ -214,6 +233,16 @@ Manual сценарий MVP:
 - ❗ Нет bulk apply UI.
 - ❗ Нет post-apply chat actions.
 
+### HH metadata в applications funnel (compact)
+
+В карточках `/applications` для синхронизированных откликов показываются компактные HH-маркеры:
+
+- `HH sync` badge;
+- `external apply status` (`submitted` / `already_applied`);
+- `HH apply run #...`;
+- `HH resume id` и `HH applied at` (если доступно);
+- в истории статусов виден `hh_apply_run_id`, чтобы отличать события, пришедшие из HH automation.
+
 ### Manual verification checklist (HH apply MVP)
 
 1. Открыть `/vacancies/:vacancyId`.
@@ -229,7 +258,12 @@ Manual сценарий MVP:
    - `updated/finished`,
    - `safe message`,
    - ссылку на HH vacancy (если есть).
-9. Подтвердить, что успешный apply (`submitted`/`already_applied`) появился в `applications` и получил запись в `application_status_history`.
+9. Подтвердить, что successful/info run (`submitted`/`already_applied`) показывает linked application summary прямо на vacancy page.
+10. Перейти в `/applications` и проверить в карточке:
+   - `HH sync` badge,
+   - внешний apply status,
+   - HH run / HH resume / HH applied timestamp.
+11. Открыть `Детали` заявки и проверить блок **HH automation linkage** + запись `hh_apply_run_id` в timeline истории.
 
 ## HH clusters and extra params
 

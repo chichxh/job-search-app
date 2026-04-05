@@ -72,6 +72,19 @@ function getStatusMeta(status) {
   return STATUS_META[status] || { label: status, tone: 'neutral' };
 }
 
+function getExternalApplyStatusLabel(status) {
+  if (!status) {
+    return '—';
+  }
+  if (status === 'already_applied') {
+    return 'already_applied (на HH уже был отклик)';
+  }
+  if (status === 'submitted') {
+    return 'submitted';
+  }
+  return status;
+}
+
 export default function ApplicationsPage() {
   const { profileId } = useAuth();
   const [applications, setApplications] = useState([]);
@@ -365,6 +378,14 @@ export default function ApplicationsPage() {
                     <div className="applications-card" key={application.id}>
                       <p className="applications-card__title"><strong>{vacancy?.title ?? `Вакансия #${application.vacancy_id}`}</strong></p>
                       <p className="applications-card__company">{vacancy?.company_name || 'Неизвестная компания'}</p>
+                      {application.last_hh_apply_run_id ? (
+                        <div className="applications-card__source-row">
+                          <span className="applications-source-badge">HH sync</span>
+                          {application.external_apply_status ? (
+                            <span className="muted-text">external: {getExternalApplyStatusLabel(application.external_apply_status)}</span>
+                          ) : null}
+                        </div>
+                      ) : null}
                       <div className="applications-card__meta-row">
                         <span className={`applications-status-chip applications-status-chip--${appStatusMeta.tone}`}>{appStatusMeta.label}</span>
                         <span className="muted-text">{formatDateTime(application.updated_at) ?? '—'}</span>
@@ -374,6 +395,9 @@ export default function ApplicationsPage() {
                       <div className="applications-card__docs">
                         <p>Resume: {resume?.title || 'Не привязано'} {resume?.status === 'approved' ? <span className="doc-state-badge doc-state-badge--approved">approved</span> : null}</p>
                         <p>Cover letter: {cover?.title || 'Не привязано'} {cover?.status === 'approved' ? <span className="doc-state-badge doc-state-badge--approved">approved</span> : null}</p>
+                        {application.last_hh_apply_run_id ? <p>HH apply run: #{application.last_hh_apply_run_id}</p> : null}
+                        {application.hh_managed_resume_id ? <p>HH resume id: #{application.hh_managed_resume_id}</p> : null}
+                        {application.last_external_apply_at ? <p>HH applied at: {formatDateTime(application.last_external_apply_at) ?? '—'}</p> : null}
                       </div>
 
                       <div className="applications-card__actions">
@@ -400,7 +424,7 @@ export default function ApplicationsPage() {
                             <li key={item.id}>
                               <span>{formatDateTime(item.created_at) ?? '—'}</span>
                               <span>{getStatusMeta(item.from_status || 'saved').label} → {getStatusMeta(item.to_status).label}</span>
-                              <span>{item.note || 'без заметки'}</span>
+                              <span>{item.note || 'без заметки'}{item.hh_apply_run_id ? ` · HH apply run #${item.hh_apply_run_id}` : ''}</span>
                             </li>
                           ))}
                         </ul>
@@ -472,13 +496,25 @@ export default function ApplicationsPage() {
                 <li>Cover letter: {selectedCover ? <>{selectedCover.title || `Сопроводительное письмо #${selectedCover.id}`} ({selectedCover.status}) · <Link to="/settings">открыть в настройках</Link></> : 'Пока не прикреплено'}</li>
               </ul>
 
+              {selectedApplication.last_hh_apply_run_id ? (
+                <>
+                  <h3 className="vacancy-details__section-title">HH automation linkage</h3>
+                  <ul>
+                    <li>Источник: HH apply automation (run #{selectedApplication.last_hh_apply_run_id})</li>
+                    <li>External apply status: {getExternalApplyStatusLabel(selectedApplication.external_apply_status)}</li>
+                    <li>HH managed resume id: {selectedApplication.hh_managed_resume_id ? `#${selectedApplication.hh_managed_resume_id}` : 'не зафиксирован'}</li>
+                    <li>Последний external apply: {formatDateTime(selectedApplication.last_external_apply_at) ?? '—'}</li>
+                  </ul>
+                </>
+              ) : null}
+
               <h3 className="vacancy-details__section-title">История статусов</h3>
               <ul className="history-timeline history-timeline--panel">
                 {selectedHistory.map((item) => (
                   <li key={item.id}>
                     <span>{formatDateTime(item.created_at) ?? '—'}</span>
                     <span>{getStatusMeta(item.from_status || 'saved').label} → {getStatusMeta(item.to_status).label}</span>
-                    <span>{item.note || 'без заметки'}</span>
+                    <span>{item.note || 'без заметки'}{item.hh_apply_run_id ? ` · HH apply run #${item.hh_apply_run_id}` : ''}</span>
                   </li>
                 ))}
               </ul>
