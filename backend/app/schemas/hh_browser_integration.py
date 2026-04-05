@@ -86,6 +86,8 @@ class HHBrowserSessionValidationResponse(BaseModel):
 
 
 HH_MANAGED_RESUME_STATUSES = ("draft_local", "creating", "created", "failed", "stale")
+HH_MANAGED_RESUME_VISIBILITY_MODES = ("public_default", "hidden_from_all", "unknown", "change_pending", "change_failed")
+HH_MANAGED_RESUME_VISIBILITY_STATUSES = ("idle", "checking", "check_failed", "change_pending", "change_failed", "updated")
 
 
 class HHCreateTargetedResumeRequest(BaseModel):
@@ -123,6 +125,13 @@ class HHManagedResumeRead(BaseModel):
     last_synced_at: datetime | None = None
     last_error_code: str | None = None
     last_error_message: str | None = None
+    desired_visibility_mode: str
+    current_visibility_mode: str
+    visibility_last_checked_at: datetime | None = None
+    visibility_last_changed_at: datetime | None = None
+    visibility_status: str
+    visibility_error_code: str | None = None
+    visibility_error_message: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -135,7 +144,46 @@ class HHManagedResumeRead(BaseModel):
             raise ValueError("Unsupported status")
         return value
 
+    @field_validator("desired_visibility_mode", "current_visibility_mode")
+    @classmethod
+    def validate_visibility_mode(cls, value: str) -> str:
+        if value not in HH_MANAGED_RESUME_VISIBILITY_MODES:
+            raise ValueError("Unsupported visibility mode")
+        return value
+
+    @field_validator("visibility_status")
+    @classmethod
+    def validate_visibility_status(cls, value: str) -> str:
+        if value not in HH_MANAGED_RESUME_VISIBILITY_STATUSES:
+            raise ValueError("Unsupported visibility status")
+        return value
+
 
 class HHCreateTargetedResumeResponse(BaseModel):
     managed_resume: HHManagedResumeRead
     payload_preview: HHTargetedResumePayload | None = None
+
+
+class HHManagedResumeVisibilityRead(BaseModel):
+    managed_resume_id: int
+    desired_visibility_mode: str
+    current_visibility_mode: str
+    visibility_last_checked_at: datetime | None = None
+    visibility_last_changed_at: datetime | None = None
+    visibility_status: str
+    visibility_error_code: str | None = None
+    visibility_error_message: str | None = None
+
+    @field_validator("desired_visibility_mode", "current_visibility_mode")
+    @classmethod
+    def validate_mode(cls, value: str) -> str:
+        if value not in HH_MANAGED_RESUME_VISIBILITY_MODES:
+            raise ValueError("Unsupported visibility mode")
+        return value
+
+    @field_validator("visibility_status")
+    @classmethod
+    def validate_status_value(cls, value: str) -> str:
+        if value not in HH_MANAGED_RESUME_VISIBILITY_STATUSES:
+            raise ValueError("Unsupported visibility status")
+        return value

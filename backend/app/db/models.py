@@ -153,6 +153,17 @@ class HHManagedResume(Base):
     hh_resume_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft_local", server_default="draft_local")
+    desired_visibility_mode: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="hidden_from_all", server_default="hidden_from_all"
+    )
+    current_visibility_mode: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="unknown", server_default="unknown"
+    )
+    visibility_last_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    visibility_last_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    visibility_status: Mapped[str] = mapped_column(String(32), nullable=False, default="idle", server_default="idle")
+    visibility_error_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    visibility_error_message: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
     last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     last_error_message: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)

@@ -16,8 +16,10 @@ from app.schemas.hh_browser_integration import (
     HHBrowserSubmitCodeRequest,
     HHBrowserSubmitIdentifierRequest,
     HHBrowserSubmitPasswordRequest,
+    HHManagedResumeVisibilityRead,
 )
 from app.services.hh_browser_connect_service import HHBrowserConnectService, InMemoryRuntimeRegistry, LocalSessionStorage
+from app.services.hh_resume_visibility_service import HHResumeVisibilityAutomationClientStub, HHResumeVisibilityService
 from app.services.hh_targeted_resume_service import HHCreateTargetedResumeService, HHTargetedPayloadBuilder
 from app.services.hh_targeted_resume_automation import PlaywrightTargetedResumeAutomationClient
 from app.services.hh_browser_playwright import PlaywrightAdapterFactory, PlaywrightSessionProbeFactory
@@ -29,6 +31,7 @@ _session_storage = LocalSessionStorage()
 _adapter_factory = PlaywrightAdapterFactory()
 _probe_factory = PlaywrightSessionProbeFactory()
 _resume_automation_client = PlaywrightTargetedResumeAutomationClient()
+_resume_visibility_automation_client = HHResumeVisibilityAutomationClientStub()
 
 
 def get_hh_connect_service(db: Session = Depends(get_db)) -> HHBrowserConnectService:
@@ -45,6 +48,13 @@ def get_hh_targeted_resume_service(db: Session = Depends(get_db)) -> HHCreateTar
         db,
         payload_builder=HHTargetedPayloadBuilder(db),
         automation_client=_resume_automation_client,
+    )
+
+
+def get_hh_resume_visibility_service(db: Session = Depends(get_db)) -> HHResumeVisibilityService:
+    return HHResumeVisibilityService(
+        db,
+        automation_client=_resume_visibility_automation_client,
     )
 
 
@@ -190,3 +200,46 @@ def get_managed_resume(
 ) -> HHManagedResumeRead:
     item = service.get_managed_resume(user_id=current_user.id, managed_resume_id=managed_resume_id)
     return HHManagedResumeRead.model_validate(item)
+
+
+def _visibility_from_managed(item) -> HHManagedResumeVisibilityRead:
+    return HHManagedResumeVisibilityRead(
+        managed_resume_id=item.id,
+        desired_visibility_mode=item.desired_visibility_mode,
+        current_visibility_mode=item.current_visibility_mode,
+        visibility_last_checked_at=item.visibility_last_checked_at,
+        visibility_last_changed_at=item.visibility_last_changed_at,
+        visibility_status=item.visibility_status,
+        visibility_error_code=item.visibility_error_code,
+        visibility_error_message=item.visibility_error_message,
+    )
+
+
+@router.get("/resumes/{managed_resume_id}/visibility", response_model=HHManagedResumeVisibilityRead)
+def get_managed_resume_visibility(
+    managed_resume_id: int,
+    current_user: User = Depends(get_current_user),
+    service: HHResumeVisibilityService = Depends(get_hh_resume_visibility_service),
+) -> HHManagedResumeVisibilityRead:
+    item = service.get_visibility(user_id=current_user.id, managed_resume_id=managed_resume_id)
+    return _visibility_from_managed(item)
+
+
+@router.post("/resumes/{managed_resume_id}/visibility/check", response_model=HHManagedResumeVisibilityRead)
+def check_managed_resume_visibility(
+    managed_resume_id: int,
+    current_user: User = Depends(get_current_user),
+    service: HHResumeVisibilityService = Depends(get_hh_resume_visibility_service),
+) -> HHManagedResumeVisibilityRead:
+    item = service.check_visibility(user_id=current_user.id, managed_resume_id=managed_resume_id)
+    return _visibility_from_managed(item)
+
+
+@router.post("/resumes/{managed_resume_id}/visibility/hide-from-all", response_model=HHManagedResumeVisibilityRead)
+def hide_managed_resume_from_all(
+    managed_resume_id: int,
+    current_user: User = Depends(get_current_user),
+    service: HHResumeVisibilityService = Depends(get_hh_resume_visibility_service),
+) -> HHManagedResumeVisibilityRead:
+    item = service.hide_from_all(user_id=current_user.id, managed_resume_id=managed_resume_id)
+    return _visibility_from_managed(item)

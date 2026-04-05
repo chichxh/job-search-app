@@ -2,6 +2,49 @@
 
 Этот PR завершает шаг `connect/login/OTP flow` с акцентом на устойчивость runtime orchestration и безопасную диагностику.
 
+## HH managed resume visibility MVP (backend/domain step-6 foundation)
+
+Добавлен backend/domain foundation для управления видимостью HH managed resume через browser automation contract, **без реализации DOM-автомации модалки в этом PR**.
+
+Почему первым поддержан именно safe path `hidden_from_all`:
+
+- по текущему HH UX новое резюме создается с публичной видимостью (`public_default`);
+- после создания targeted resume продуктово-безопасный default для MVP — быстро спрятать резюме от всех;
+- расширенная матрица вариантов HH visibility остается следующими шагами (после стабилизации базового сценария).
+
+В локальной tracking-модели `hh_managed_resumes` добавлены поля:
+
+- `desired_visibility_mode`;
+- `current_visibility_mode`;
+- `visibility_last_checked_at`;
+- `visibility_last_changed_at`;
+- `visibility_status`;
+- `visibility_error_code`;
+- `visibility_error_message`.
+
+Поддержанные internal visibility modes в MVP:
+
+- `public_default`;
+- `hidden_from_all`;
+- `unknown`;
+- `change_pending`;
+- `change_failed`.
+
+Добавлены backend API контракты:
+
+- `GET /api/v1/integrations/hh-browser/resumes/{id}/visibility`;
+- `POST /api/v1/integrations/hh-browser/resumes/{id}/visibility/check`;
+- `POST /api/v1/integrations/hh-browser/resumes/{id}/visibility/hide-from-all`.
+
+Оркестрация для check/hide:
+
+1. валидирует ownership резюме;
+2. валидирует наличие связанного `hh_resume_external_id`;
+3. требует активную HH browser session;
+4. вызывает automation contract;
+5. сохраняет `current_visibility_mode` + timestamps;
+6. при ошибке сохраняет только normalized safe summary (`visibility_error_*`), без raw DOM/cookies/session dumps.
+
 ## Create targeted HH resume MVP (backend foundation)
 
 Добавлен backend foundation для создания таргетированного резюме в HH через browser orchestration contract:

@@ -262,6 +262,9 @@ class HHCreateTargetedResumeService:
             vacancy_id=vacancy.id if vacancy else None,
             title=payload.profession_title,
             status="draft_local" if request.dry_run else "creating",
+            desired_visibility_mode="hidden_from_all",
+            current_visibility_mode="unknown",
+            visibility_status="idle",
         )
         self.db.add(managed)
         self.db.commit()
