@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from app.services.hh_browser_page_objects import HHLoginFlowPageModel, to_legacy_step
+from app.services.hh_browser_page_objects import HHLoginFlowPageModel, HHNavigationHelper, to_legacy_step
 
 
 @dataclass
@@ -35,9 +35,14 @@ class FakePage:
     filled: list[tuple[str, str]] = field(default_factory=list)
     clicked: list[str] = field(default_factory=list)
     waits: list[int] = field(default_factory=list)
+    navigated: list[str] = field(default_factory=list)
 
     def title(self) -> str:
         return self.page_title
+
+    def goto(self, url: str) -> None:
+        self.navigated.append(url)
+        self.url = url
 
     def _make(self, key: str) -> FakeLocator:
         return FakeLocator(key=key, count_value=self.visible.get(key, 0), page=self)
@@ -142,3 +147,89 @@ def test_password_entry_fallback_button_switches_state() -> None:
 
     assert result.step_code == "password"
     assert "role:button:Войти с паролем" in page.clicked
+
+
+def test_resumes_page_capabilities_include_create_and_count() -> None:
+    page = FakePage(
+        url="https://hh.ru/applicant/resumes",
+        visible={
+            "css:[data-qa='resume-card']": 2,
+            "role:button:Создать резюме": 1,
+            "text:Редактировать": 1,
+        },
+    )
+    helper = HHNavigationHelper(page=page)
+
+    capabilities = helper.resumes_page.capabilities()
+
+    assert capabilities["page_detected"] is True
+    assert capabilities["key_controls"]["resume_entries_count"] == 2
+    assert capabilities["key_controls"]["create_resume_available"] is True
+    assert capabilities["key_controls"]["resume_edit_entry_available"] is True
+
+
+def test_resume_editor_visibility_detection_uses_fallback_selector() -> None:
+    page = FakePage(
+        url="https://hh.ru/resume/new",
+        visible={
+            "css:form[action*='/resume']": 1,
+            "css:[data-qa*='resume-visibility']": 1,
+            "css:button[type='submit']": 1,
+        },
+    )
+    helper = HHNavigationHelper(page=page)
+
+    editor_caps = helper.resume_editor_page.capabilities()
+
+    assert editor_caps["page_detected"] is True
+    assert editor_caps["key_controls"]["section_controls_present"] is False
+    assert editor_caps["key_controls"]["visibility_controls_present"] is True
+    assert editor_caps["key_controls"]["save_controls_present"] is True
+
+
+def test_vacancy_and_apply_surface_detection() -> None:
+    page = FakePage(
+        url="https://hh.ru/vacancy/123",
+        visible={
+            "css:[data-qa='vacancy-title']": 1,
+            "role:button:Откликнуться": 1,
+            "css:[data-qa='vacancy-response-popup']": 1,
+            "label:Резюме": 1,
+            "label:Сопроводительное письмо": 1,
+            "role:button:Отправить": 1,
+        },
+    )
+    helper = HHNavigationHelper(page=page)
+
+    vacancy_caps = helper.vacancy_page.capabilities()
+    apply_caps = helper.apply_page.capabilities()
+
+    assert vacancy_caps["page_detected"] is True
+    assert vacancy_caps["key_controls"]["apply_available"] is True
+    assert apply_caps["page_detected"] is True
+    assert apply_caps["key_controls"]["resume_selector_present"] is True
+    assert apply_caps["key_controls"]["cover_letter_input_present"] is True
+    assert apply_caps["key_controls"]["final_submit_present"] is True
+
+
+def test_navigation_helper_go_to_resumes_uses_click_then_goto_fallback() -> None:
+    page_click = FakePage(visible={"text:Резюме": 1})
+    helper_click = HHNavigationHelper(page=page_click)
+    helper_click.go_to_resumes()
+    assert "text:Резюме" in page_click.clicked
+
+    page_goto = FakePage(visible={})
+    helper_goto = HHNavigationHelper(page=page_goto)
+    helper_goto.go_to_resumes()
+    assert page_goto.navigated[-1] == "https://hh.ru/applicant/resumes"
+
+
+def test_navigation_helper_open_vacancy_and_apply_orchestration() -> None:
+    page = FakePage(visible={"role:button:Откликнуться": 1})
+    helper = HHNavigationHelper(page=page)
+
+    helper.open_vacancy("https://hh.ru/vacancy/999")
+    helper.open_apply_surface()
+
+    assert page.navigated == ["https://hh.ru/vacancy/999"]
+    assert "role:button:Откликнуться" in page.clicked
