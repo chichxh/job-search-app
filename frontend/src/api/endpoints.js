@@ -171,6 +171,40 @@ export const importProfileFromHhJson = (payload) =>
   });
 export const disconnectHh = () => apiFetch('/integrations/hh/connection', { method: 'DELETE' });
 
+
+export const getHhBrowserConnectionStatus = () => apiFetch('/integrations/hh-browser/status');
+export const initHhBrowserConnection = () =>
+  apiFetch('/integrations/hh-browser/connect/init', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+export const disconnectHhBrowserConnection = () => apiFetch('/integrations/hh-browser/disconnect', { method: 'POST' });
+
+export const markHhBrowserAwaitingCode = () =>
+  apiFetch('/integrations/hh-browser/mark-awaiting-code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requires_reauth: false }),
+  });
+
+export const markHhBrowserConnected = () =>
+  apiFetch('/integrations/hh-browser/mark-connected', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+
+export const markHhBrowserFailed = () =>
+  apiFetch('/integrations/hh-browser/mark-failed', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      error_message: 'Foundation placeholder: status manually marked as failed from Settings UI.',
+      requires_reauth: false,
+    }),
+  });
+
 export const extractResumeImportFile = (profileId, file) => {
   const formData = new FormData();
   formData.append('file', file);
