@@ -167,6 +167,10 @@ Manual сценарий MVP:
 - показывает короткий preview выбранного cover letter;
 - запускает `POST /api/v1/integrations/hh-browser/apply`;
 - показывает последний apply run по текущей вакансии (`status`, `result`, `finished_at`, safe message);
+- показывает privacy-note для выбранного HH-резюме:
+  - safe mode: перед apply выполняется privacy pre-check/hide-from-all;
+  - opt-out: автоскрытие отключено и принудительный hide-before-apply не выполняется;
+  - unknown visibility + safe mode: пользователь видит, что pre-check всё равно будет выполнен перед submit;
 - после запуска показывает компактный summary: какой `HH managed resume` и какая `cover letter version` использовались, safe summary и timestamp.
 
 ### Prerequisites
@@ -181,7 +185,7 @@ Manual сценарий MVP:
 - при неактивной сессии: перейти в `/settings` и переподключить HH;
 - при отсутствии managed resume для вакансии: перейти в `/settings` и сначала создать targeted HH resume.
 
-Если у выбранного managed resume visibility = `unknown`, UI показывает предупреждение, но запуск остаётся доступным (backend policy сохраняется).
+Если у выбранного managed resume visibility = `unknown`, UI показывает предупреждение: в safe mode перед submit будет выполнен pre-apply privacy check.
 
 ### Статусы/результаты, которые отображаются в UI
 
@@ -206,6 +210,7 @@ Manual сценарий MVP:
 5. Опционально выбрать cover letter version и убедиться, что виден краткий preview.
 6. Нажать `Откликнуться через HH`.
 7. Проверить success/info/error сообщение после выполнения.
+   - после success убедиться, что есть пометка: HH может показать резюме работодателю, которому отправлен отклик.
 8. Проверить блок **Последний HH apply run по вакансии**:
    - `status`,
    - `result`,
@@ -292,11 +297,15 @@ Import policy (MVP):
 
 - точка входа: `/settings` → секция **Targeted HH-резюме (MVP foundation)**;
 - перед запуском показывается preview: `target title`, `source profile`, `source resume version`, `skills count`, `experiences count`, vacancy context;
+- в preview добавлен явный privacy-checkbox `Не скрывать от всех работодателей` (opt-out, по умолчанию выключен);
+- при выключенном checkbox (safe default) в `create-targeted` действует стандартный режим: backend включает `auto_hide_from_all_enabled=true` и целевой режим `hidden_from_all`;
+- при включённом checkbox в `create-targeted` отправляется `do_not_hide_from_all_employers=true`, backend отключает автоскрытие (`auto_hide_from_all_enabled=false`);
 - поддержан dry-run preview (`POST /api/v1/integrations/hh-browser/resumes/create-targeted` с `dry_run=true`);
 - action `Создать HH-резюме` запускает реальный create flow;
-- после создания есть явный user-facing reminder, что для targeted-резюме безопасно сразу проверить visibility;
+- после создания показывается success-message с выбранной privacy policy (safe mode / opt-out);
 - список tracked `HH managed resumes` теперь показывает visibility-блок:
   - `current visibility mode`,
+  - privacy preference (`Скрываем от всех по умолчанию` / `Автоскрытие отключено`, плюс `auto-hide enabled` / `opt-out`),
   - `visibility status`,
   - `visibility last checked at`,
   - `visibility last changed at`,
@@ -309,7 +318,8 @@ Import policy (MVP):
 ### Почему это безопасный MVP
 
 - По HH-документации новые резюме по умолчанию могут быть видимы работодателям.
-- Для точечных/экспериментальных резюме безопасный минимальный путь в продукте — проверить visibility и применить `Скрыть от всех`.
+- Для точечных/экспериментальных резюме безопасный минимальный путь в продукте — safe default (автоскрытие включено), а checkbox оставлен как осознанный opt-out.
+- Даже когда резюме скрыто от всех, отклик работает: при submit HH может показать резюме выбранному работодателю.
 - UX специально ограничен: нет полного privacy-dashboard, нет массовых операций и нет employer-specific matrix в этом шаге.
 
 ### Ограничения текущего MVP
@@ -323,12 +333,13 @@ Import policy (MVP):
 
 1. Открыть `/settings`, в секции **Интеграция HH через браузерную сессию** подключить HH до статуса `connected`.
 2. Перейти в секцию **Targeted HH-резюме (MVP foundation)**.
-3. Нажать `Создать HH-резюме` и дождаться завершения.
-4. Проверить, что после создания показано предупреждение/подсказка о рекомендуемом безопасном шаге `Скрыть от всех`.
-5. В таблице tracked managed resumes найти созданное резюме и проверить visibility-поля (`mode/status/last checked/last changed`).
-6. Если visibility неизвестна (`unknown`), нажать `Проверить видимость` и убедиться, что статус обновился.
-7. Нажать `Скрыть от всех` и проверить success-message + режим `Скрыто от всех`.
-8. Принудительно разорвать HH session (disconnect/requires_reauth) и убедиться, что visibility actions не выполняются, а показывается CTA `Переподключить HH`.
+3. Проверить, что checkbox `Не скрывать от всех работодателей` по умолчанию **выключен**.
+4. Нажать `Создать HH-резюме` (с default checkbox off) и дождаться завершения.
+5. В таблице tracked managed resumes проверить privacy labels: `Скрываем от всех по умолчанию` и `auto-hide enabled`.
+6. Включить checkbox, создать ещё одно резюме и проверить labels `Автоскрытие отключено` и `opt-out`.
+7. Если visibility неизвестна (`unknown`), нажать `Проверить видимость` и убедиться, что статус обновился.
+8. Нажать `Скрыть от всех` и проверить success-message + режим `Скрыто от всех`.
+9. Принудительно разорвать HH session (disconnect/requires_reauth) и убедиться, что visibility actions не выполняются, а показывается CTA `Переподключить HH`.
 
 
 ### HH fallback JSON import (dev fixtures)

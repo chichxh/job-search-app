@@ -171,6 +171,7 @@ const HH_VISIBILITY_MODE_META = {
   unknown: { label: 'Неизвестно', tone: 'muted' },
   public_default: { label: 'Видно работодателям (по умолчанию HH)', tone: 'danger' },
   hidden_from_all: { label: 'Скрыто от всех', tone: 'success' },
+  visible_selected_employers: { label: 'Видно выбранным работодателям (после отклика HH)', tone: 'info' },
   change_pending: { label: 'Обновляем...', tone: 'accent' },
   change_failed: { label: 'Не удалось применить', tone: 'danger' },
 };
@@ -241,6 +242,7 @@ export default function SettingsPage() {
   const [targetMaxExperiences, setTargetMaxExperiences] = useState('4');
   const [targetIncludeSkillLevels, setTargetIncludeSkillLevels] = useState(false);
   const [targetSummary, setTargetSummary] = useState('');
+  const [targetDoNotHideFromAllEmployers, setTargetDoNotHideFromAllEmployers] = useState(false);
   const [hhTargetPreview, setHhTargetPreview] = useState(null);
   const [hhTargetLastResult, setHhTargetLastResult] = useState(null);
   const [hhTargetBusy, setHhTargetBusy] = useState(false);
@@ -934,6 +936,7 @@ export default function SettingsPage() {
       skills_focus: normalizedSkillsFocus,
       include_skill_levels: targetIncludeSkillLevels,
       max_experiences: Math.max(1, Math.min(10, Number(targetMaxExperiences) || 4)),
+      do_not_hide_from_all_employers: targetDoNotHideFromAllEmployers,
       dry_run: dryRun,
     };
   }
@@ -1040,8 +1043,14 @@ export default function SettingsPage() {
     setHhTargetLastResult(null);
     try {
       const response = await createHhTargetedResume(buildTargetedResumePayload({ dryRun: false }));
-      setHhTargetLastResult(response.managed_resume ?? null);
-      setHhTargetMessage('Создание HH-резюме завершено. Результат ниже.');
+      const managedResume = response.managed_resume ?? null;
+      const autoHideEnabled = managedResume?.auto_hide_from_all_enabled !== false;
+      setHhTargetLastResult(managedResume);
+      setHhTargetMessage(
+        autoHideEnabled
+          ? 'Создание HH-резюме завершено. По умолчанию резюме будет скрываться от всех работодателей.'
+          : 'Создание HH-резюме завершено. Автоскрытие отключено: резюме не будет принудительно скрываться от всех.',
+      );
       await refreshManagedResumesList();
       await refreshHhBrowserStatus();
     } catch (requestError) {
@@ -1408,6 +1417,15 @@ export default function SettingsPage() {
         />
         <article className="hh-targeted-preview-card">
           <h3 className="hh-targeted-preview-card__title">Preview перед запуском</h3>
+          <SwitchField
+            label="Не скрывать от всех работодателей"
+            checked={targetDoNotHideFromAllEmployers}
+            onChange={(event) => setTargetDoNotHideFromAllEmployers(event.target.checked)}
+          />
+          <p className="muted-text">
+            По умолчанию мы скроем это HH-резюме от всех работодателей. При отклике нужный работодатель всё равно увидит резюме.
+            Если включить чекбокс, автоскрытие от всех работодателей отключается.
+          </p>
           <ul className="hh-targeted-preview-list">
             <li><strong>Target title:</strong> {targetedPreviewSummary.targetTitle}</li>
             <li><strong>Source profile:</strong> {targetedPreviewSummary.sourceProfile}</li>
@@ -1509,6 +1527,14 @@ export default function SettingsPage() {
                           <span className={`applications-status-chip applications-status-chip--${item.visibilityStatusMeta.tone}`}>
                             {item.visibilityStatusMeta.label}
                           </span>
+                        </p>
+                        <p className="muted-text">
+                          <strong>Privacy policy:</strong>{' '}
+                          {item.auto_hide_from_all_enabled !== false ? 'Скрываем от всех по умолчанию' : 'Автоскрытие отключено'}
+                        </p>
+                        <p className="muted-text">
+                          <strong>Preference:</strong>{' '}
+                          {item.auto_hide_from_all_enabled !== false ? 'auto-hide enabled' : 'opt-out'}
                         </p>
                         <p className="muted-text"><strong>Проверка:</strong> {formatDateTime(item.visibility_last_checked_at)}</p>
                         <p className="muted-text"><strong>Изменение:</strong> {formatDateTime(item.visibility_last_changed_at)}</p>
