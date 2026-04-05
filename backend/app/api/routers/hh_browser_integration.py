@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.schemas.hh_browser_integration import (
     HHApplyRequest,
     HHApplyRunRead,
+    HHApplyRunSyncResponse,
     HHCreateTargetedResumeRequest,
     HHCreateTargetedResumeResponse,
     HHBrowserConnectStartRequest,
@@ -282,3 +283,19 @@ def get_apply_run(
     service: HHApplyService = Depends(get_hh_apply_service),
 ) -> HHApplyRunRead:
     return HHApplyRunRead.model_validate(service.get_run(user_id=current_user.id, apply_run_id=apply_run_id))
+
+
+@router.post("/apply-runs/{apply_run_id}/sync-to-application", response_model=HHApplyRunSyncResponse)
+def sync_apply_run_to_application(
+    apply_run_id: int,
+    current_user: User = Depends(get_current_user),
+    service: HHApplyService = Depends(get_hh_apply_service),
+) -> HHApplyRunSyncResponse:
+    result = service.sync_run_to_application(user_id=current_user.id, apply_run_id=apply_run_id)
+    return HHApplyRunSyncResponse(
+        apply_run_id=apply_run_id,
+        synced=result.synced,
+        reason=result.reason,
+        application_id=result.application.id if result.application else None,
+        application_status=result.application.status if result.application else None,
+    )

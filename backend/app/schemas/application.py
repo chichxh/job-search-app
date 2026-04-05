@@ -16,6 +16,12 @@ ApplicationStatus = Literal[
 ]
 
 
+HHExternalApplyStatus = Literal[
+    "submitted",
+    "already_applied",
+]
+
+
 class ApplicationCreate(BaseModel):
     vacancy_id: int
     status: ApplicationStatus = "saved"
@@ -43,6 +49,10 @@ class ApplicationRead(BaseModel):
     note: Optional[str] = None
     resume_version_id: Optional[int] = None
     cover_letter_version_id: Optional[int] = None
+    last_hh_apply_run_id: Optional[int] = None
+    hh_managed_resume_id: Optional[int] = None
+    external_apply_status: Optional[HHExternalApplyStatus] = None
+    last_external_apply_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -55,6 +65,7 @@ class ApplicationStatusHistoryRead(BaseModel):
     from_status: Optional[ApplicationStatus] = None
     to_status: ApplicationStatus
     note: Optional[str] = None
+    hh_apply_run_id: Optional[int] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

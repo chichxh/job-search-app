@@ -110,10 +110,21 @@ MVP visibility policy:
 - текущий normalized result/status и длительность;
 - без полного текста cover letter, без cookies/session dumps, без raw page dumps.
 
+HH apply -> applications sync policy (MVP):
+
+- `submitted` и `already_applied` синхронизируются в локальную `applications` воронку:
+  - upsert по `(profile_id, vacancy_id)`,
+  - локальный status = `applied`,
+  - сохраняются связи с `hh_apply_run`, `hh_managed_resume`, `cover_letter_version`,
+  - пишется `application_status_history` с привязкой `hh_apply_run_id`.
+- `already_applied` отражается предсказуемо через `external_apply_status=already_applied`.
+- `failed/retryable_failed` не переводят локальную заявку в `applied`.
+- sync идемпотентный: для одного `hh_apply_run_id` создается максимум одна history-entry.
+
 Явно вне scope этого PR:
 
 - фактическая browser submit automation;
-- auto-sync в applications funnel;
+- двусторонний sync с HH кабинетом (включая polling по responses/messages);
 - bulk/mass apply.
 
 ## Create targeted HH resume MVP (backend foundation)
