@@ -192,3 +192,37 @@ def test_failed_automation_persists_safe_error(client, auth_headers, fake_db) ->
     assert managed["status"] == "failed"
     assert managed["last_error_code"] == "INTERNAL_AUTOMATION_ERROR"
     assert "secret-token-123" not in (managed["last_error_message"] or "")
+
+
+def test_create_targeted_duplicate_request_is_idempotent(client, auth_headers, fake_db) -> None:
+    _seed_profile_details(fake_db, profile_id=1)
+    fake_db.add(
+        models.HHBrowserConnection(
+            user_id=1,
+            status="connected",
+            requires_reauth=False,
+            session_state_ref="local://hh-browser-session/u1.json",
+        )
+    )
+    app.dependency_overrides[get_hh_targeted_resume_service] = _override_service(fake_db)
+
+    first = client.post(
+        "/api/v1/integrations/hh-browser/resumes/create-targeted",
+        headers=auth_headers,
+        json={"profile_id": 1, "vacancy_id": 1},
+    )
+    assert first.status_code == 201
+
+    second = client.post(
+        "/api/v1/integrations/hh-browser/resumes/create-targeted",
+        headers=auth_headers,
+        json={"profile_id": 1, "vacancy_id": 1},
+    )
+    assert second.status_code == 201
+    assert second.json()["managed_resume"]["id"] == first.json()["managed_resume"]["id"]
+
+    action_runs = fake_db.query(models.HHAutomationActionRun).all()
+    assert any(item.action_type == "create_targeted_resume" and item.status == "completed" for item in action_runs)
+    assert any(
+        item.action_type == "create_targeted_resume" and item.status == "duplicate_prevented" for item in action_runs
+    )

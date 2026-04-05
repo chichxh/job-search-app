@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import HHBrowserConnection
 from app.schemas.hh_browser_integration import HHBrowserConnectionDebug, HHBrowserConnectionSummary
+from app.services.hh_action_control_service import HHActionControlService
 from app.services.hh_browser_error_taxonomy import normalize_automation_error_code
 from app.utils.log_safety import redact_text
 
@@ -226,6 +227,7 @@ class HHBrowserConnectService:
         self.runtime_registry = runtime_registry
         self.session_storage = session_storage
         self.session_probe_factory = session_probe_factory
+        self.action_control = HHActionControlService(db)
 
     def get_state(self, *, user_id: int) -> HHBrowserConnectionSummary:
         connection = self._ensure_connection(user_id=user_id)
@@ -240,6 +242,16 @@ class HHBrowserConnectService:
 
         if runtime is not None:
             self._close_runtime(connection.id)
+        action_decision = self.action_control.start_action(
+            user_id=user_id,
+            action_type="connect",
+            target_type="browser_connection",
+            target_id=user_id,
+            target_ref="hh",
+            request_fingerprint=f"connect:{user_id}:{int(force_restart)}",
+            min_interval_seconds=2,
+            max_concurrent_per_user=2,
+        )
 
         self._transition(connection, "connecting")
         connection.last_error_code = None
@@ -271,11 +283,25 @@ class HHBrowserConnectService:
                 detected_step=next_step,
                 elapsed_ms=int((time.perf_counter() - started_at) * 1000),
             )
+            self.action_control.finish_action(
+                action_run=action_decision.action_run,
+                status_value="completed",
+                operation_code="HH_CONNECT_STARTED",
+                safe_summary=f"HH connect flow started and moved to step={next_step}",
+                context_ref={"connection_id": connection.id},
+            )
             return self._summary(connection)
         except HHBrowserAutomationError as exc:
             if adapter is not None and self.runtime_registry.get(connection.id) is None:
                 adapter.close()
             self._mark_failed(connection, error_code=exc.code, error_message=exc.message, debug_summary=exc.debug_summary)
+            self.action_control.finish_action(
+                action_run=action_decision.action_run,
+                status_value="retryable_failed" if exc.code in _RETRYABLE_AUTOMATION_CODES else "failed",
+                operation_code="HH_CONNECT_FAILED",
+                safe_summary=f"HH connect flow failed with code={exc.code[:32]}",
+                context_ref={"connection_id": connection.id},
+            )
             self._raise_user_automation_error(exc)
 
     def submit_identifier(self, *, user_id: int, identifier: str, identifier_type: Literal["phone", "email"]) -> HHBrowserConnectionSummary:
@@ -348,6 +374,16 @@ class HHBrowserConnectService:
             self._raise_user_automation_error(exc)
 
     def cancel(self, *, user_id: int) -> HHBrowserConnectionSummary:
+        action_decision = self.action_control.start_action(
+            user_id=user_id,
+            action_type="connect_cancel",
+            target_type="browser_connection",
+            target_id=user_id,
+            target_ref="hh",
+            request_fingerprint=f"connect_cancel:{user_id}",
+            min_interval_seconds=1,
+            max_concurrent_per_user=3,
+        )
         connection = self._ensure_connection(user_id=user_id)
         self._close_runtime(connection.id)
         if connection.session_state_ref:
@@ -361,6 +397,13 @@ class HHBrowserConnectService:
         connection.last_error_message = None
         self.db.commit()
         self._log_transition(event="cancel", connection=connection, runtime_session_id=None, detected_step=None, elapsed_ms=0)
+        self.action_control.finish_action(
+            action_run=action_decision.action_run,
+            status_value="cancelled",
+            operation_code="HH_ACTION_CANCELLED",
+            safe_summary="HH connect runtime/session was cancelled manually",
+            context_ref={"connection_id": connection.id},
+        )
         return self._summary(connection)
 
     def restore_session(self, *, user_id: int) -> HHBrowserConnectionSummary:

@@ -184,6 +184,9 @@ def test_cancel_sets_disconnected(fake_db) -> None:
     assert state.status == "disconnected"
     assert state.session_present is False
     assert storage.deleted
+    action_runs = fake_db.query(models.HHAutomationActionRun).all()
+    assert any(item.action_type == "connect" and item.status == "completed" for item in action_runs)
+    assert any(item.action_type == "connect_cancel" and item.status == "cancelled" for item in action_runs)
 
 
 def test_unknown_step_detection_returns_failed_with_normalized_error(fake_db) -> None:
