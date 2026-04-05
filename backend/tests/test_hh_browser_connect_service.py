@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.db import models
 from app.services.hh_browser_connect_service import (
+    HHBrowserAutomationError,
     HHBrowserConnectService,
     InMemoryRuntimeRegistry,
     LocalSessionStorage,
@@ -36,6 +37,9 @@ class FakeAdapter:
 
     def close(self) -> None:
         self.closed = True
+
+    def safe_debug_summary(self) -> dict:
+        return {"url": "https://hh.ru/account/login", "title": "HH Login"}
 
 
 class FakeFactory:
@@ -135,3 +139,72 @@ def test_cancel_sets_disconnected(fake_db) -> None:
 
     assert state.status == "disconnected"
     assert adapter.closed is True
+
+
+def test_unknown_step_detection_returns_failed_with_normalized_error(fake_db) -> None:
+    service, _ = _service(fake_db, [FakeAdapter(["failed"])])
+
+    state = service.start(user_id=1)
+
+    assert state.status == "failed"
+    assert state.last_error_code == "UNRECOGNIZED_STATE"
+    assert "Unable to determine HH login step" in (state.last_error_message or "")
+
+
+def test_timeout_handling_marks_connection_failed(fake_db) -> None:
+    adapter = FakeAdapter(["awaiting_identifier"])
+    service = HHBrowserConnectService(
+        fake_db,
+        adapter_factory=FakeFactory([adapter]),
+        runtime_registry=InMemoryRuntimeRegistry(timeout_seconds=0),
+        session_storage=MemoryStorage(),
+    )
+
+    service.start(user_id=1)
+    from fastapi import HTTPException
+
+    try:
+        service.submit_identifier(user_id=1, identifier_type="email", identifier="user@example.com")
+        assert False, "Expected timeout exception"
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert exc.detail["code"] == "SESSION_TIMEOUT"
+
+    state = service.get_state(user_id=1)
+    assert state.status == "failed"
+    assert state.debug.runtime_session_alive is False
+
+
+def test_retryable_transient_failure_succeeds(fake_db) -> None:
+    class RetryAdapter(FakeAdapter):
+        def __init__(self) -> None:
+            super().__init__(["awaiting_identifier"])
+            self.calls = 0
+
+        def open_login_page(self) -> str:
+            self.calls += 1
+            if self.calls == 1:
+                raise HHBrowserAutomationError("TRANSIENT_NAVIGATION", "Temporary HH load issue")
+            return "awaiting_identifier"
+
+    adapter = RetryAdapter()
+    service, _ = _service(fake_db, [adapter])
+
+    state = service.start(user_id=1)
+
+    assert state.status == "awaiting_identifier"
+    assert adapter.calls == 2
+
+
+def test_connected_state_survives_restore_when_session_reference_exists(fake_db) -> None:
+    adapter = FakeAdapter(["awaiting_identifier", "awaiting_code", "connected"])
+    service, _ = _service(fake_db, [adapter])
+
+    service.start(user_id=1)
+    service.submit_identifier(user_id=1, identifier_type="email", identifier="user@example.com")
+    connected = service.submit_code(user_id=1, code="1234")
+    restored = service.get_state(user_id=1)
+
+    assert connected.status == "connected"
+    assert restored.status == "connected"
+    assert restored.session_present is True

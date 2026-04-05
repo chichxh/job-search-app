@@ -9,13 +9,13 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.models import HHBrowserConnection
-from app.schemas.hh_browser_integration import HHBrowserConnectionSummary
+from app.schemas.hh_browser_integration import HHBrowserConnectionDebug, HHBrowserConnectionSummary
 from app.utils.log_safety import redact_text
 
 logger = logging.getLogger(__name__)
@@ -44,12 +44,15 @@ _ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "failed": {"connecting", "disconnected"},
 }
 
+_RETRYABLE_AUTOMATION_CODES = {"TRANSIENT_NAVIGATION", "TRANSIENT_WAIT"}
+
 
 class HHBrowserAutomationError(Exception):
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, *, debug_summary: dict[str, Any] | None = None) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
+        self.debug_summary = debug_summary or {}
 
 
 class HHLoginPageAdapter(Protocol):
@@ -62,6 +65,8 @@ class HHLoginPageAdapter(Protocol):
     def submit_code(self, *, code: str) -> HHLoginStep: ...
 
     def export_storage_state(self) -> dict: ...
+
+    def safe_debug_summary(self) -> dict[str, Any]: ...
 
     def close(self) -> None: ...
 
@@ -76,11 +81,13 @@ class HHSessionStorage(Protocol):
 
 @dataclass(slots=True)
 class RuntimeSession:
+    runtime_session_id: str
     connection_id: int
     user_id: int
     adapter: HHLoginPageAdapter
     created_at: datetime
     last_seen_at: datetime
+    last_detected_step: HHLoginStep | None = None
 
 
 class InMemoryRuntimeRegistry:
@@ -157,78 +164,101 @@ class HHBrowserConnectService:
         connection.last_checked_at = self._now()
         self.db.commit()
 
-        start_ts = time.perf_counter()
+        started_at = time.perf_counter()
         try:
             adapter = self.adapter_factory.create()
-            next_step = adapter.open_login_page()
+            next_step = self._run_with_retry(lambda: adapter.open_login_page(), operation="open_login_page")
             runtime = RuntimeSession(
+                runtime_session_id=uuid.uuid4().hex,
                 connection_id=connection.id,
                 user_id=user_id,
                 adapter=adapter,
                 created_at=self._now(),
                 last_seen_at=self._now(),
+                last_detected_step=next_step,
             )
             self.runtime_registry.put(runtime)
             self._apply_step(connection, next_step)
             self.db.commit()
-            logger.info(
-                "HH connect started | user_id=%s connection_id=%s step=%s elapsed_ms=%s",
-                user_id,
-                connection.id,
-                next_step,
-                int((time.perf_counter() - start_ts) * 1000),
+            self._log_transition(
+                event="start",
+                connection=connection,
+                runtime_session_id=runtime.runtime_session_id,
+                detected_step=next_step,
+                elapsed_ms=int((time.perf_counter() - started_at) * 1000),
             )
             return self._summary(connection)
         except HHBrowserAutomationError as exc:
-            self._mark_failed(connection, error_code=exc.code, error_message=exc.message)
+            self._mark_failed(connection, error_code=exc.code, error_message=exc.message, debug_summary=exc.debug_summary)
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"code": exc.code, "message": exc.message}) from exc
 
     def submit_identifier(self, *, user_id: int, identifier: str, identifier_type: Literal["phone", "email"]) -> HHBrowserConnectionSummary:
         connection = self._ensure_connection(user_id=user_id)
         self._ensure_state(connection, expected="awaiting_identifier")
-        runtime = self._runtime_or_fail(connection.id)
+        runtime = self._runtime_or_fail(connection)
+        started_at = time.perf_counter()
         try:
-            next_step = runtime.adapter.submit_identifier(identifier=identifier, identifier_type=identifier_type)
+            next_step = self._run_with_retry(
+                lambda: runtime.adapter.submit_identifier(identifier=identifier, identifier_type=identifier_type),
+                operation="submit_identifier",
+            )
+            runtime.last_detected_step = next_step
             self._apply_step(connection, next_step)
             self.db.commit()
-            logger.info(
-                "HH identifier submitted | user_id=%s connection_id=%s type=%s step=%s",
-                user_id,
-                connection.id,
-                identifier_type,
-                next_step,
+            self._log_transition(
+                event="submit_identifier",
+                connection=connection,
+                runtime_session_id=runtime.runtime_session_id,
+                detected_step=next_step,
+                elapsed_ms=int((time.perf_counter() - started_at) * 1000),
             )
             return self._summary(connection)
         except HHBrowserAutomationError as exc:
-            self._mark_failed(connection, error_code=exc.code, error_message=exc.message)
+            self._mark_failed(connection, error_code=exc.code, error_message=exc.message, debug_summary=exc.debug_summary)
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"code": exc.code, "message": exc.message}) from exc
 
     def submit_password(self, *, user_id: int, password: str) -> HHBrowserConnectionSummary:
         connection = self._ensure_connection(user_id=user_id)
         self._ensure_state(connection, expected="awaiting_password")
-        runtime = self._runtime_or_fail(connection.id)
+        runtime = self._runtime_or_fail(connection)
+        started_at = time.perf_counter()
         try:
-            next_step = runtime.adapter.submit_password(password=password)
+            next_step = self._run_with_retry(lambda: runtime.adapter.submit_password(password=password), operation="submit_password")
+            runtime.last_detected_step = next_step
             self._apply_step(connection, next_step)
             self.db.commit()
-            logger.info("HH password submitted | user_id=%s connection_id=%s step=%s", user_id, connection.id, next_step)
+            self._log_transition(
+                event="submit_password",
+                connection=connection,
+                runtime_session_id=runtime.runtime_session_id,
+                detected_step=next_step,
+                elapsed_ms=int((time.perf_counter() - started_at) * 1000),
+            )
             return self._summary(connection)
         except HHBrowserAutomationError as exc:
-            self._mark_failed(connection, error_code=exc.code, error_message=exc.message)
+            self._mark_failed(connection, error_code=exc.code, error_message=exc.message, debug_summary=exc.debug_summary)
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"code": exc.code, "message": exc.message}) from exc
 
     def submit_code(self, *, user_id: int, code: str) -> HHBrowserConnectionSummary:
         connection = self._ensure_connection(user_id=user_id)
         self._ensure_state(connection, expected="awaiting_code")
-        runtime = self._runtime_or_fail(connection.id)
+        runtime = self._runtime_or_fail(connection)
+        started_at = time.perf_counter()
         try:
-            next_step = runtime.adapter.submit_code(code=code)
+            next_step = self._run_with_retry(lambda: runtime.adapter.submit_code(code=code), operation="submit_code")
+            runtime.last_detected_step = next_step
             self._apply_step(connection, next_step)
             self.db.commit()
-            logger.info("HH OTP submitted | user_id=%s connection_id=%s step=%s", user_id, connection.id, next_step)
+            self._log_transition(
+                event="submit_code",
+                connection=connection,
+                runtime_session_id=runtime.runtime_session_id,
+                detected_step=next_step,
+                elapsed_ms=int((time.perf_counter() - started_at) * 1000),
+            )
             return self._summary(connection)
         except HHBrowserAutomationError as exc:
-            self._mark_failed(connection, error_code=exc.code, error_message=exc.message)
+            self._mark_failed(connection, error_code=exc.code, error_message=exc.message, debug_summary=exc.debug_summary)
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"code": exc.code, "message": exc.message}) from exc
 
     def cancel(self, *, user_id: int) -> HHBrowserConnectionSummary:
@@ -240,12 +270,23 @@ class HHBrowserConnectService:
         connection.last_error_code = None
         connection.last_error_message = None
         self.db.commit()
-        logger.info("HH connect cancelled | user_id=%s connection_id=%s", user_id, connection.id)
+        self._log_transition(event="cancel", connection=connection, runtime_session_id=None, detected_step=None, elapsed_ms=0)
         return self._summary(connection)
+
+    def _run_with_retry(self, callback, *, operation: str) -> HHLoginStep:
+        attempts = 2
+        for attempt in range(1, attempts + 1):
+            try:
+                return callback()
+            except HHBrowserAutomationError as exc:
+                if exc.code not in _RETRYABLE_AUTOMATION_CODES or attempt >= attempts:
+                    raise
+                logger.warning("HH transient failure | operation=%s attempt=%s code=%s", operation, attempt, exc.code)
+        raise HHBrowserAutomationError("TRANSIENT_WAIT", "Retry budget exhausted")
 
     def _apply_step(self, connection: HHBrowserConnection, step: HHLoginStep) -> None:
         if step == "connected":
-            runtime = self._runtime_or_fail(connection.id)
+            runtime = self._runtime_or_fail(connection)
             session_state = runtime.adapter.export_storage_state()
             session_ref = self.session_storage.save(user_id=connection.user_id, connection_id=connection.id, state=session_state)
             self._transition(connection, "connected")
@@ -259,13 +300,27 @@ class HHBrowserConnectService:
             return
 
         if step == "failed":
-            self._mark_failed(connection, error_code="UNRECOGNIZED_STATE", error_message="Unable to determine HH login step")
+            runtime = self.runtime_registry.get(connection.id)
+            debug_summary = runtime.adapter.safe_debug_summary() if runtime is not None else {}
+            self._mark_failed(
+                connection,
+                error_code="UNRECOGNIZED_STATE",
+                error_message="Unable to determine HH login step",
+                debug_summary=debug_summary,
+            )
             return
 
         self._transition(connection, step)
         connection.last_checked_at = self._now()
 
-    def _mark_failed(self, connection: HHBrowserConnection, *, error_code: str, error_message: str) -> None:
+    def _mark_failed(
+        self,
+        connection: HHBrowserConnection,
+        *,
+        error_code: str,
+        error_message: str,
+        debug_summary: dict[str, Any] | None = None,
+    ) -> None:
         self._transition(connection, "failed")
         connection.requires_reauth = False
         connection.last_checked_at = self._now()
@@ -274,16 +329,18 @@ class HHBrowserConnectService:
         self._close_runtime(connection.id)
         self.db.commit()
         logger.warning(
-            "HH connect failed | user_id=%s connection_id=%s code=%s message=%s",
+            "HH connect failed | user_id=%s connection_id=%s code=%s message=%s debug=%s",
             connection.user_id,
             connection.id,
             connection.last_error_code,
             connection.last_error_message,
+            self._sanitize_debug(debug_summary or {}),
         )
 
-    def _runtime_or_fail(self, connection_id: int) -> RuntimeSession:
-        runtime = self.runtime_registry.get(connection_id)
+    def _runtime_or_fail(self, connection: HHBrowserConnection) -> RuntimeSession:
+        runtime = self.runtime_registry.get(connection.id)
         if runtime is None:
+            self._mark_failed(connection, error_code="SESSION_TIMEOUT", error_message="Live browser session expired")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={"code": "SESSION_TIMEOUT", "message": "Live browser session expired, restart connect flow"},
@@ -327,6 +384,12 @@ class HHBrowserConnectService:
         connection.updated_at = self._now()
 
     def _summary(self, connection: HHBrowserConnection) -> HHBrowserConnectionSummary:
+        runtime = self.runtime_registry.get(connection.id)
+        debug = HHBrowserConnectionDebug(
+            current_detected_step=(runtime.last_detected_step if runtime is not None else None),
+            last_transition_at=connection.updated_at,
+            runtime_session_alive=runtime is not None,
+        )
         return HHBrowserConnectionSummary.model_validate(
             {
                 "status": connection.status,
@@ -337,8 +400,37 @@ class HHBrowserConnectService:
                 "last_error_code": connection.last_error_code,
                 "last_error_message": connection.last_error_message,
                 "updated_at": connection.updated_at,
+                "debug": debug,
             }
         )
+
+    def _log_transition(
+        self,
+        *,
+        event: str,
+        connection: HHBrowserConnection,
+        runtime_session_id: str | None,
+        detected_step: HHLoginStep | None,
+        elapsed_ms: int,
+    ) -> None:
+        logger.info(
+            "HH connect transition | event=%s user_id=%s connection_id=%s runtime_session_id=%s status=%s detected_step=%s elapsed_ms=%s",
+            event,
+            connection.user_id,
+            connection.id,
+            runtime_session_id,
+            connection.status,
+            detected_step,
+            elapsed_ms,
+        )
+
+    @staticmethod
+    def _sanitize_debug(payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            redact_text(str(key), max_len=64): redact_text(str(value), max_len=160)
+            for key, value in payload.items()
+            if key not in {"html", "dom", "cookies", "storage"}
+        }
 
     @staticmethod
     def _now() -> datetime:

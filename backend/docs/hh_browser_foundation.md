@@ -1,28 +1,28 @@
-# HH Browser Connect Orchestration (MVP backend)
+# HH Browser Connect Orchestration (hardened step-2 foundation)
 
-Этот PR переводит HH browser integration из foundation-only в **live connect orchestration backend** (MVP), но без UI streaming и без heavy RPA platform.
+Этот PR завершает шаг `connect/login/OTP flow` с акцентом на устойчивость runtime orchestration и безопасную диагностику.
 
-## Что реализовано
+## Что усилено
 
-- Явная backend state machine для live connect-flow.
-- Отдельный orchestration service (`HHBrowserConnectService`) + runtime registry.
-- Browser adapter слой (`PlaywrightHHLoginAdapter`) с детекцией шагов логина HH.
-- API для пошагового connect процесса:
-  - `POST /api/v1/integrations/hh-browser/connect/start`
-  - `GET /api/v1/integrations/hh-browser/connect/state`
-  - `POST /api/v1/integrations/hh-browser/connect/identifier`
-  - `POST /api/v1/integrations/hh-browser/connect/password`
-  - `POST /api/v1/integrations/hh-browser/connect/code`
-  - `POST /api/v1/integrations/hh-browser/connect/cancel`
+- Централизован selector/heuristics layer для HH login page в `PlaywrightHHLoginAdapter`.
+- Улучшена детекция шагов логина (identifier/password/code/connected/unknown).
+- Добавлены safe retry + timeout policy для transient navigation/wait ошибок.
+- Добавлены структурированные transition logs с `connection_id`, `runtime_session_id`, длительностью и reason code.
+- В state response добавлен dev-safe debug block:
+  - `current_detected_step`
+  - `last_transition_at`
+  - `runtime_session_alive`
 
-Также сохранены legacy endpoints `/status` и `/disconnect` для обратной совместимости.
+## Поддерживаемые HH login paths
 
-## Security guarantees
+Поддерживаются пути:
 
-- **HH password не сохраняется в БД.**
-- **OTP code не сохраняется в БД.**
-- Credentials/OTP используются только эпизодически внутри live auth step.
-- После успешного логина сохраняется только `session_state_ref` (reference), а не raw dump в БД.
+1. `identifier -> Дальше -> password -> connected`
+2. `identifier -> Дальше -> code -> connected`
+3. `identifier -> Войти с паролем -> password -> connected`
+4. Already-authenticated state (`/applicant`, `/resume`) -> `connected`
+
+Если текущий экран HH не распознан, flow переводится в `failed` с normalized error `UNRECOGNIZED_STATE` и safe debug summary (без raw DOM/cookies/secrets).
 
 ## State lifecycle
 
@@ -37,47 +37,66 @@
 - `requires_reauth`
 - `failed`
 
-Нормальный happy-path:
+Happy-path:
 
-1. `start` -> browser open/login page inspect -> `awaiting_identifier`
-2. `identifier` -> `awaiting_password` **или** `awaiting_code`
-3. `password` -> `awaiting_code` **или** `connected`
+1. `start` -> open/login inspect -> `awaiting_identifier | awaiting_password | awaiting_code | connected`
+2. `identifier` -> `awaiting_password | awaiting_code | connected`
+3. `password` -> `awaiting_code | connected`
 4. `code` -> `connected`
 
-Любой шаг может завершиться в `failed` с normalized error.
-`cancel` очищает runtime session и возвращает `disconnected`.
+`cancel` всегда завершает runtime session и возвращает `disconnected`.
 
-## Login path support in MVP
+## Timeouts, retry, cleanup
 
-Реально поддержаны пути:
+- Page navigation timeout контролируется `HH_LOGIN_NAV_TIMEOUT_MS` (по умолчанию 30000 ms).
+- Step transition wait timeout контролируется `HH_LOGIN_STEP_TIMEOUT_MS` (по умолчанию 12000 ms).
+- Runtime session TTL контролируется runtime registry timeout (по умолчанию 600 сек).
+- Retry (один безопасный повтор) применяется для transient ошибок:
+  - `TRANSIENT_NAVIGATION`
+  - `TRANSIENT_WAIT`
+- При abandoned/expired flow runtime закрывается, а connect-state предсказуемо переходит в `failed` + `SESSION_TIMEOUT`.
 
-- `identifier -> next -> password`
-- `identifier -> next -> code`
-- `identifier -> "Войти с паролем" -> password`
+## Security guarantees
 
-Step detection в adapter строится через live DOM selectors и page state inspection (input/button/url markers), а не через жёсткий static text snippet.
+- HH identifier/password/OTP не сохраняются в DB/state response.
+- В DB хранится только `session_state_ref` (reference), а не raw browser storage dump.
+- Structured logs не содержат секретов (payload values не логируются).
+- Unknown/failure debug сводка safe-only (url/title/boolean markers).
 
-## Session persistence
+## Ограничения
 
-- Для успешной авторизации browser context storage-state экспортируется адаптером.
-- Storage state записывается в файловое dev-safe хранилище (`LocalSessionStorage`).
-- В `hh_browser_connections` хранится только `session_state_ref`.
+- HH DOM может измениться; heuristic detection не гарантирует 100% покрытие всех вариантов UI.
+- image captcha / anti-bot challenges полностью не решаются в текущем scope.
+- В некоторых сценариях может потребоваться manual reauth/restart flow.
 
-## Safe logging
+## Troubleshooting
 
-Логируются только safe operational поля:
+### 1) HH login page изменилась
 
-- `user_id`
-- `connection_id`
-- `step/status transition`
-- short normalized error code/message
-- elapsed timings
+Симптом: частые `UNRECOGNIZED_STATE` или `HH_SELECTOR_NOT_FOUND`.
 
-Sensitive payloads (identifier/password/otp/cookies/token dump) в логи не пишутся.
+Действия:
 
-## Ограничения MVP
+1. Проверить safe debug поля в `/connect/state` (`current_detected_step`, `runtime_session_alive`).
+2. Проверить `HH connect failed` логи с reason code.
+3. Обновить centralized heuristics/selectors в `PlaywrightHHLoginAdapter`.
 
-- Нет browser video/streaming и embedded browser UI.
-- Нет advanced captcha/anti-bot automation.
-- Нет multi-account HH orchestration.
-- Playwright должен быть доступен в runtime (иначе сервис отдаёт нормализованную ошибку `PLAYWRIGHT_UNAVAILABLE`).
+### 2) Flow зациклился в `awaiting_code`
+
+Симптом: после `submit_code` снова возвращается `awaiting_code`.
+
+Действия:
+
+1. Проверить корректность OTP и срок действия кода.
+2. Проверить не запрошен ли повторный код HH.
+3. Сделать `cancel`, затем `start` и пройти flow заново.
+
+### 3) Session expired
+
+Симптом: `SESSION_TIMEOUT` / runtime не жив.
+
+Действия:
+
+1. Вызвать `POST /connect/start` (при необходимости с `force_restart=true`).
+2. Убедиться, что client не держит flow idle дольше runtime TTL.
+3. Повторить шаги логина.
