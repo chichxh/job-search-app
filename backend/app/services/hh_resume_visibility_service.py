@@ -16,8 +16,15 @@ from app.services.hh_browser_error_taxonomy import normalize_automation_error_co
 
 logger = logging.getLogger(__name__)
 
-HH_VISIBILITY_MODES = ("public_default", "hidden_from_all", "unknown", "change_pending", "change_failed")
-HH_VISIBILITY_STATUSES = ("idle", "checking", "check_failed", "change_pending", "change_failed", "updated")
+HH_VISIBILITY_MODES = (
+    "public_default",
+    "hidden_from_all",
+    "visible_selected_employers",
+    "unknown",
+    "change_pending",
+    "change_failed",
+)
+HH_VISIBILITY_STATUSES = ("idle", "checking", "check_failed", "change_pending", "change_failed", "updated", "inferred_post_apply")
 
 
 class HHResumeVisibilityAutomationError(Exception):

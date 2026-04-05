@@ -9,6 +9,7 @@ from app.services.hh_apply_service import (
     HHApplyAutomationResult,
     HHApplyService,
 )
+from app.services.hh_resume_visibility_service import HHResumeVisibilityService
 
 
 class FakeApplyAutomationClient(HHApplyAutomationClient):
@@ -32,7 +33,30 @@ class FakeApplyAutomationClient(HHApplyAutomationClient):
         )
 
 
-def _override_service(fake_db, *, should_fail: bool = False, retryable: bool = True, result_type: str = "submitted"):
+class FakeVisibilityService(HHResumeVisibilityService):
+    def __init__(self, db, *, fail_to_hide: bool = False) -> None:
+        self.db = db
+        self.fail_to_hide = fail_to_hide
+
+    def hide_from_all(self, *, user_id: int, managed_resume_id: int):
+        managed = self.db.get(models.HHManagedResume, managed_resume_id)
+        assert managed is not None
+        if self.fail_to_hide:
+            managed.current_visibility_mode = "public_default"
+            return managed
+        managed.current_visibility_mode = "hidden_from_all"
+        managed.visibility_status = "updated"
+        return managed
+
+
+def _override_service(
+    fake_db,
+    *,
+    should_fail: bool = False,
+    retryable: bool = True,
+    result_type: str = "submitted",
+    visibility_service: HHResumeVisibilityService | None = None,
+):
     def _factory_override():
         return HHApplyService(
             fake_db,
@@ -41,6 +65,7 @@ def _override_service(fake_db, *, should_fail: bool = False, retryable: bool = T
                 retryable=retryable,
                 result_type=result_type,
             ),
+            visibility_service=visibility_service,
         )
 
     return _factory_override
@@ -66,7 +91,9 @@ def _seed_managed_resume(fake_db, *, user_id: int = 1, profile_id: int = 1, exte
         hh_resume_url="https://hh.ru/resume/1",
         title="Backend Engineer",
         status="created",
-        current_visibility_mode="unknown",
+        auto_hide_from_all_enabled=True,
+        desired_visibility_mode="hidden_from_all",
+        current_visibility_mode="hidden_from_all",
     )
     fake_db.add(item)
     return item
@@ -126,6 +153,10 @@ def test_apply_creates_lifecycle_statuses_and_dry_run(client, auth_headers, fake
     body = response.json()["hh_apply_run"]
     assert body["status"] == "submitted"
     assert body["result_type"] == "dry_run"
+    managed = fake_db.get(models.HHManagedResume, managed.id)
+    assert managed is not None
+    assert managed.current_visibility_mode == "visible_selected_employers"
+    assert managed.visibility_status == "inferred_post_apply"
 
     runs = client.get("/api/v1/integrations/hh-browser/apply-runs", headers=auth_headers)
     assert runs.status_code == 200
@@ -197,3 +228,42 @@ def test_apply_rejects_missing_hh_resume_external_reference(client, auth_headers
     )
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "HH_RESUME_EXTERNAL_REF_MISSING"
+
+
+def test_apply_flow_enforces_hidden_from_all_when_policy_enabled(client, auth_headers, fake_db) -> None:
+    _seed_connected_session(fake_db)
+    managed = _seed_managed_resume(fake_db)
+    managed.current_visibility_mode = "public_default"
+    visibility_service = FakeVisibilityService(fake_db)
+    app.dependency_overrides[get_hh_apply_service] = _override_service(fake_db, visibility_service=visibility_service)
+
+    response = client.post(
+        "/api/v1/integrations/hh-browser/apply",
+        headers=auth_headers,
+        json={"vacancy_id": 1, "hh_resume_managed_id": managed.id},
+    )
+    assert response.status_code == 201
+    updated = fake_db.get(models.HHManagedResume, managed.id)
+    assert updated is not None
+    assert updated.current_visibility_mode == "visible_selected_employers"
+    assert updated.visibility_status == "inferred_post_apply"
+
+
+def test_apply_opt_out_path_does_not_force_visibility_change(client, auth_headers, fake_db) -> None:
+    _seed_connected_session(fake_db)
+    managed = _seed_managed_resume(fake_db)
+    managed.auto_hide_from_all_enabled = False
+    managed.desired_visibility_mode = "public_default"
+    managed.current_visibility_mode = "public_default"
+    app.dependency_overrides[get_hh_apply_service] = _override_service(fake_db)
+
+    response = client.post(
+        "/api/v1/integrations/hh-browser/apply",
+        headers=auth_headers,
+        json={"vacancy_id": 1, "hh_resume_managed_id": managed.id},
+    )
+    assert response.status_code == 201
+    updated = fake_db.get(models.HHManagedResume, managed.id)
+    assert updated is not None
+    assert updated.current_visibility_mode == "public_default"
+    assert updated.visibility_status != "inferred_post_apply"
