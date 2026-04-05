@@ -86,3 +86,29 @@ npm run dev
 7. Проверить ограничения:
    - `low_signal_resume.txt` → low-signal/too-short validation error;
    - `no_text_resume.pdf` → no-extractable-text validation error.
+
+## 7) Targeted HH resume creation verification (Settings)
+
+1. В `/settings` подключить HH browser session до состояния `connected`.
+2. В секции **Targeted HH-резюме (MVP foundation)** убедиться, что action `Создать HH-резюме` активен.
+3. Заполнить/проверить поля preview:
+   - `target title`;
+   - `source profile`;
+   - `source internal resume version` (если выбран);
+   - `selected/highlighted skills count`;
+   - `experiences count`;
+   - `vacancy context` (опционально).
+4. Нажать `Обновить preview (dry-run)` и проверить сводку preview.
+5. Нажать `Создать HH-резюме` и дождаться статуса выполнения.
+6. Проверить блок результата:
+   - HH resume title;
+   - status;
+   - external HH URL (если вернулся);
+   - created/updated timestamps.
+7. Проверить таблицу локального tracking (`HH managed resumes`) на наличие новой записи.
+8. Отключить HH browser session и убедиться, что action блокируется и отображается CTA на reconnect.
+
+Ограничения текущего шага:
+- visibility management пока не реализован;
+- apply automation пока не включён;
+- по умолчанию новый HH resume может быть виден всем работодателям до добавления visibility step.

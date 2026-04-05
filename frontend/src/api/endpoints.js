@@ -202,6 +202,13 @@ export const cancelHhBrowserConnection = () => apiFetch('/integrations/hh-browse
 export const disconnectHhBrowserConnection = () => apiFetch('/integrations/hh-browser/disconnect', { method: 'POST' });
 export const checkHhBrowserSession = () => apiFetch('/integrations/hh-browser/session/check', { method: 'POST' });
 export const restoreHhBrowserSession = () => apiFetch('/integrations/hh-browser/session/restore', { method: 'POST' });
+export const createHhTargetedResume = (payload) =>
+  apiFetch('/integrations/hh-browser/resumes/create-targeted', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+export const listHhManagedResumes = () => apiFetch('/integrations/hh-browser/resumes');
 
 export const extractResumeImportFile = (profileId, file) => {
   const formData = new FormData();
