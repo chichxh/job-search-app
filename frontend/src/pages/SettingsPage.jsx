@@ -57,7 +57,9 @@ import {
   updateSkill,
   applyResumeImportDraft,
   cancelHhBrowserConnection,
+  checkHhBrowserSession,
   disconnectHhBrowserConnection,
+  restoreHhBrowserSession,
   startHhOAuthConnect,
   getHhBrowserConnectState,
   startHhBrowserConnection,
@@ -109,6 +111,48 @@ const HH_BROWSER_STATUS_META = {
   connected: { label: 'Подключено', tone: 'success' },
   requires_reauth: { label: 'Требуется переподключение', tone: 'danger' },
   failed: { label: 'Ошибка подключения', tone: 'danger' },
+};
+const HH_BROWSER_SESSION_HEALTH_META = {
+  connected: {
+    title: 'Сессия HH активна',
+    text: 'Можно продолжать работу: серверная сессия сохранена и выглядит рабочей.',
+    tone: 'success',
+  },
+  requires_reauth: {
+    title: 'Нужно переподключение HH',
+    text: 'Текущая сессия больше не подходит. Запустите переподключение и пройдите вход заново.',
+    tone: 'danger',
+  },
+  failed: {
+    title: 'Подключение завершилось с ошибкой',
+    text: 'Попробуйте проверить состояние сессии. Если ошибка повторится — переподключите HH.',
+    tone: 'danger',
+  },
+  disconnected: {
+    title: 'HH не подключён',
+    text: 'Подключите HH, чтобы создать и сохранить серверную сессию.',
+    tone: 'muted',
+  },
+  connecting: {
+    title: 'Идёт подключение',
+    text: 'Завершите текущий шаг входа, чтобы получить активную HH-сессию.',
+    tone: 'accent',
+  },
+  awaiting_identifier: {
+    title: 'Ожидается логин',
+    text: 'Введите email или телефон HH для продолжения входа.',
+    tone: 'info',
+  },
+  awaiting_password: {
+    title: 'Ожидается пароль',
+    text: 'Введите пароль HH, чтобы продолжить вход.',
+    tone: 'info',
+  },
+  awaiting_code: {
+    title: 'Ожидается код подтверждения',
+    text: 'Введите код из SMS или приложения HH.',
+    tone: 'info',
+  },
 };
 
 const emptyBySection = {
@@ -468,6 +512,32 @@ export default function SettingsPage() {
     return 'Подключение HH завершилось ошибкой. Повторите попытку.';
   }
 
+  function mapHhSessionSafeError(status) {
+    const errorCode = status?.last_error_code;
+    if (!errorCode) {
+      return '';
+    }
+    if (['TRANSIENT_NAVIGATION', 'TRANSIENT_WAIT', 'NETWORK_ERROR', 'SESSION_PROBE_UNAVAILABLE'].includes(errorCode)) {
+      return 'Временная ошибка при проверке сессии HH. Это не означает выход из аккаунта — попробуйте снова.';
+    }
+    if (['SESSION_EXPIRED', 'SESSION_LOGGED_OUT', 'SESSION_REAUTH_REQUIRED', 'REAUTH_REQUIRED_MANUAL'].includes(errorCode)) {
+      return 'Срок действия HH-сессии закончился. Нужна повторная авторизация через переподключение.';
+    }
+    if (['SESSION_STATE_NOT_FOUND', 'SESSION_STATE_CORRUPTED'].includes(errorCode)) {
+      return 'Сохранённая сессия HH недоступна. Выполните переподключение, чтобы продолжить.';
+    }
+    if (errorCode === 'SESSION_STATE_MISSING') {
+      return 'Серверная HH-сессия не найдена. Подключите HH заново.';
+    }
+    if (errorCode === 'INVALID_CREDENTIALS') {
+      return 'Не удалось подтвердить вход HH. Проверьте логин/пароль и повторите подключение.';
+    }
+    if (errorCode === 'SESSION_TIMEOUT') {
+      return 'Шаг входа HH устарел. Запустите подключение заново.';
+    }
+    return 'Не удалось подтвердить состояние HH-сессии. Попробуйте «Проверить сессию» или переподключение.';
+  }
+
   async function startHhConnectWizard(forceRestart = false) {
     setHhBrowserError('');
     setHhBrowserMessage('');
@@ -819,6 +889,18 @@ export default function SettingsPage() {
     label: hhBrowserStatus?.status || 'Unknown',
     tone: 'neutral',
   };
+  const hhBrowserHealthMeta = HH_BROWSER_SESSION_HEALTH_META[hhBrowserStatus?.status] ?? {
+    title: 'Статус сессии обновляется',
+    text: 'Проверьте состояние HH-сессии позже.',
+    tone: 'neutral',
+  };
+  const hhBrowserSafeError = mapHhSessionSafeError(hhBrowserStatus);
+  const showReauthCta = hhBrowserStatus?.requires_reauth || hhBrowserStatus?.status === 'failed';
+  const showRestoreAction = hhBrowserStatus?.status === 'disconnected' && !hhBrowserStatus?.session_present;
+  const showCheckSessionAction = ['connected', 'requires_reauth', 'failed'].includes(hhBrowserStatus?.status);
+  const isTransientSessionIssue = ['TRANSIENT_NAVIGATION', 'TRANSIENT_WAIT', 'NETWORK_ERROR', 'SESSION_PROBE_UNAVAILABLE'].includes(
+    hhBrowserStatus?.last_error_code,
+  );
   const profileCompleteness = useMemo(() => {
     const points = [
       Boolean(profile.full_name),
@@ -870,10 +952,17 @@ export default function SettingsPage() {
           Подключение выполняется через живую браузерную сессию HH. Это не OAuth-поток: вы проходите стандартные шаги входа HH.
         </p>
         <p className="muted-text">Пароль и код подтверждения используются только для текущего шага и не сохраняются в хранилище приложения.</p>
-        <p className="muted-text">После успешного входа используется серверное session state HH для дальнейших операций.</p>
+        <p className="muted-text">После успешного входа используется серверная HH-сессия для дальнейших операций.</p>
         {hhBrowserLoading ? <Loading message="Обновляем HH Browser статус..." /> : null}
         {hhBrowserError ? <ErrorBanner message={hhBrowserError} /> : null}
         {hhBrowserMessage ? <p className="success-banner">{hhBrowserMessage}</p> : null}
+        <p>
+          <strong>{hhBrowserHealthMeta.title}.</strong>{' '}
+          {hhBrowserHealthMeta.text}
+        </p>
+        {isTransientSessionIssue ? (
+          <p className="muted-text">Сбой выглядит временным. Сессия может быть активной — запустите повторную проверку.</p>
+        ) : null}
 
         <div className="settings-grid settings-grid--two">
           <p>
@@ -882,9 +971,11 @@ export default function SettingsPage() {
               {hhBrowserStatusMeta.label}
             </span>
           </p>
-          <p><strong>Серверная сессия:</strong> {hhBrowserStatus?.session_present ? 'Активна' : 'Нет'}</p>
+          <p><strong>Серверная сессия:</strong> {hhBrowserStatus?.session_present ? 'Есть' : 'Нет'}</p>
+          <p><strong>Нужна повторная авторизация:</strong> {hhBrowserStatus?.requires_reauth ? 'Да' : 'Нет'}</p>
           <p><strong>Последняя авторизация:</strong> {formatDateTime(hhBrowserStatus?.last_authenticated_at)}</p>
-          <p><strong>Ошибка:</strong> {hhBrowserStatus?.last_error_message || '—'}</p>
+          <p><strong>Последняя проверка:</strong> {formatDateTime(hhBrowserStatus?.last_checked_at)}</p>
+          <p><strong>Сообщение:</strong> {hhBrowserSafeError || '—'}</p>
         </div>
 
         <div className="recommendations-toolbar">
@@ -896,14 +987,36 @@ export default function SettingsPage() {
           >
             {hhBrowserBusy ? 'Обновление...' : 'Подключить HH'}
           </button>
-          <button
-            className="button button--ghost"
-            type="button"
-            onClick={() => startHhConnectWizard(true)}
-            disabled={hhBrowserBusy || hhBrowserLoading}
-          >
-            Переподключить
-          </button>
+          {showReauthCta ? (
+            <button
+              className="button"
+              type="button"
+              onClick={() => startHhConnectWizard(true)}
+              disabled={hhBrowserBusy || hhBrowserLoading}
+            >
+              Переподключить HH
+            </button>
+          ) : null}
+          {showCheckSessionAction ? (
+            <button
+              className="button button--ghost"
+              type="button"
+              onClick={() => runHhBrowserAction(checkHhBrowserSession, 'Проверка HH-сессии завершена.')}
+              disabled={hhBrowserBusy || hhBrowserLoading}
+            >
+              Проверить сессию
+            </button>
+          ) : null}
+          {showRestoreAction ? (
+            <button
+              className="button button--ghost"
+              type="button"
+              onClick={() => runHhBrowserAction(restoreHhBrowserSession, 'Пробуем восстановить HH-сессию.')}
+              disabled={hhBrowserBusy || hhBrowserLoading}
+            >
+              Восстановить сессию
+            </button>
+          ) : null}
           <button
             className="button button--ghost button--danger"
             type="button"
@@ -991,13 +1104,13 @@ export default function SettingsPage() {
 
         {hhBrowserStatus?.status === 'connected' ? (
           <p className="muted-text">
-            HH подключён. Сессия активна на сервере, можно переходить к следующим шагам автоматизации.
+            HH подключён. Сессия активна на сервере и готова к работе.
           </p>
         ) : null}
 
         {hhBrowserStatus?.status === 'failed' || hhBrowserStatus?.status === 'requires_reauth' ? (
           <p className="muted-text">
-            Подключение требует повторного запуска. Нажмите «Переподключить», чтобы открыть новый вход в HH.
+            Текущая HH-сессия больше не подходит. Нажмите «Переподключить HH», чтобы пройти вход заново.
           </p>
         ) : null}
       </Section>
