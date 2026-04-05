@@ -95,6 +95,15 @@ class ResumesListSelectorGroup:
     resume_cards: tuple[SelectorQuery, ...]
     create_resume: tuple[SelectorQuery, ...]
     edit_resume: tuple[SelectorQuery, ...]
+    show_more: tuple[SelectorQuery, ...]
+    resume_actions_menu: tuple[SelectorQuery, ...]
+    visibility_menu_entry: tuple[SelectorQuery, ...]
+    visibility_dialog_markers: tuple[SelectorQuery, ...]
+    visibility_public_markers: tuple[SelectorQuery, ...]
+    visibility_hidden_markers: tuple[SelectorQuery, ...]
+    visibility_hide_from_all: tuple[SelectorQuery, ...]
+    visibility_save: tuple[SelectorQuery, ...]
+    visibility_success: tuple[SelectorQuery, ...]
 
 
 @dataclass(frozen=True)
@@ -214,6 +223,53 @@ DEFAULT_SELECTORS = SelectorRegistry(
             SelectorQuery("role", "Редактировать", role="link"),
             SelectorQuery("text", "Редактировать"),
             SelectorQuery("css", "a[href*='/resume/'][href*='/edit']"),
+        ),
+        show_more=(
+            SelectorQuery("role", "Подробнее", role="button"),
+            SelectorQuery("text", "Подробнее"),
+            SelectorQuery("css", "[data-qa*='resumes-list-more']"),
+        ),
+        resume_actions_menu=(
+            SelectorQuery("css", "[data-qa*='resume-actions']"),
+            SelectorQuery("css", "[data-qa*='resume-menu']"),
+            SelectorQuery("role", "Ещё", role="button"),
+        ),
+        visibility_menu_entry=(
+            SelectorQuery("role", "Изменить видимость", role="menuitem"),
+            SelectorQuery("role", "Изменить видимость", role="button"),
+            SelectorQuery("text", "Изменить видимость"),
+        ),
+        visibility_dialog_markers=(
+            SelectorQuery("text", "Видимость резюме"),
+            SelectorQuery("text", "Кто видит резюме"),
+            SelectorQuery("css", "[data-qa*='resume-visibility']"),
+        ),
+        visibility_public_markers=(
+            SelectorQuery("text", "Видно всем работодателям"),
+            SelectorQuery("text", "Доступно всем работодателям"),
+            SelectorQuery("text", "Видно всем"),
+        ),
+        visibility_hidden_markers=(
+            SelectorQuery("text", "Скрыто от всех"),
+            SelectorQuery("text", "Только вам"),
+        ),
+        visibility_hide_from_all=(
+            SelectorQuery("role", "Просто скрыть от всех", role="radio"),
+            SelectorQuery("role", "Скрыто от всех", role="radio"),
+            SelectorQuery("role", "Только вам", role="radio"),
+            SelectorQuery("text", "Просто скрыть от всех"),
+            SelectorQuery("text", "Скрыто от всех"),
+        ),
+        visibility_save=(
+            SelectorQuery("role", "Сохранить", role="button"),
+            SelectorQuery("role", "Применить", role="button"),
+            SelectorQuery("text", "Сохранить"),
+            SelectorQuery("css", "button[type='submit']"),
+        ),
+        visibility_success=(
+            SelectorQuery("text", "Изменения сохранены"),
+            SelectorQuery("text", "Видимость обновлена"),
+            SelectorQuery("text", "Скрыто от всех"),
         ),
     ),
     resume_editor=ResumeEditorSelectorGroup(
@@ -552,6 +608,8 @@ class ResumesListPage(BasePageObject):
                 "resume_entries_count": count,
                 "create_resume_available": self.resolver.find_first(self.selectors.resumes_list.create_resume) is not None,
                 "resume_edit_entry_available": self.resolver.find_first(self.selectors.resumes_list.edit_resume) is not None,
+                "show_more_available": self.resolver.find_first(self.selectors.resumes_list.show_more) is not None,
+                "actions_menu_available": self.resolver.find_first(self.selectors.resumes_list.resume_actions_menu) is not None,
             },
         )
 
@@ -563,8 +621,65 @@ class ResumesListPage(BasePageObject):
                 "resume_cards": self.selectors.resumes_list.resume_cards,
                 "create_resume": self.selectors.resumes_list.create_resume,
                 "edit_resume": self.selectors.resumes_list.edit_resume,
+                "show_more": self.selectors.resumes_list.show_more,
+                "resume_actions_menu": self.selectors.resumes_list.resume_actions_menu,
+                "visibility_menu_entry": self.selectors.resumes_list.visibility_menu_entry,
+                "visibility_dialog_markers": self.selectors.resumes_list.visibility_dialog_markers,
             },
         )
+
+    def expand_more_if_available(self) -> bool:
+        more = self.resolver.find_first(self.selectors.resumes_list.show_more)
+        if more is None:
+            return False
+        self.actions.run(action="resumes_show_more", callback=more.click, debug_summary=lambda: self.capabilities())
+        self.page.wait_for_timeout(300)
+        return True
+
+    def open_first_actions_menu(self) -> bool:
+        menu = self.resolver.find_first(self.selectors.resumes_list.resume_actions_menu)
+        if menu is None:
+            return False
+        self.actions.run(action="open_resume_actions_menu", callback=menu.click, debug_summary=lambda: self.capabilities())
+        self.page.wait_for_timeout(200)
+        return True
+
+    def open_visibility_controls_from_menu(self) -> bool:
+        item = self.resolver.find_first(self.selectors.resumes_list.visibility_menu_entry)
+        if item is None:
+            return False
+        self.actions.run(action="open_visibility_controls", callback=item.click, debug_summary=lambda: self.capabilities())
+        self.page.wait_for_timeout(250)
+        return True
+
+    def visibility_dialog_detected(self) -> bool:
+        return self.resolver.find_first(self.selectors.resumes_list.visibility_dialog_markers) is not None
+
+    def detect_visibility_mode(self) -> str:
+        if self.resolver.find_first(self.selectors.resumes_list.visibility_hidden_markers) is not None:
+            return "hidden_from_all"
+        if self.resolver.find_first(self.selectors.resumes_list.visibility_public_markers) is not None:
+            return "public_default"
+        return "unknown"
+
+    def select_hide_from_all(self) -> bool:
+        option = self.resolver.find_first(self.selectors.resumes_list.visibility_hide_from_all)
+        if option is None:
+            return False
+        self.actions.run(action="select_hide_from_all", callback=option.click, debug_summary=lambda: self.capabilities())
+        self.page.wait_for_timeout(200)
+        return True
+
+    def save_visibility(self) -> bool:
+        save = self.resolver.find_first(self.selectors.resumes_list.visibility_save)
+        if save is None:
+            return False
+        self.actions.run(action="save_visibility", callback=save.click, debug_summary=lambda: self.capabilities())
+        self.page.wait_for_timeout(350)
+        return True
+
+    def visibility_success_detected(self) -> bool:
+        return self.resolver.find_first(self.selectors.resumes_list.visibility_success) is not None
 
 
 class ResumeEditorPage(BasePageObject):
