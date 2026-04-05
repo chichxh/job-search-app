@@ -7,6 +7,8 @@ from app.api.dependencies.auth import get_current_user
 from app.db.models import User
 from app.db.session import get_db
 from app.schemas.hh_browser_integration import (
+    HHApplyRequest,
+    HHApplyRunRead,
     HHCreateTargetedResumeRequest,
     HHCreateTargetedResumeResponse,
     HHBrowserConnectStartRequest,
@@ -18,6 +20,7 @@ from app.schemas.hh_browser_integration import (
     HHBrowserSubmitPasswordRequest,
     HHManagedResumeVisibilityRead,
 )
+from app.services.hh_apply_service import HHApplyAutomationClientStub, HHApplyService
 from app.services.hh_browser_connect_service import HHBrowserConnectService, InMemoryRuntimeRegistry, LocalSessionStorage
 from app.services.hh_resume_visibility_automation import PlaywrightResumeVisibilityAutomationClient
 from app.services.hh_resume_visibility_service import HHResumeVisibilityService
@@ -33,6 +36,7 @@ _adapter_factory = PlaywrightAdapterFactory()
 _probe_factory = PlaywrightSessionProbeFactory()
 _resume_automation_client = PlaywrightTargetedResumeAutomationClient()
 _resume_visibility_automation_client = PlaywrightResumeVisibilityAutomationClient()
+_apply_automation_client = HHApplyAutomationClientStub()
 
 
 def get_hh_connect_service(db: Session = Depends(get_db)) -> HHBrowserConnectService:
@@ -56,6 +60,12 @@ def get_hh_resume_visibility_service(db: Session = Depends(get_db)) -> HHResumeV
     return HHResumeVisibilityService(
         db,
         automation_client=_resume_visibility_automation_client,
+    )
+
+def get_hh_apply_service(db: Session = Depends(get_db)) -> HHApplyService:
+    return HHApplyService(
+        db,
+        automation_client=_apply_automation_client,
     )
 
 
@@ -244,3 +254,30 @@ def hide_managed_resume_from_all(
 ) -> HHManagedResumeVisibilityRead:
     item = service.hide_from_all(user_id=current_user.id, managed_resume_id=managed_resume_id)
     return _visibility_from_managed(item)
+
+
+@router.post("/apply", response_model=HHApplyRunRead, status_code=201)
+def apply_to_vacancy(
+    payload: HHApplyRequest,
+    current_user: User = Depends(get_current_user),
+    service: HHApplyService = Depends(get_hh_apply_service),
+) -> HHApplyRunRead:
+    run = service.apply(user_id=current_user.id, request=payload)
+    return HHApplyRunRead.model_validate(run)
+
+
+@router.get("/apply-runs", response_model=list[HHApplyRunRead])
+def list_apply_runs(
+    current_user: User = Depends(get_current_user),
+    service: HHApplyService = Depends(get_hh_apply_service),
+) -> list[HHApplyRunRead]:
+    return [HHApplyRunRead.model_validate(item) for item in service.list_runs(user_id=current_user.id)]
+
+
+@router.get("/apply-runs/{apply_run_id}", response_model=HHApplyRunRead)
+def get_apply_run(
+    apply_run_id: int,
+    current_user: User = Depends(get_current_user),
+    service: HHApplyService = Depends(get_hh_apply_service),
+) -> HHApplyRunRead:
+    return HHApplyRunRead.model_validate(service.get_run(user_id=current_user.id, apply_run_id=apply_run_id))
