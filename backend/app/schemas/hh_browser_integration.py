@@ -264,9 +264,6 @@ class HHLinkedApplicationSummary(BaseModel):
 
 class HHApplyResponse(BaseModel):
     hh_apply_run: HHApplyRunRead
-    linked_application: HHLinkedApplicationSummary | None = None
-    sync_reason: str | None = None
-    sync_action: str | None = None
 
 
 class HHAutomationActionDiagnosticRead(BaseModel):

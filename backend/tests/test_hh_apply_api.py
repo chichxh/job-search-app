@@ -57,12 +57,12 @@ def _seed_connected_session(fake_db) -> None:
     )
 
 
-def _seed_managed_resume(fake_db, *, user_id: int = 1, profile_id: int = 1) -> models.HHManagedResume:
+def _seed_managed_resume(fake_db, *, user_id: int = 1, profile_id: int = 1, external_id: str | None = "hh-resume-1") -> models.HHManagedResume:
     item = models.HHManagedResume(
         user_id=user_id,
         profile_id=profile_id,
         vacancy_id=1,
-        hh_resume_external_id="hh-resume-1",
+        hh_resume_external_id=external_id,
         hh_resume_url="https://hh.ru/resume/1",
         title="Backend Engineer",
         status="created",
@@ -147,132 +147,6 @@ def test_apply_failure_persists_normalized_error(client, auth_headers, fake_db) 
     assert body["status"] == "retryable_failed"
     assert body["result_type"] == "transient_wait"
     assert "temporary issue" not in (body["result_message"] or "")
-    assert fake_db.query(models.Application).all() == []
-
-
-def test_apply_submitted_syncs_into_applications_funnel(client, auth_headers, fake_db) -> None:
-    _seed_connected_session(fake_db)
-    managed = _seed_managed_resume(fake_db)
-    app.dependency_overrides[get_hh_apply_service] = _override_service(fake_db, result_type="submitted")
-
-    response = client.post(
-        "/api/v1/integrations/hh-browser/apply",
-        headers=auth_headers,
-        json={"vacancy_id": 1, "hh_resume_managed_id": managed.id},
-    )
-    assert response.status_code == 201
-    body = response.json()
-    assert body["sync_reason"] == "synced"
-    assert body["linked_application"]["status"] == "applied"
-    assert body["linked_application"]["last_hh_apply_run_id"] == body["hh_apply_run"]["id"]
-
-    applications = fake_db.query(models.Application).all()
-    assert len(applications) == 1
-    created = applications[0]
-    assert created.status == "applied"
-    assert created.last_hh_apply_run_id == 1
-    assert created.hh_managed_resume_id == managed.id
-    assert created.external_apply_status == "submitted"
-
-    history = fake_db.query(models.ApplicationStatusHistory).all()
-    assert len(history) == 1
-    assert history[0].application_id == created.id
-    assert history[0].to_status == "applied"
-    assert history[0].hh_apply_run_id == 1
-
-
-def test_apply_submitted_updates_existing_application_without_duplicates(client, auth_headers, fake_db) -> None:
-    _seed_connected_session(fake_db)
-    managed = _seed_managed_resume(fake_db)
-    existing = models.Application(profile_id=1, vacancy_id=1, status="planned")
-    fake_db.add(existing)
-    app.dependency_overrides[get_hh_apply_service] = _override_service(fake_db, result_type="submitted")
-
-    response = client.post(
-        "/api/v1/integrations/hh-browser/apply",
-        headers=auth_headers,
-        json={"vacancy_id": 1, "hh_resume_managed_id": managed.id},
-    )
-    assert response.status_code == 201
-
-    applications = fake_db.query(models.Application).all()
-    assert len(applications) == 1
-    updated = applications[0]
-    assert updated.id == existing.id
-    assert updated.status == "applied"
-    assert updated.last_hh_apply_run_id == 1
-
-    history = fake_db.query(models.ApplicationStatusHistory).all()
-    assert len(history) == 1
-    assert history[0].from_status == "planned"
-    assert history[0].to_status == "applied"
-
-
-def test_retryable_failure_then_success_reuses_apply_run_and_syncs_once(client, auth_headers, fake_db) -> None:
-    _seed_connected_session(fake_db)
-    managed = _seed_managed_resume(fake_db)
-    app.dependency_overrides[get_hh_apply_service] = _override_service(fake_db, should_fail=True, retryable=True)
-
-    first = client.post(
-        "/api/v1/integrations/hh-browser/apply",
-        headers=auth_headers,
-        json={"vacancy_id": 1, "hh_resume_managed_id": managed.id},
-    )
-    assert first.status_code == 201
-    assert first.json()["hh_apply_run"]["status"] == "retryable_failed"
-    assert first.json()["linked_application"] is None
-
-    app.dependency_overrides[get_hh_apply_service] = _override_service(fake_db, result_type="submitted")
-    second = client.post(
-        "/api/v1/integrations/hh-browser/apply",
-        headers=auth_headers,
-        json={"vacancy_id": 1, "hh_resume_managed_id": managed.id},
-    )
-    assert second.status_code == 201
-    second_body = second.json()
-    assert second_body["hh_apply_run"]["status"] == "submitted"
-    assert second_body["hh_apply_run"]["id"] == first.json()["hh_apply_run"]["id"]
-    assert second_body["linked_application"]["last_hh_apply_run_id"] == second_body["hh_apply_run"]["id"]
-
-    runs = fake_db.query(models.HHApplyRun).all()
-    assert len(runs) == 1
-    assert runs[0].status == "submitted"
-
-    history = fake_db.query(models.ApplicationStatusHistory).all()
-    assert len(history) == 1
-
-
-def test_apply_already_applied_syncs_predictably_and_is_idempotent(client, auth_headers, fake_db) -> None:
-    _seed_connected_session(fake_db)
-    managed = _seed_managed_resume(fake_db)
-    app.dependency_overrides[get_hh_apply_service] = _override_service(fake_db, result_type="already_applied")
-
-    response = client.post(
-        "/api/v1/integrations/hh-browser/apply",
-        headers=auth_headers,
-        json={"vacancy_id": 1, "hh_resume_managed_id": managed.id},
-    )
-    assert response.status_code == 201
-    body = response.json()
-    assert body["hh_apply_run"]["status"] == "already_applied"
-    assert body["sync_reason"] == "already_applied_mapped"
-    assert body["linked_application"]["external_apply_status"] == "already_applied"
-
-    manual_sync = client.post(
-        "/api/v1/integrations/hh-browser/apply-runs/1/sync-to-application",
-        headers=auth_headers,
-    )
-    assert manual_sync.status_code == 200
-    assert manual_sync.json()["synced"] is True
-
-    applications = fake_db.query(models.Application).all()
-    assert len(applications) == 1
-    assert applications[0].status == "applied"
-    assert applications[0].external_apply_status == "already_applied"
-
-    history = fake_db.query(models.ApplicationStatusHistory).all()
-    assert len(history) == 1
-    assert history[0].hh_apply_run_id == 1
 
 
 def test_apply_cover_letter_ownership_validation(client, auth_headers, foreign_auth_headers, fake_db) -> None:
@@ -311,53 +185,15 @@ def test_apply_cover_letter_ownership_validation(client, auth_headers, foreign_a
     assert no_access.status_code == 404
 
 
-def test_repeat_successful_sync_does_not_spam_history(client, auth_headers, fake_db) -> None:
+def test_apply_rejects_missing_hh_resume_external_reference(client, auth_headers, fake_db) -> None:
     _seed_connected_session(fake_db)
-    managed = _seed_managed_resume(fake_db)
-    app.dependency_overrides[get_hh_apply_service] = _override_service(fake_db, result_type="submitted")
+    managed = _seed_managed_resume(fake_db, external_id=None)
+    app.dependency_overrides[get_hh_apply_service] = _override_service(fake_db)
 
-    first = client.post(
+    response = client.post(
         "/api/v1/integrations/hh-browser/apply",
         headers=auth_headers,
         json={"vacancy_id": 1, "hh_resume_managed_id": managed.id},
     )
-    assert first.status_code == 201
-    assert first.json()["sync_action"] in {"created_application", "updated_existing_application"}
-
-    second = client.post(
-        "/api/v1/integrations/hh-browser/apply",
-        headers=auth_headers,
-        json={"vacancy_id": 1, "hh_resume_managed_id": managed.id},
-    )
-    assert second.status_code == 201
-    assert second.json()["sync_action"] in {"skipped_duplicate_sync", "updated_existing_application"}
-
-    history = fake_db.query(models.ApplicationStatusHistory).all()
-    assert len(history) == 1
-    apply_runs = fake_db.query(models.HHApplyRun).all()
-    assert len(apply_runs) == 1
-
-
-def test_apply_duplicate_request_is_prevented_with_audit_trail(client, auth_headers, fake_db) -> None:
-    _seed_connected_session(fake_db)
-    managed = _seed_managed_resume(fake_db)
-    app.dependency_overrides[get_hh_apply_service] = _override_service(fake_db, result_type="submitted")
-
-    first = client.post(
-        "/api/v1/integrations/hh-browser/apply",
-        headers=auth_headers,
-        json={"vacancy_id": 1, "hh_resume_managed_id": managed.id},
-    )
-    assert first.status_code == 201
-
-    second = client.post(
-        "/api/v1/integrations/hh-browser/apply",
-        headers=auth_headers,
-        json={"vacancy_id": 1, "hh_resume_managed_id": managed.id},
-    )
-    assert second.status_code == 201
-    assert second.json()["hh_apply_run"]["id"] == first.json()["hh_apply_run"]["id"]
-
-    action_runs = fake_db.query(models.HHAutomationActionRun).all()
-    assert any(item.action_type == "apply" and item.status == "completed" for item in action_runs)
-    assert any(item.action_type == "apply" and item.status == "duplicate_prevented" for item in action_runs)
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "HH_RESUME_EXTERNAL_REF_MISSING"

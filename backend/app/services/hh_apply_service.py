@@ -19,7 +19,6 @@ from app.db.models import (
 )
 from app.schemas.hh_browser_integration import HHApplyRequest
 from app.services.hh_action_control_service import HHActionControlService
-from app.services.hh_apply_application_sync_service import HHApplyApplicationSyncService
 from app.services.hh_automation_diagnostics_service import diagnostic_for_code
 from app.services.hh_browser_error_taxonomy import normalize_automation_error_code
 
@@ -47,7 +46,6 @@ class HHApplyAutomationResult:
 @dataclass(slots=True)
 class HHApplyExecutionOutcome:
     apply_run: HHApplyRun
-    sync_result: Any | None = None
 
 
 class HHApplyAutomationClient(Protocol):
@@ -95,11 +93,9 @@ class HHApplyService:
         db: Session,
         *,
         automation_client: HHApplyAutomationClient,
-        sync_service: HHApplyApplicationSyncService | None = None,
     ) -> None:
         self.db = db
         self.automation_client = automation_client
-        self.sync_service = sync_service or HHApplyApplicationSyncService(db)
         self.action_control = HHActionControlService(db)
 
     def apply(self, *, user_id: int, request: HHApplyRequest) -> HHApplyRun:
@@ -122,8 +118,7 @@ class HHApplyService:
             reused_apply_run_id = (action_decision.reused_context or {}).get("apply_run_id")
             if reused_apply_run_id:
                 reused = self.get_run(user_id=user_id, apply_run_id=int(reused_apply_run_id))
-                sync_result = self._sync_to_local_application(reused)
-                return HHApplyExecutionOutcome(apply_run=reused, sync_result=sync_result)
+                return HHApplyExecutionOutcome(apply_run=reused)
 
         try:
             connection = self._require_active_session(user_id=user_id)
@@ -176,7 +171,6 @@ class HHApplyService:
             apply_run.finished_at = self._now()
             self.db.commit()
             self.db.refresh(apply_run)
-            sync_result = self._sync_to_local_application(apply_run)
             self.action_control.finish_action(
                 action_run=action_decision.action_run,
                 status_value="completed",
@@ -194,7 +188,7 @@ class HHApplyService:
                 diagnostic_for_code(apply_run.result_type).reason,
                 int((time.perf_counter() - started_perf) * 1000),
             )
-            return HHApplyExecutionOutcome(apply_run=apply_run, sync_result=sync_result)
+            return HHApplyExecutionOutcome(apply_run=apply_run)
         except HTTPException:
             self.action_control.finish_action(
                 action_run=action_decision.action_run,
@@ -211,7 +205,6 @@ class HHApplyService:
             apply_run.finished_at = self._now()
             self.db.commit()
             self.db.refresh(apply_run)
-            sync_result = self._sync_to_local_application(apply_run)
             self.action_control.finish_action(
                 action_run=action_decision.action_run,
                 status_value="retryable_failed" if exc.retryable else "failed",
@@ -231,7 +224,7 @@ class HHApplyService:
                 diag.guidance,
                 int((time.perf_counter() - started_perf) * 1000),
             )
-            return HHApplyExecutionOutcome(apply_run=apply_run, sync_result=sync_result)
+            return HHApplyExecutionOutcome(apply_run=apply_run)
 
     def list_runs(self, *, user_id: int) -> list[HHApplyRun]:
         items = self.db.query(HHApplyRun).all()
@@ -243,10 +236,6 @@ class HHApplyService:
         if item is None or item.user_id != user_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
         return item
-
-    def sync_run_to_application(self, *, user_id: int, apply_run_id: int):
-        run = self.get_run(user_id=user_id, apply_run_id=apply_run_id)
-        return self.sync_service.sync_apply_run(apply_run=run)
 
     def _resolve_cover_letter_text(self, *, request: HHApplyRequest, cover_letter: CoverLetterVersion | None) -> str | None:
         if request.cover_letter_text is not None:
@@ -395,15 +384,3 @@ class HHApplyService:
         self.db.commit()
         self.db.refresh(apply_run)
         return apply_run
-
-    def _sync_to_local_application(self, apply_run: HHApplyRun):
-        try:
-            return self.sync_service.sync_apply_run(apply_run=apply_run)
-        except Exception:  # noqa: BLE001
-            logger.exception(
-                "hh_apply_sync_failed apply_run_id=%s profile_id=%s vacancy_id=%s",
-                apply_run.id,
-                apply_run.profile_id,
-                apply_run.vacancy_id,
-            )
-            return None
