@@ -1,129 +1,164 @@
 from __future__ import annotations
 
+from app.api.routers.hh_browser_integration import get_hh_connect_service
 from app.db import models
+from app.main import app
+from app.services.hh_browser_connect_service import HHBrowserConnectService, InMemoryRuntimeRegistry, LocalSessionStorage
 
 
-def test_hh_browser_connect_init_creates_or_updates_connection(client, auth_headers, fake_db) -> None:
-    first = client.post("/api/v1/integrations/hh-browser/connect/init", headers=auth_headers, json={})
-    assert first.status_code == 200
-    assert first.json()["status"] == "connecting"
+class FakeAdapter:
+    def __init__(self, steps: list[str]) -> None:
+        self.steps = steps
 
-    stored = next((item for item in fake_db.query(models.HHBrowserConnection).all() if item.user_id == 1), None)
-    assert stored is not None
+    def open_login_page(self) -> str:
+        return self.steps.pop(0)
 
-    second = client.post(
-        "/api/v1/integrations/hh-browser/connect/init",
-        headers=auth_headers,
-        json={"session_state_ref": "slot://user/1/session"},
-    )
-    assert second.status_code == 200
-    assert second.json()["session_present"] is True
+    def submit_identifier(self, *, identifier: str, identifier_type: str) -> str:
+        return self.steps.pop(0)
 
-    all_for_user = [item for item in fake_db.query(models.HHBrowserConnection).all() if item.user_id == 1]
-    assert len(all_for_user) == 1
+    def submit_password(self, *, password: str) -> str:
+        return self.steps.pop(0)
 
+    def submit_code(self, *, code: str) -> str:
+        return self.steps.pop(0)
 
-def test_hh_browser_status_returns_only_current_user_connection(client, auth_headers, foreign_auth_headers, fake_db) -> None:
-    fake_db.add(models.HHBrowserConnection(user_id=1, status="connected", session_state_ref="slot://1"))
-    fake_db.add(models.HHBrowserConnection(user_id=2, status="failed", last_error_message="foreign"))
+    def export_storage_state(self) -> dict:
+        return {"cookies": []}
 
-    response = client.get("/api/v1/integrations/hh-browser/status", headers=auth_headers)
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["status"] == "connected"
-    assert payload["session_present"] is True
-    assert payload["last_error_message"] is None
-
-    foreign = client.get("/api/v1/integrations/hh-browser/status", headers=foreign_auth_headers)
-    assert foreign.status_code == 200
-    assert foreign.json()["status"] == "failed"
+    def close(self) -> None:
+        return None
 
 
-def test_hh_browser_status_transitions_for_current_user(client, auth_headers) -> None:
-    init_res = client.post("/api/v1/integrations/hh-browser/connect/init", headers=auth_headers, json={})
-    assert init_res.status_code == 200
-    assert init_res.json()["status"] == "connecting"
+class FakeFactory:
+    def __init__(self) -> None:
+        self.adapters: list[FakeAdapter] = []
 
-    awaiting = client.post(
-        "/api/v1/integrations/hh-browser/mark-awaiting-code",
-        headers=auth_headers,
-        json={"requires_reauth": True},
-    )
-    assert awaiting.status_code == 200
-    assert awaiting.json()["status"] == "awaiting_code"
-    assert awaiting.json()["requires_reauth"] is True
+    def push(self, adapter: FakeAdapter) -> None:
+        self.adapters.append(adapter)
 
-    connected = client.post(
-        "/api/v1/integrations/hh-browser/mark-connected",
-        headers=auth_headers,
-        json={"session_state_ref": "slot://session/ok"},
-    )
-    assert connected.status_code == 200
-    assert connected.json()["status"] == "connected"
-    assert connected.json()["session_present"] is True
-    assert connected.json()["last_authenticated_at"] is not None
-
-    failed = client.post(
-        "/api/v1/integrations/hh-browser/mark-failed",
-        headers=auth_headers,
-        json={"error_code": "NETWORK", "error_message": "Temporary timeout", "requires_reauth": False},
-    )
-    assert failed.status_code == 200
-    assert failed.json()["status"] == "failed"
-    assert failed.json()["last_error_code"] == "NETWORK"
+    def create(self) -> FakeAdapter:
+        return self.adapters.pop(0)
 
 
-def test_hh_browser_requires_auth_and_denies_foreign_changes(client, foreign_auth_headers, fake_db) -> None:
-    unauthorized = client.post("/api/v1/integrations/hh-browser/mark-failed", json={"error_message": "x"})
-    assert unauthorized.status_code == 401
+class MemoryStorage(LocalSessionStorage):
+    def __init__(self) -> None:
+        self.saved: list[dict] = []
 
-    fake_db.add(models.HHBrowserConnection(user_id=1, status="connected", session_state_ref="slot://owner"))
-
-    foreign_disconnect = client.post("/api/v1/integrations/hh-browser/disconnect", headers=foreign_auth_headers)
-    assert foreign_disconnect.status_code == 200
-
-    owner = next((item for item in fake_db.query(models.HHBrowserConnection).all() if item.user_id == 1), None)
-    foreign = next((item for item in fake_db.query(models.HHBrowserConnection).all() if item.user_id == 2), None)
-    assert owner is not None and owner.status == "connected"
-    assert foreign is not None and foreign.status == "disconnected"
+    def save(self, *, user_id: int, connection_id: int, state: dict) -> str:
+        self.saved.append({"user_id": user_id, "connection_id": connection_id, "state": state})
+        return f"local://hh-browser-session/{user_id}-{connection_id}"
 
 
-def test_hh_browser_disconnect_clears_session_reference(client, auth_headers, fake_db) -> None:
-    fake_db.add(
-        models.HHBrowserConnection(
-            user_id=1,
-            status="connected",
-            session_state_ref="slot://session",
-            session_expires_at=None,
+def _override_service(fake_db, factory: FakeFactory, storage: MemoryStorage):
+    runtime_registry = InMemoryRuntimeRegistry(timeout_seconds=120)
+
+    def _factory_override():
+        return HHBrowserConnectService(
+            fake_db,
+            adapter_factory=factory,
+            runtime_registry=runtime_registry,
+            session_storage=storage,
         )
+
+    return _factory_override
+
+
+def test_connect_flow_state_machine_api(client, auth_headers, fake_db) -> None:
+    factory = FakeFactory()
+    storage = MemoryStorage()
+    factory.push(FakeAdapter(["awaiting_identifier", "awaiting_password", "awaiting_code", "connected"]))
+    app.dependency_overrides[get_hh_connect_service] = _override_service(fake_db, factory, storage)
+
+    start = client.post("/api/v1/integrations/hh-browser/connect/start", headers=auth_headers, json={})
+    assert start.status_code == 200
+    assert start.json()["status"] == "awaiting_identifier"
+
+    identifier = client.post(
+        "/api/v1/integrations/hh-browser/connect/identifier",
+        headers=auth_headers,
+        json={"identifier_type": "email", "identifier": "user@example.com"},
     )
+    assert identifier.status_code == 200
+    assert identifier.json()["status"] == "awaiting_password"
 
-    response = client.post("/api/v1/integrations/hh-browser/disconnect", headers=auth_headers)
+    password = client.post(
+        "/api/v1/integrations/hh-browser/connect/password",
+        headers=auth_headers,
+        json={"password": "secret"},
+    )
+    assert password.status_code == 200
+    assert password.json()["status"] == "awaiting_code"
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["status"] == "disconnected"
-    assert payload["session_present"] is False
+    code = client.post(
+        "/api/v1/integrations/hh-browser/connect/code",
+        headers=auth_headers,
+        json={"code": "1234"},
+    )
+    assert code.status_code == 200
+    assert code.json()["status"] == "connected"
+
+    assert storage.saved
+
+
+def test_invalid_transition_returns_400(client, auth_headers, fake_db) -> None:
+    factory = FakeFactory()
+    storage = MemoryStorage()
+    factory.push(FakeAdapter(["awaiting_identifier"]))
+    app.dependency_overrides[get_hh_connect_service] = _override_service(fake_db, factory, storage)
+
+    client.post("/api/v1/integrations/hh-browser/connect/start", headers=auth_headers, json={})
+    invalid = client.post("/api/v1/integrations/hh-browser/connect/code", headers=auth_headers, json={"code": "0000"})
+
+    assert invalid.status_code == 400
+
+
+def test_foreign_user_access_isolated(client, auth_headers, foreign_auth_headers, fake_db) -> None:
+    factory = FakeFactory()
+    storage = MemoryStorage()
+    factory.push(FakeAdapter(["awaiting_identifier"]))
+    factory.push(FakeAdapter(["awaiting_identifier"]))
+    app.dependency_overrides[get_hh_connect_service] = _override_service(fake_db, factory, storage)
+
+    owner_start = client.post("/api/v1/integrations/hh-browser/connect/start", headers=auth_headers, json={})
+    assert owner_start.status_code == 200
+
+    foreign_state = client.get("/api/v1/integrations/hh-browser/connect/state", headers=foreign_auth_headers)
+    assert foreign_state.status_code == 200
+    assert foreign_state.json()["status"] == "disconnected"
+
+
+def test_cancel_moves_to_disconnected(client, auth_headers, fake_db) -> None:
+    factory = FakeFactory()
+    storage = MemoryStorage()
+    factory.push(FakeAdapter(["awaiting_identifier"]))
+    app.dependency_overrides[get_hh_connect_service] = _override_service(fake_db, factory, storage)
+
+    client.post("/api/v1/integrations/hh-browser/connect/start", headers=auth_headers, json={})
+    cancel = client.post("/api/v1/integrations/hh-browser/connect/cancel", headers=auth_headers)
+
+    assert cancel.status_code == 200
+    assert cancel.json()["status"] == "disconnected"
+
+
+def test_secrets_not_persisted_in_db(client, auth_headers, fake_db) -> None:
+    factory = FakeFactory()
+    storage = MemoryStorage()
+    factory.push(FakeAdapter(["awaiting_identifier", "awaiting_password", "awaiting_code", "connected"]))
+    app.dependency_overrides[get_hh_connect_service] = _override_service(fake_db, factory, storage)
+
+    client.post("/api/v1/integrations/hh-browser/connect/start", headers=auth_headers, json={})
+    client.post(
+        "/api/v1/integrations/hh-browser/connect/identifier",
+        headers=auth_headers,
+        json={"identifier_type": "email", "identifier": "private@example.com"},
+    )
+    client.post("/api/v1/integrations/hh-browser/connect/password", headers=auth_headers, json={"password": "top-secret"})
+    client.post("/api/v1/integrations/hh-browser/connect/code", headers=auth_headers, json={"code": "999999"})
 
     stored = next((item for item in fake_db.query(models.HHBrowserConnection).all() if item.user_id == 1), None)
     assert stored is not None
-    assert stored.session_state_ref is None
-
-
-def test_hh_browser_failed_state_stores_short_safe_error_summary(client, auth_headers) -> None:
-    long_error = "Failed with token=secret-token and email test@example.com " + ("x" * 220)
-    response = client.post(
-        "/api/v1/integrations/hh-browser/mark-failed",
-        headers=auth_headers,
-        json={"error_code": "AUTH", "error_message": long_error, "requires_reauth": True},
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["status"] == "failed"
-    assert payload["requires_reauth"] is True
-    assert payload["last_error_code"] == "AUTH"
-    assert payload["last_error_message"] is not None
-    assert "test@example.com" not in payload["last_error_message"]
-    assert len(payload["last_error_message"]) <= 163
+    serialized = str(vars(stored))
+    assert "top-secret" not in serialized
+    assert "999999" not in serialized
+    assert "private@example.com" not in serialized
+    assert stored.session_state_ref is not None

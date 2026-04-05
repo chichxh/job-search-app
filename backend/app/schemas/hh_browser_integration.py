@@ -1,35 +1,37 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 HH_BROWSER_STATUSES = (
     "disconnected",
     "connecting",
+    "awaiting_identifier",
+    "awaiting_password",
     "awaiting_code",
     "connected",
     "requires_reauth",
     "failed",
 )
 
-
-class HHBrowserConnectInitRequest(BaseModel):
-    session_state_ref: str | None = Field(default=None, max_length=255)
-    session_expires_at: datetime | None = None
+HH_IDENTIFIER_TYPES = ("phone", "email")
 
 
-class HHBrowserMarkAwaitingCodeRequest(BaseModel):
-    requires_reauth: bool = False
+class HHBrowserConnectStartRequest(BaseModel):
+    force_restart: bool = False
 
 
-class HHBrowserMarkConnectedRequest(BaseModel):
-    session_state_ref: str | None = Field(default=None, max_length=255)
-    session_expires_at: datetime | None = None
+class HHBrowserSubmitIdentifierRequest(BaseModel):
+    identifier_type: Literal["phone", "email"]
+    identifier: str = Field(min_length=3, max_length=255)
 
 
-class HHBrowserMarkFailedRequest(BaseModel):
-    error_code: str | None = Field(default=None, max_length=64)
-    error_message: str = Field(min_length=1, max_length=500)
-    requires_reauth: bool = False
+class HHBrowserSubmitPasswordRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=255)
+
+
+class HHBrowserSubmitCodeRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=64)
 
 
 class HHBrowserConnectionSummary(BaseModel):
