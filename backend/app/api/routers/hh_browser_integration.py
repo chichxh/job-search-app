@@ -8,6 +8,7 @@ from app.db.models import User
 from app.db.session import get_db
 from app.schemas.hh_browser_integration import (
     HHApplyRequest,
+    HHApplyResponse,
     HHApplyRunRead,
     HHApplyRunSyncResponse,
     HHCreateTargetedResumeRequest,
@@ -258,14 +259,28 @@ def hide_managed_resume_from_all(
     return _visibility_from_managed(item)
 
 
-@router.post("/apply", response_model=HHApplyRunRead, status_code=201)
+@router.post("/apply", response_model=HHApplyResponse, status_code=201)
 def apply_to_vacancy(
     payload: HHApplyRequest,
     current_user: User = Depends(get_current_user),
     service: HHApplyService = Depends(get_hh_apply_service),
-) -> HHApplyRunRead:
-    run = service.apply(user_id=current_user.id, request=payload)
-    return HHApplyRunRead.model_validate(run)
+) -> HHApplyResponse:
+    outcome = service.apply_with_outcome(user_id=current_user.id, request=payload)
+    linked = None
+    if outcome.sync_result and outcome.sync_result.application:
+        linked = {
+            "id": outcome.sync_result.application.id,
+            "status": outcome.sync_result.application.status,
+            "external_apply_status": outcome.sync_result.application.external_apply_status,
+            "last_hh_apply_run_id": outcome.sync_result.application.last_hh_apply_run_id,
+            "hh_managed_resume_id": outcome.sync_result.application.hh_managed_resume_id,
+        }
+    return HHApplyResponse(
+        hh_apply_run=HHApplyRunRead.model_validate(outcome.apply_run),
+        linked_application=linked,
+        sync_reason=outcome.sync_result.reason if outcome.sync_result else None,
+        sync_action=outcome.sync_result.action if outcome.sync_result else None,
+    )
 
 
 @router.get("/apply-runs", response_model=list[HHApplyRunRead])

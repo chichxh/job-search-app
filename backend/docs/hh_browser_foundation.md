@@ -121,6 +121,37 @@ HH apply -> applications sync policy (MVP):
 - `failed/retryable_failed` не переводят локальную заявку в `applied`.
 - sync идемпотентный: для одного `hh_apply_run_id` создается максимум одна history-entry.
 
+HH apply orchestration + funnel sync (integrated lifecycle):
+
+1. `POST /apply` запускает automation и **сразу** создает/обновляет `hh_apply_runs`.
+2. На terminal status:
+   - `submitted` -> выполняется automatic sync в `applications`;
+   - `already_applied` -> выполняется тот же sync path с `external_apply_status=already_applied`;
+   - `failed/retryable_failed` -> sync в `applications` не двигает status в `applied`.
+3. API response возвращает:
+   - `hh_apply_run` summary;
+   - optional `linked_application` summary (`id/status/external_apply_status/...`);
+   - `sync_reason/sync_action` для фронтовой прозрачности.
+
+Retry semantics (explicit policy):
+
+- для повторного запуска после `retryable_failed` оркестратор переиспользует тот же `hh_apply_run` (обновляет его lifecycle/status/result), а не плодит новые transient-run записи;
+- это сохраняет retryability и предотвращает “мусорные” промежуточные apply-run артефакты;
+- воронка `applications` остается clean:
+  - не меняется на retryable-failure;
+  - обновляется только при фактическом `submitted/already_applied`.
+
+History semantics:
+
+- history entry создается только при фактическом переходе в `applied` (например `planned -> applied`);
+- повторные sync при уже `applied` не спамят `application_status_history` (sync_action=`skipped_duplicate_sync`);
+- linkage остается явным через поля:
+  - `applications.last_hh_apply_run_id`,
+  - `applications.hh_managed_resume_id`,
+  - `applications.resume_version_id` (source internal resume из `hh_managed_resumes.source_resume_version_id`, если есть),
+  - `applications.cover_letter_version_id`,
+  - `applications.external_apply_status/last_external_apply_at`.
+
 Явно вне scope этого PR:
 
 - фактическая browser submit automation;
