@@ -7,6 +7,8 @@ from app.api.dependencies.auth import get_current_user
 from app.db.models import User
 from app.db.session import get_db
 from app.schemas.hh_browser_integration import (
+    HHAutomationActionDiagnosticRead,
+    HHAutomationDiagnosticsRead,
     HHApplyRequest,
     HHApplyResponse,
     HHApplyRunRead,
@@ -23,6 +25,7 @@ from app.schemas.hh_browser_integration import (
     HHManagedResumeVisibilityRead,
 )
 from app.services.hh_apply_service import HHApplyService
+from app.services.hh_automation_diagnostics_service import HHAutomationDiagnosticsService
 from app.services.hh_browser_connect_service import HHBrowserConnectService, InMemoryRuntimeRegistry, LocalSessionStorage
 from app.services.hh_resume_visibility_automation import PlaywrightResumeVisibilityAutomationClient
 from app.services.hh_resume_visibility_service import HHResumeVisibilityService
@@ -70,6 +73,10 @@ def get_hh_apply_service(db: Session = Depends(get_db)) -> HHApplyService:
         db,
         automation_client=_apply_automation_client,
     )
+
+
+def get_hh_automation_diagnostics_service(db: Session = Depends(get_db)) -> HHAutomationDiagnosticsService:
+    return HHAutomationDiagnosticsService(db)
 
 
 @router.post("/connect/start", response_model=HHBrowserConnectionSummary)
@@ -314,3 +321,23 @@ def sync_apply_run_to_application(
         application_id=result.application.id if result.application else None,
         application_status=result.application.status if result.application else None,
     )
+
+
+@router.get("/diagnostics", response_model=HHAutomationDiagnosticsRead)
+def get_hh_automation_diagnostics(
+    current_user: User = Depends(get_current_user),
+    service: HHAutomationDiagnosticsService = Depends(get_hh_automation_diagnostics_service),
+) -> HHAutomationDiagnosticsRead:
+    payload = service.build_summary(user_id=current_user.id)
+    return HHAutomationDiagnosticsRead.model_validate(payload)
+
+
+@router.get("/diagnostics/actions", response_model=list[HHAutomationActionDiagnosticRead])
+def list_hh_automation_actions_diagnostics(
+    limit: int = 20,
+    current_user: User = Depends(get_current_user),
+    service: HHAutomationDiagnosticsService = Depends(get_hh_automation_diagnostics_service),
+) -> list[HHAutomationActionDiagnosticRead]:
+    safe_limit = min(max(limit, 1), 100)
+    payload = service.list_recent_actions(user_id=current_user.id, limit=safe_limit)
+    return [HHAutomationActionDiagnosticRead.model_validate(item) for item in payload]

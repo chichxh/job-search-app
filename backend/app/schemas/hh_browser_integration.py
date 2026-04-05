@@ -267,3 +267,52 @@ class HHApplyResponse(BaseModel):
     linked_application: HHLinkedApplicationSummary | None = None
     sync_reason: str | None = None
     sync_action: str | None = None
+
+
+class HHAutomationActionDiagnosticRead(BaseModel):
+    action_run_id: int
+    action_type: str
+    target_type: str
+    target_id: int | None = None
+    status: str
+    operation_code: str | None = None
+    safe_summary: str | None = None
+    cancel_requested: bool
+    started_at: datetime
+    finished_at: datetime | None = None
+    diagnostic_reason: str | None = None
+    recommended_next_step: str | None = None
+
+
+class HHAutomationConnectionDiagnostic(BaseModel):
+    status: str
+    requires_reauth: bool
+    session_present: bool
+    session_expires_at: datetime | None = None
+    last_checked_at: datetime | None = None
+    last_authenticated_at: datetime | None = None
+    last_error_code: str | None = None
+    last_error_message: str | None = None
+    runtime_session_alive: bool
+
+
+class HHAutomationManagedResumeDiagnostic(BaseModel):
+    total: int
+    creating: int
+    failed: int
+    visibility_change_failed: int
+
+
+class HHAutomationRuntimeDiagnostic(BaseModel):
+    playwright_available: bool
+    runtime_registry: str
+
+
+class HHAutomationDiagnosticsRead(BaseModel):
+    generated_at: datetime
+    connection: HHAutomationConnectionDiagnostic
+    managed_resumes: HHAutomationManagedResumeDiagnostic
+    last_action: HHAutomationActionDiagnosticRead | None = None
+    recent_failures: list[HHAutomationActionDiagnosticRead]
+    failure_distribution: dict[str, int]
+    runtime: HHAutomationRuntimeDiagnostic
