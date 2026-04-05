@@ -34,6 +34,12 @@ class HHBrowserSubmitCodeRequest(BaseModel):
     code: str = Field(min_length=1, max_length=64)
 
 
+class HHBrowserConnectionDebug(BaseModel):
+    current_detected_step: Literal["awaiting_identifier", "awaiting_password", "awaiting_code", "connected", "failed"] | None = None
+    last_transition_at: datetime | None = None
+    runtime_session_alive: bool = False
+
+
 class HHBrowserConnectionSummary(BaseModel):
     status: str
     requires_reauth: bool
@@ -43,6 +49,7 @@ class HHBrowserConnectionSummary(BaseModel):
     last_error_code: str | None = None
     last_error_message: str | None = None
     updated_at: datetime
+    debug: HHBrowserConnectionDebug
 
     @field_validator("status")
     @classmethod

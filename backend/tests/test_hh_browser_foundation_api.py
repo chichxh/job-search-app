@@ -28,6 +28,9 @@ class FakeAdapter:
     def close(self) -> None:
         return None
 
+    def safe_debug_summary(self) -> dict:
+        return {"url": "https://hh.ru/account/login", "title": "HH Login"}
+
 
 class FakeFactory:
     def __init__(self) -> None:
@@ -162,3 +165,10 @@ def test_secrets_not_persisted_in_db(client, auth_headers, fake_db) -> None:
     assert "999999" not in serialized
     assert "private@example.com" not in serialized
     assert stored.session_state_ref is not None
+
+    state = client.get("/api/v1/integrations/hh-browser/connect/state", headers=auth_headers)
+    assert state.status_code == 200
+    body = str(state.json())
+    assert "top-secret" not in body
+    assert "999999" not in body
+    assert "private@example.com" not in body
