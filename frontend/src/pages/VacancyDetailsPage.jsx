@@ -132,6 +132,23 @@ const HH_APPLY_RESULT_TYPE_META = {
   already_applied: { label: 'Вы уже откликались', tone: 'info' },
 };
 
+function getApplyPrivacyNote(managedResume) {
+  if (!managedResume) {
+    return '';
+  }
+
+  const autoHideEnabled = managedResume.auto_hide_from_all_enabled !== false;
+  if (!autoHideEnabled) {
+    return 'Автоскрытие отключено: перед откликом система не будет принудительно скрывать резюме от всех.';
+  }
+
+  if (managedResume.current_visibility_mode === 'unknown') {
+    return 'Перед откликом запустится privacy pre-check: система проверит и при необходимости скроет резюме от всех.';
+  }
+
+  return 'Включён safe-режим: перед откликом система проверит, что резюме скрыто от всех, и при необходимости применит скрытие.';
+}
+
 function isHhSessionActive(status) {
   return Boolean(status?.status === 'connected' && status?.session_present && !status?.requires_reauth);
 }
@@ -391,10 +408,11 @@ export default function VacancyDetailsPage() {
       });
 
       const safeResultMessage = getSafeText(run?.result_message, 'Отклик обработан.');
+      const applyVisibilityReminder = 'HH может автоматически показать резюме работодателю, которому отправлен отклик.';
       if (run?.result_type === 'already_applied') {
-        setHhApplySuccess(`На HH уже есть отклик. ${safeResultMessage}`);
+        setHhApplySuccess(`На HH уже есть отклик. ${safeResultMessage} ${applyVisibilityReminder}`);
       } else if (run?.status === 'submitted') {
-        setHhApplySuccess(`Отклик отправлен через HH. ${safeResultMessage}`);
+        setHhApplySuccess(`Отклик отправлен через HH. ${safeResultMessage} ${applyVisibilityReminder}`);
       } else if (run?.status === 'retryable_failed') {
         setHhApplySuccess(`Отклик не завершён: ошибку можно исправить и повторить. ${safeResultMessage}`);
       } else {
@@ -615,6 +633,7 @@ export default function VacancyDetailsPage() {
   const hasManagedResumeForVacancy = managedResumesForVacancy.length > 0;
   const hasAnyEligibleManagedResume = managedResumesEligible.length > 0;
   const shouldWarnUnknownVisibility = selectedManagedResume?.current_visibility_mode === 'unknown';
+  const applyPrivacyNote = getApplyPrivacyNote(selectedManagedResume);
   const applyDisabled = !hhSessionActive || !selectedHhManagedResumeId || hhApplyBusy;
   const latestRunManagedResume = latestApplyRunForVacancy
     ? hhManagedResumes.find((item) => item.id === latestApplyRunForVacancy.hh_resume_managed_id) ?? null
@@ -884,7 +903,12 @@ export default function VacancyDetailsPage() {
               ) : null}
               {shouldWarnUnknownVisibility ? (
                 <p className="info-banner">
-                  Visibility выбранного HH-резюме неизвестна. Отклик всё равно будет запущен по политике backend, но лучше сначала обновить visibility в настройках.
+                  Visibility выбранного HH-резюме неизвестна. Если safe-режим включён, перед откликом запустится privacy pre-check.
+                </p>
+              ) : null}
+              {selectedManagedResume ? (
+                <p className={selectedManagedResume.auto_hide_from_all_enabled === false ? 'error-banner' : 'info-banner'}>
+                  {applyPrivacyNote}
                 </p>
               ) : null}
             </article>
