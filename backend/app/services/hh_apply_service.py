@@ -41,6 +41,12 @@ class HHApplyAutomationResult:
     response_ref: dict[str, Any] | None = None
 
 
+@dataclass(slots=True)
+class HHApplyExecutionOutcome:
+    apply_run: HHApplyRun
+    sync_result: Any | None = None
+
+
 class HHApplyAutomationClient(Protocol):
     def apply_to_vacancy(
         self,
@@ -93,6 +99,9 @@ class HHApplyService:
         self.sync_service = sync_service or HHApplyApplicationSyncService(db)
 
     def apply(self, *, user_id: int, request: HHApplyRequest) -> HHApplyRun:
+        return self.apply_with_outcome(user_id=user_id, request=request).apply_run
+
+    def apply_with_outcome(self, *, user_id: int, request: HHApplyRequest) -> HHApplyExecutionOutcome:
         started_perf = time.perf_counter()
         connection = self._require_active_session(user_id=user_id)
         vacancy = self._require_vacancy(request.vacancy_id)
@@ -112,19 +121,14 @@ class HHApplyService:
         if request.force_visibility_check:
             self._apply_visibility_policy(managed_resume=managed_resume)
 
-        apply_run = HHApplyRun(
+        apply_run = self._prepare_apply_run(
             user_id=user_id,
             profile_id=profile.id,
             vacancy_id=vacancy.id,
-            hh_resume_managed_id=managed_resume.id,
-            source_cover_letter_version_id=cover_letter.id if cover_letter else None,
-            status="queued",
+            managed_resume_id=managed_resume.id,
+            cover_letter_version_id=cover_letter.id if cover_letter else None,
             hh_vacancy_url=vacancy.url,
-            started_at=self._now(),
         )
-        self.db.add(apply_run)
-        self.db.commit()
-        self.db.refresh(apply_run)
 
         try:
             self._set_status(apply_run, "opening_vacancy")
@@ -150,7 +154,7 @@ class HHApplyService:
             apply_run.finished_at = self._now()
             self.db.commit()
             self.db.refresh(apply_run)
-            self._sync_to_local_application(apply_run)
+            sync_result = self._sync_to_local_application(apply_run)
             logger.info(
                 "hh_apply_run_submitted user_id=%s vacancy_id=%s hh_resume_managed_id=%s apply_run_id=%s result_type=%s duration_ms=%s",
                 user_id,
@@ -160,7 +164,7 @@ class HHApplyService:
                 apply_run.result_type,
                 int((time.perf_counter() - started_perf) * 1000),
             )
-            return apply_run
+            return HHApplyExecutionOutcome(apply_run=apply_run, sync_result=sync_result)
         except HHApplyAutomationError as exc:
             apply_run.status = "retryable_failed" if exc.retryable else "failed"
             apply_run.result_type = exc.code[:64]
@@ -169,7 +173,7 @@ class HHApplyService:
             apply_run.finished_at = self._now()
             self.db.commit()
             self.db.refresh(apply_run)
-            self._sync_to_local_application(apply_run)
+            sync_result = self._sync_to_local_application(apply_run)
             logger.warning(
                 "hh_apply_run_failed user_id=%s vacancy_id=%s hh_resume_managed_id=%s apply_run_id=%s result_type=%s duration_ms=%s",
                 user_id,
@@ -179,7 +183,7 @@ class HHApplyService:
                 apply_run.result_type,
                 int((time.perf_counter() - started_perf) * 1000),
             )
-            return apply_run
+            return HHApplyExecutionOutcome(apply_run=apply_run, sync_result=sync_result)
 
     def list_runs(self, *, user_id: int) -> list[HHApplyRun]:
         items = self.db.query(HHApplyRun).all()
@@ -294,9 +298,59 @@ class HHApplyService:
     def _now(self) -> datetime:
         return datetime.now(timezone.utc)
 
-    def _sync_to_local_application(self, apply_run: HHApplyRun) -> None:
+    def _prepare_apply_run(
+        self,
+        *,
+        user_id: int,
+        profile_id: int,
+        vacancy_id: int,
+        managed_resume_id: int,
+        cover_letter_version_id: int | None,
+        hh_vacancy_url: str | None,
+    ) -> HHApplyRun:
+        existing_retryable = next(
+            (
+                item
+                for item in self.db.query(HHApplyRun).all()
+                if item.user_id == user_id
+                and item.profile_id == profile_id
+                and item.vacancy_id == vacancy_id
+                and item.hh_resume_managed_id == managed_resume_id
+                and item.status == "retryable_failed"
+            ),
+            None,
+        )
+        if existing_retryable is not None:
+            existing_retryable.source_cover_letter_version_id = cover_letter_version_id
+            existing_retryable.hh_vacancy_url = hh_vacancy_url
+            existing_retryable.status = "queued"
+            existing_retryable.result_type = None
+            existing_retryable.result_message = None
+            existing_retryable.hh_response_ref = None
+            existing_retryable.started_at = self._now()
+            existing_retryable.finished_at = None
+            self.db.commit()
+            self.db.refresh(existing_retryable)
+            return existing_retryable
+
+        apply_run = HHApplyRun(
+            user_id=user_id,
+            profile_id=profile_id,
+            vacancy_id=vacancy_id,
+            hh_resume_managed_id=managed_resume_id,
+            source_cover_letter_version_id=cover_letter_version_id,
+            status="queued",
+            hh_vacancy_url=hh_vacancy_url,
+            started_at=self._now(),
+        )
+        self.db.add(apply_run)
+        self.db.commit()
+        self.db.refresh(apply_run)
+        return apply_run
+
+    def _sync_to_local_application(self, apply_run: HHApplyRun):
         try:
-            self.sync_service.sync_apply_run(apply_run=apply_run)
+            return self.sync_service.sync_apply_run(apply_run=apply_run)
         except Exception:  # noqa: BLE001
             logger.exception(
                 "hh_apply_sync_failed apply_run_id=%s profile_id=%s vacancy_id=%s",
@@ -304,3 +358,4 @@ class HHApplyService:
                 apply_run.profile_id,
                 apply_run.vacancy_id,
             )
+            return None

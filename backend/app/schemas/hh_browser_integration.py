@@ -253,3 +253,17 @@ class HHApplyRunSyncResponse(BaseModel):
     application_id: int | None = None
     application_status: str | None = None
 
+
+class HHLinkedApplicationSummary(BaseModel):
+    id: int
+    status: str
+    external_apply_status: str | None = None
+    last_hh_apply_run_id: int | None = None
+    hh_managed_resume_id: int | None = None
+
+
+class HHApplyResponse(BaseModel):
+    hh_apply_run: HHApplyRunRead
+    linked_application: HHLinkedApplicationSummary | None = None
+    sync_reason: str | None = None
+    sync_action: str | None = None

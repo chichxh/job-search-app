@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import logging
 
 from sqlalchemy.orm import Session
 
-from app.db.models import Application, ApplicationStatusHistory, HHApplyRun
+from app.db.models import Application, ApplicationStatusHistory, HHApplyRun, HHManagedResume
 
 _SYNCABLE_APPLY_STATUSES = {"submitted", "already_applied"}
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -17,6 +19,7 @@ class HHApplySyncResult:
     reason: str
     application: Application | None = None
     history_entry: ApplicationStatusHistory | None = None
+    action: str | None = None
 
 
 class HHApplyApplicationSyncService:
@@ -46,6 +49,7 @@ class HHApplyApplicationSyncService:
 
         application = self._find_application(profile_id=apply_run.profile_id, vacancy_id=apply_run.vacancy_id)
         created = application is None
+        action = "created_application" if created else "updated_existing_application"
         if application is None:
             application = Application(
                 profile_id=apply_run.profile_id,
@@ -56,13 +60,15 @@ class HHApplyApplicationSyncService:
             self.db.commit()
             self.db.refresh(application)
 
-        previous_status = application.status
+        previous_status = None if created else application.status
+        managed_resume = self.db.get(HHManagedResume, apply_run.hh_resume_managed_id)
         application.status = "applied"
+        application.resume_version_id = managed_resume.source_resume_version_id if managed_resume else application.resume_version_id
         application.cover_letter_version_id = apply_run.source_cover_letter_version_id
         application.last_hh_apply_run_id = apply_run.id
         application.hh_managed_resume_id = apply_run.hh_resume_managed_id
         application.external_apply_status = apply_run.status
-        application.last_external_apply_at = apply_run.finished_at or self._now()
+        application.last_external_apply_at = self._resolve_external_apply_at(apply_run=apply_run)
         application.updated_at = self._now()
         self.db.commit()
         self.db.refresh(application)
@@ -74,12 +80,24 @@ class HHApplyApplicationSyncService:
             created=created,
         )
 
+        if history_entry is None:
+            action = "skipped_duplicate_sync"
+
+        logger.info(
+            "hh_apply_sync_decision apply_run_id=%s application_id=%s action=%s external_apply_status=%s",
+            apply_run.id,
+            application.id,
+            action,
+            apply_run.status,
+        )
+
         return HHApplySyncResult(
             apply_run_id=apply_run.id,
             synced=True,
-            reason="synced",
+            reason="already_applied_mapped" if apply_run.status == "already_applied" else "synced",
             application=application,
             history_entry=history_entry,
+            action=action,
         )
 
     def _ensure_history_entry(
@@ -89,7 +107,7 @@ class HHApplyApplicationSyncService:
         apply_run: HHApplyRun,
         previous_status: str,
         created: bool,
-    ) -> ApplicationStatusHistory:
+    ) -> ApplicationStatusHistory | None:
         existing = next(
             (
                 item
@@ -100,6 +118,9 @@ class HHApplyApplicationSyncService:
         )
         if existing is not None:
             return existing
+
+        if previous_status == "applied" and not created:
+            return None
 
         note = (
             "Synced from HH apply run: already_applied"
@@ -130,3 +151,12 @@ class HHApplyApplicationSyncService:
 
     def _now(self) -> datetime:
         return datetime.now(timezone.utc)
+
+    def _resolve_external_apply_at(self, *, apply_run: HHApplyRun) -> datetime:
+        if apply_run.hh_response_ref and isinstance(apply_run.hh_response_ref.get("applied_at"), str):
+            raw = apply_run.hh_response_ref["applied_at"]
+            try:
+                return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            except ValueError:
+                pass
+        return apply_run.finished_at or self._now()
