@@ -3,3 +3,5 @@ node_modules/
 __pycache__/
 .env
 dist/
+backend/.runtime/
+**/hh_browser_sessions/

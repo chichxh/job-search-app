@@ -4,8 +4,18 @@ import re
 from typing import Any
 
 _SENSITIVE_KEY_MARKERS = (
+    "cover_letter",
+    "cookies",
+    "cookie",
+    "storage_state",
+    "session_state",
+    "session_storage",
+    "session_ref",
     "resume_text",
     "content_text",
+    "otp",
+    "one_time_code",
+    "verification_code",
     "phone",
     "email",
     "token",
@@ -19,6 +29,7 @@ _SENSITIVE_KEY_MARKERS = (
 
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 _PHONE_RE = re.compile(r"(?:\+?\d[\d\s().-]{8,}\d)")
+_SESSION_REF_RE = re.compile(r"local://hh-browser-session/[A-Za-z0-9._-]+")
 
 
 def _is_sensitive_key(key: str) -> bool:
@@ -30,6 +41,7 @@ def redact_text(value: str, *, max_len: int = 120) -> str:
     """Mask common PII patterns and trim long log values."""
     redacted = _EMAIL_RE.sub("[redacted_email]", value)
     redacted = _PHONE_RE.sub("[redacted_phone]", redacted)
+    redacted = _SESSION_REF_RE.sub("local://hh-browser-session/[redacted]", redacted)
     if len(redacted) > max_len:
         return f"{redacted[:max_len]}..."
     return redacted
