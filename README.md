@@ -154,6 +154,63 @@ Manual сценарий MVP:
 - [ ] Generate cover letter draft
 - [ ] Approve generated document
 
+## HH apply from vacancy page (compact MVP UX)
+
+На странице `/vacancies/:vacancyId` добавлен компактный user-facing flow **«Откликнуться через HH»** без bulk apply и без chat orchestration.
+
+Что делает UI:
+
+- показывает prerequisites перед запуском;
+- позволяет выбрать `HH managed resume` (из tracked `/integrations/hh-browser/resumes`);
+- позволяет опционально выбрать существующую `cover letter version`;
+- показывает короткий preview выбранного cover letter;
+- запускает `POST /api/v1/integrations/hh-browser/apply`;
+- показывает последний apply run по текущей вакансии (`status`, `result`, `finished_at`, safe message).
+
+### Prerequisites
+
+Перед нажатием `Откликнуться через HH` ожидается:
+
+1. Активная HH browser session (`connected`, `session_present=true`, `requires_reauth=false`).
+2. Существующее HH managed resume (желательно targeted под текущую vacancy).
+
+Если prerequisites не выполнены, UI показывает CTA:
+
+- при неактивной сессии: перейти в `/settings` и переподключить HH;
+- при отсутствии managed resume для вакансии: перейти в `/settings` и сначала создать targeted HH resume.
+
+Если у выбранного managed resume visibility = `unknown`, UI показывает предупреждение, но запуск остаётся доступным (backend policy сохраняется).
+
+### Статусы/результаты, которые отображаются в UI
+
+- `submitted` — отклик успешно завершён;
+- `failed` — неуспешно, требуется пользовательская проверка условий;
+- `retryable_failed` — безопасно повторить после восстановления HH сессии/контекста;
+- `already_applied` — calm info state (не показывается как generic error).
+
+### Важно для текущего шага roadmap
+
+- ❗ В этом шаге **нет automatic sync** в applications funnel.
+- ❗ Нет bulk apply UI.
+- ❗ Нет post-apply chat actions.
+
+### Manual verification checklist (HH apply MVP)
+
+1. Открыть `/vacancies/:vacancyId`.
+2. В блоке **Откликнуться через HH** проверить статус HH сессии.
+3. Если сессии нет — перейти в `/settings`, подключить HH browser session и вернуться обратно.
+4. Выбрать HH managed resume.
+5. Опционально выбрать cover letter version и убедиться, что виден краткий preview.
+6. Нажать `Откликнуться через HH`.
+7. Проверить success/info/error сообщение после выполнения.
+8. Проверить блок **Последний HH apply run по вакансии**:
+   - `status`,
+   - `result`,
+   - `updated/finished`,
+   - `safe message`,
+   - ссылку на HH vacancy (если есть).
+9. Подтвердить, что запись в applications funnel автоматически не создаётся/не синхронизируется на этом шаге.
+
 ## HH clusters and extra params
 
 - To preview HH facets (clusters), call `POST /api/v1/import/hh/clusters` with the same body as `/api/v1/import/hh` (`text` is required, plus optional `area`, etc.).

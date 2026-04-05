@@ -5,11 +5,15 @@ import {
   approveCoverLetterVersion,
   approveResumeVersion,
   createApplication,
+  createHhApplyRun,
+  getHhBrowserConnectionStatus,
   generateCoverLetterDraft,
   generateResumeDraft,
   getTailoring,
   getVacancyById,
+  listHhApplyRuns,
   listCoverLetterVersions,
+  listHhManagedResumes,
   listResumeVersions,
   updateCoverLetterVersion,
   updateResumeVersion,
@@ -100,6 +104,49 @@ function renderMetadataCompact(metadata) {
     .join(' · ');
 }
 
+const HH_BROWSER_SESSION_META = {
+  connected: { label: 'HH сессия активна', tone: 'success' },
+  requires_reauth: { label: 'Нужно переподключить HH', tone: 'danger' },
+  failed: { label: 'Ошибка HH сессии', tone: 'danger' },
+  disconnected: { label: 'HH не подключён', tone: 'muted' },
+  connecting: { label: 'Идёт подключение HH', tone: 'accent' },
+  awaiting_identifier: { label: 'Нужен логин HH', tone: 'info' },
+  awaiting_password: { label: 'Нужен пароль HH', tone: 'info' },
+  awaiting_code: { label: 'Нужен код подтверждения HH', tone: 'info' },
+};
+
+const HH_APPLY_STATUS_META = {
+  queued: { label: 'В очереди', tone: 'accent' },
+  opening_vacancy: { label: 'Открываем вакансию', tone: 'info' },
+  awaiting_resume_selection: { label: 'Выбираем HH-резюме', tone: 'info' },
+  awaiting_cover_letter: { label: 'Заполняем cover letter', tone: 'info' },
+  submitting: { label: 'Отправляем отклик', tone: 'accent' },
+  submitted: { label: 'Отправлено', tone: 'success' },
+  failed: { label: 'Не отправлено', tone: 'danger' },
+  retryable_failed: { label: 'Ошибка, можно повторить', tone: 'danger' },
+};
+
+const HH_APPLY_RESULT_TYPE_META = {
+  submitted: { label: 'Отклик отправлен', tone: 'success' },
+  dry_run_submitted: { label: 'Dry-run завершён', tone: 'info' },
+  already_applied: { label: 'Вы уже откликались', tone: 'info' },
+};
+
+function isHhSessionActive(status) {
+  return Boolean(status?.status === 'connected' && status?.session_present && !status?.requires_reauth);
+}
+
+function formatApplyResultType(run) {
+  if (!run?.result_type) {
+    return '—';
+  }
+  return HH_APPLY_RESULT_TYPE_META[run.result_type]?.label ?? run.result_type;
+}
+
+function getApplyStatusMeta(status) {
+  return HH_APPLY_STATUS_META[status] ?? { label: status || 'Неизвестно', tone: 'neutral' };
+}
+
 function GenerationResultBlock({ result, onRegenerate }) {
   if (!result?.document) {
     return null;
@@ -158,6 +205,15 @@ export default function VacancyDetailsPage() {
   const [trackSuccess, setTrackSuccess] = useState('');
   const [trackError, setTrackError] = useState('');
   const [isTrackingApplication, setIsTrackingApplication] = useState(false);
+  const [hhBrowserStatus, setHhBrowserStatus] = useState(null);
+  const [hhManagedResumes, setHhManagedResumes] = useState([]);
+  const [hhApplyRuns, setHhApplyRuns] = useState([]);
+  const [hhApplyLoading, setHhApplyLoading] = useState(false);
+  const [hhApplyError, setHhApplyError] = useState('');
+  const [hhApplySuccess, setHhApplySuccess] = useState('');
+  const [hhApplyBusy, setHhApplyBusy] = useState(false);
+  const [selectedHhManagedResumeId, setSelectedHhManagedResumeId] = useState('');
+  const [selectedCoverLetterId, setSelectedCoverLetterId] = useState('');
 
   const clearActionFeedback = useCallback(() => {
     setGenerateError('');
@@ -280,6 +336,66 @@ export default function VacancyDetailsPage() {
   const refreshDocuments = useCallback(async () => {
     await loadDocuments({ silent: true });
   }, [loadDocuments]);
+
+  const loadHhApplyContext = useCallback(async () => {
+    setHhApplyLoading(true);
+    setHhApplyError('');
+    try {
+      const [browserStatusResponse, managedResumesResponse, applyRunsResponse] = await Promise.all([
+        getHhBrowserConnectionStatus(),
+        listHhManagedResumes(),
+        listHhApplyRuns(),
+      ]);
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setHhBrowserStatus(browserStatusResponse);
+      setHhManagedResumes(managedResumesResponse);
+      setHhApplyRuns(applyRunsResponse);
+    } catch (requestError) {
+      if (!isMountedRef.current) {
+        return;
+      }
+      setHhApplyError(getUserFacingError(requestError, 'Не удалось загрузить HH apply контекст.'));
+    } finally {
+      if (isMountedRef.current) {
+        setHhApplyLoading(false);
+      }
+    }
+  }, []);
+
+  const handleRunHhApply = useCallback(async () => {
+    if (!vacancyId || !selectedHhManagedResumeId) {
+      return;
+    }
+
+    setHhApplyError('');
+    setHhApplySuccess('');
+    setHhApplyBusy(true);
+    try {
+      const run = await createHhApplyRun({
+        vacancy_id: Number(vacancyId),
+        hh_resume_managed_id: Number(selectedHhManagedResumeId),
+        cover_letter_version_id: selectedCoverLetterId ? Number(selectedCoverLetterId) : null,
+      });
+      setHhApplyRuns((current) => [run, ...current]);
+
+      const safeResultMessage = getSafeText(run.result_message, 'Отклик обработан.');
+      if (run.result_type === 'already_applied') {
+        setHhApplySuccess(`Вы уже откликались на эту вакансию. ${safeResultMessage}`);
+      } else if (run.status === 'submitted') {
+        setHhApplySuccess(`Отклик отправлен. ${safeResultMessage}`);
+      } else {
+        setHhApplySuccess(`Запуск завершён со статусом ${run.status}. ${safeResultMessage}`);
+      }
+    } catch (requestError) {
+      setHhApplyError(getUserFacingError(requestError, 'Не удалось отправить отклик через HH.'));
+    } finally {
+      setHhApplyBusy(false);
+    }
+  }, [selectedCoverLetterId, selectedHhManagedResumeId, vacancyId]);
 
   const handleTrackApplication = useCallback(async () => {
     if (!vacancyId) {
@@ -432,12 +548,13 @@ export default function VacancyDetailsPage() {
     clearActionFeedback();
     loadPageData();
     loadDocuments();
+    loadHhApplyContext();
 
     return () => {
       isActive = false;
       isMountedRef.current = false;
     };
-  }, [clearActionFeedback, loadDocuments, profileId, vacancyId]);
+  }, [clearActionFeedback, loadDocuments, loadHhApplyContext, profileId, vacancyId]);
 
   const explanation = tailoring?.explanation;
   const evidenceItems = useMemo(() => {
@@ -469,6 +586,51 @@ export default function VacancyDetailsPage() {
       || coverLetterPoints.length
       || evidenceItems.length,
   );
+
+  const numericVacancyId = Number(vacancyId);
+  const hhSessionActive = isHhSessionActive(hhBrowserStatus);
+  const hhSessionMeta = HH_BROWSER_SESSION_META[hhBrowserStatus?.status] ?? { label: hhBrowserStatus?.status ?? 'Неизвестно', tone: 'neutral' };
+
+  const managedResumesForVacancy = useMemo(
+    () => hhManagedResumes.filter((item) => item.vacancy_id === numericVacancyId),
+    [hhManagedResumes, numericVacancyId],
+  );
+  const managedResumesEligible = useMemo(
+    () => hhManagedResumes.filter((item) => ['created', 'stale'].includes(item.status)),
+    [hhManagedResumes],
+  );
+  const selectedManagedResume = managedResumesEligible.find((item) => String(item.id) === selectedHhManagedResumeId) ?? null;
+  const selectedCoverLetter = coverLetterDocuments.find((item) => String(item.id) === selectedCoverLetterId) ?? null;
+  const latestApplyRunForVacancy = hhApplyRuns.find((item) => item.vacancy_id === numericVacancyId) ?? null;
+  const hasManagedResumeForVacancy = managedResumesForVacancy.length > 0;
+  const hasAnyEligibleManagedResume = managedResumesEligible.length > 0;
+  const shouldWarnUnknownVisibility = selectedManagedResume?.current_visibility_mode === 'unknown';
+  const applyDisabled = !hhSessionActive || !selectedHhManagedResumeId || hhApplyBusy;
+
+  useEffect(() => {
+    if (selectedHhManagedResumeId && managedResumesEligible.some((item) => String(item.id) === selectedHhManagedResumeId)) {
+      return;
+    }
+
+    const preferred = managedResumesForVacancy[0] ?? managedResumesEligible[0] ?? null;
+    setSelectedHhManagedResumeId(preferred ? String(preferred.id) : '');
+  }, [managedResumesEligible, managedResumesForVacancy, selectedHhManagedResumeId]);
+
+  useEffect(() => {
+    if (!coverLetterDocuments.length) {
+      if (selectedCoverLetterId) {
+        setSelectedCoverLetterId('');
+      }
+      return;
+    }
+
+    if (selectedCoverLetterId && coverLetterDocuments.some((item) => String(item.id) === selectedCoverLetterId)) {
+      return;
+    }
+
+    const preferred = coverLetterDocuments.find((item) => item.status === 'approved') ?? coverLetterDocuments[0];
+    setSelectedCoverLetterId(preferred ? String(preferred.id) : '');
+  }, [coverLetterDocuments, selectedCoverLetterId]);
 
   return (
     <section className="page-stack">
@@ -662,6 +824,137 @@ export default function VacancyDetailsPage() {
           ) : null}
 
           <p className="vacancy-details__hint-text">Need advanced edits? <Link className="vacancy-details__link" to="/settings">Открыть полный редактор в настройках</Link></p>
+        </SectionCard>
+
+        <SectionCard
+          className="vacancy-details__documents"
+          title="Откликнуться через HH"
+          subtitle="Компактный apply flow: выберите HH-резюме и cover letter, проверьте prerequisites и запустите отклик."
+          actions={(
+            <button className="button button--secondary" type="button" onClick={loadHhApplyContext} disabled={hhApplyLoading || hhApplyBusy}>
+              {hhApplyLoading ? 'Обновляем HH данные...' : 'Обновить HH данные'}
+            </button>
+          )}
+        >
+          {hhApplyLoading ? <Loading message="Загружаем HH apply контекст..." /> : null}
+          {hhApplyError ? <ErrorBanner message={hhApplyError} /> : null}
+          {hhApplySuccess ? <p className="success-banner">{hhApplySuccess}</p> : null}
+
+          <div className="vacancy-details__hh-apply-grid">
+            <article className="vacancy-details__docgen-result">
+              <h3 className="vacancy-details__section-title">Prerequisites</h3>
+              <div className="inline-status-row">
+                <StatusPill tone={hhSessionMeta.tone}>HH сессия: {hhSessionMeta.label}</StatusPill>
+                <p className="vacancy-details__hint-text">Проверено: {formatDateTime(hhBrowserStatus?.last_checked_at) ?? '—'}</p>
+              </div>
+              {!hhSessionActive ? (
+                <p className="error-banner">
+                  Для запуска отклика нужна активная HH browser session.
+                  {' '}
+                  <Link className="vacancy-details__link" to="/settings">Переподключить HH</Link>
+                </p>
+              ) : null}
+              {!hasManagedResumeForVacancy ? (
+                <p className="info-banner">
+                  Для этой вакансии не найдено targeted HH-резюме.
+                  {' '}
+                  <Link className="vacancy-details__link" to="/settings">Создать targeted HH resume</Link>
+                </p>
+              ) : null}
+              {!hasAnyEligibleManagedResume ? (
+                <p className="error-banner">
+                  Нет доступных managed HH-резюме для отклика (status created/stale). Сначала создайте HH-резюме.
+                </p>
+              ) : null}
+              {shouldWarnUnknownVisibility ? (
+                <p className="info-banner">
+                  Visibility выбранного HH-резюме неизвестна. Отклик всё равно будет запущен по политике backend, но лучше сначала обновить visibility в настройках.
+                </p>
+              ) : null}
+            </article>
+
+            <article className="vacancy-details__docgen-result">
+              <h3 className="vacancy-details__section-title">Параметры отклика</h3>
+              <label className="field-label" htmlFor="hh-managed-resume-select">HH managed resume</label>
+              <select
+                id="hh-managed-resume-select"
+                className="input"
+                value={selectedHhManagedResumeId}
+                onChange={(event) => setSelectedHhManagedResumeId(event.target.value)}
+              >
+                {!managedResumesEligible.length ? <option value="">Нет доступных HH-резюме</option> : null}
+                {managedResumesEligible.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {(item.title || `HH resume #${item.id}`)} · vacancy_id={item.vacancy_id ?? '—'} · {item.status}
+                  </option>
+                ))}
+              </select>
+
+              <label className="field-label" htmlFor="cover-letter-select">Cover letter version (опционально)</label>
+              <select
+                id="cover-letter-select"
+                className="input"
+                value={selectedCoverLetterId}
+                onChange={(event) => setSelectedCoverLetterId(event.target.value)}
+              >
+                <option value="">Без cover letter</option>
+                {coverLetterDocuments.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.title || `Cover letter #${item.id}`} · {item.status}
+                  </option>
+                ))}
+              </select>
+
+              {selectedCoverLetter ? (
+                <div>
+                  <p className="vacancy-details__hint-text">
+                    Preview selected cover letter: {selectedCoverLetter.title || `#${selectedCoverLetter.id}`}
+                    {' · '}
+                    {selectedCoverLetter.status}
+                  </p>
+                  <pre className="vacancy-details__description">{toPreviewText(selectedCoverLetter.content_text, 360)}</pre>
+                </div>
+              ) : (
+                <p className="vacancy-details__hint-text">Можно отправить отклик без cover letter.</p>
+              )}
+
+              <button className="button" type="button" onClick={handleRunHhApply} disabled={applyDisabled}>
+                {hhApplyBusy ? 'Отправляем отклик через HH...' : 'Откликнуться через HH'}
+              </button>
+            </article>
+          </div>
+
+          <article className="vacancy-details__docgen-result">
+            <h3 className="vacancy-details__section-title">Последний HH apply run по вакансии</h3>
+            {!latestApplyRunForVacancy ? (
+              <p className="vacancy-details__hint-text">По этой вакансии ещё нет запусков HH apply.</p>
+            ) : (
+              <>
+                <div className="inline-status-row">
+                  <StatusPill tone={getApplyStatusMeta(latestApplyRunForVacancy.status).tone}>
+                    status: {getApplyStatusMeta(latestApplyRunForVacancy.status).label}
+                  </StatusPill>
+                  <StatusPill tone={HH_APPLY_RESULT_TYPE_META[latestApplyRunForVacancy.result_type]?.tone ?? 'neutral'}>
+                    result: {formatApplyResultType(latestApplyRunForVacancy)}
+                  </StatusPill>
+                </div>
+                <ul className="structured-list">
+                  <li><strong>HH resume used:</strong> {latestApplyRunForVacancy.hh_resume_managed_id}</li>
+                  <li><strong>Cover letter used:</strong> {latestApplyRunForVacancy.source_cover_letter_version_id ?? 'без cover letter'}</li>
+                  <li><strong>Updated:</strong> {formatDateTime(latestApplyRunForVacancy.updated_at) ?? '—'}</li>
+                  <li><strong>Finished:</strong> {formatDateTime(latestApplyRunForVacancy.finished_at) ?? '—'}</li>
+                  <li><strong>Safe message:</strong> {getSafeText(latestApplyRunForVacancy.result_message, '—')}</li>
+                  {latestApplyRunForVacancy.hh_vacancy_url ? (
+                    <li>
+                      <strong>HH vacancy:</strong>
+                      {' '}
+                      <a className="vacancy-details__link" href={latestApplyRunForVacancy.hh_vacancy_url} target="_blank" rel="noreferrer">Открыть HH vacancy</a>
+                    </li>
+                  ) : null}
+                </ul>
+              </>
+            )}
+          </article>
         </SectionCard>
       </div>
     </section>

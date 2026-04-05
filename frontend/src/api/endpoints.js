@@ -215,6 +215,13 @@ export const checkHhManagedResumeVisibility = (managedResumeId) =>
   apiFetch(`/integrations/hh-browser/resumes/${managedResumeId}/visibility/check`, { method: 'POST' });
 export const hideHhManagedResumeFromAll = (managedResumeId) =>
   apiFetch(`/integrations/hh-browser/resumes/${managedResumeId}/visibility/hide-from-all`, { method: 'POST' });
+export const createHhApplyRun = (payload) =>
+  apiFetch('/integrations/hh-browser/apply', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+export const listHhApplyRuns = () => apiFetch('/integrations/hh-browser/apply-runs');
 
 export const extractResumeImportFile = (profileId, file) => {
   const formData = new FormData();
