@@ -167,25 +167,7 @@ Manual сценарий MVP:
 - показывает короткий preview выбранного cover letter;
 - запускает `POST /api/v1/integrations/hh-browser/apply`;
 - показывает последний apply run по текущей вакансии (`status`, `result`, `finished_at`, safe message);
-- после запуска показывает расширенный post-apply summary: связанную локальную application, sync action/reason, HH resume + cover letter, `last apply timestamp`.
-
-### Post-apply synced UX (vacancy page)
-
-После успешного apply пользователь видит не только факт отправки, но и приземлённый результат синхронизации:
-
-- локальный funnel status (обычно `applied`);
-- ссылку в `/applications`;
-- какой `HH managed resume` использовался;
-- какая `cover letter version` использовалась (или что отклик был без письма);
-- итоговый safe summary и timestamp последнего external apply.
-
-Для `already_applied` UI показывает **информационное** состояние (без generic red error): HH уже содержит отклик, и отдельно видно, была ли локальная заявка создана/обновлена из этого события.
-
-Для `retryable_failed` и `failed` состояния разведены явно:
-
-- `retryable_failed` — есть понятный путь повторить запуск;
-- `failed` — показывается как финальная ошибка без «ложного» сообщения, что funnel уже обновлён;
-- если локальный sync не произошёл, это явно указано в summary.
+- после запуска показывает компактный summary: какой `HH managed resume` и какая `cover letter version` использовались, safe summary и timestamp.
 
 ### Prerequisites
 
@@ -208,41 +190,12 @@ Manual сценарий MVP:
 - `retryable_failed` — безопасно повторить после восстановления HH сессии/контекста;
 - `already_applied` — calm info state (не показывается как generic error).
 
-### Sync policy: HH apply -> local applications funnel (MVP)
-
-Логика синхронизации теперь явная и локальная (без двустороннего sync с HH кабинетом):
-
-- `submitted`:
-  - upsert `applications` по `(profile_id, vacancy_id)`;
-  - статус локальной заявки выставляется в `applied`;
-  - обновляются связи `last_hh_apply_run_id`, `hh_managed_resume_id`, `cover_letter_version_id`, `external_apply_status=submitted`, `last_external_apply_at`;
-  - пишется запись в `application_status_history` c `hh_apply_run_id`.
-- `already_applied`:
-  - дубликаты `applications` не создаются;
-  - локальная заявка синхронизируется в `applied`, но `external_apply_status=already_applied` (предсказуемое отражение результата HH).
-- `failed` / `retryable_failed`:
-  - локальный статус не переводится в `applied`.
-
-Идемпотентность:
-
-- повторный sync одного и того же `hh_apply_run` не создает дубликаты applications;
-- повторный sync не шумит history, так как `application_status_history.hh_apply_run_id` уникален.
-
 ### Важно для текущего шага roadmap
 
-- ❗ Это **локальный funnel sync**, а не enterprise CRM/ATS и не full account sync HH.
+- ❗ Автоматической синхронизации в local applications funnel на этом шаге **нет**.
+- ❗ После HH apply при необходимости добавляйте вакансию в `/applications` вручную.
 - ❗ Нет bulk apply UI.
 - ❗ Нет post-apply chat actions.
-
-### HH metadata в applications funnel (compact)
-
-В карточках `/applications` для синхронизированных откликов показываются компактные HH-маркеры:
-
-- `HH sync` badge;
-- `external apply status` (`submitted` / `already_applied`);
-- `HH apply run #...`;
-- `HH resume id` и `HH applied at` (если доступно);
-- в истории статусов виден `hh_apply_run_id`, чтобы отличать события, пришедшие из HH automation.
 
 ### Manual verification checklist (HH apply MVP)
 
@@ -259,12 +212,12 @@ Manual сценарий MVP:
    - `updated/finished`,
    - `safe message`,
    - ссылку на HH vacancy (если есть).
-9. Подтвердить, что successful/info run (`submitted`/`already_applied`) показывает linked application summary прямо на vacancy page.
-10. Перейти в `/applications` и проверить в карточке:
-   - `HH sync` badge,
-   - внешний apply status,
-   - HH run / HH resume / HH applied timestamp.
-11. Открыть `Детали` заявки и проверить блок **HH automation linkage** + запись `hh_apply_run_id` в timeline истории.
+9. Проверить блок **Результат последнего запуска**:
+   - использованное HH резюме,
+   - использованное cover letter (или отсутствие),
+   - `last apply timestamp`,
+   - `result summary`.
+10. Убедиться, что есть предупреждение о том, что auto-sync в локальную воронку пока не включён.
 
 ## HH clusters and extra params
 
