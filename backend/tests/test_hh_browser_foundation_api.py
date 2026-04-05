@@ -259,3 +259,48 @@ def test_foreign_user_cannot_restore_owners_session(client, auth_headers, foreig
     assert foreign_check.status_code == 200
     assert foreign_restore.json()["status"] == "disconnected"
     assert foreign_check.json()["status"] == "disconnected"
+
+
+def test_session_validate_and_refresh_status_endpoints(client, auth_headers, fake_db) -> None:
+    factory = FakeFactory()
+    storage = MemoryStorage()
+    probe_factory = FakeProbeFactory([True, True])
+    factory.push(FakeAdapter(["awaiting_identifier", "awaiting_code", "connected"]))
+    app.dependency_overrides[get_hh_connect_service] = _override_service(fake_db, factory, storage, probe_factory)
+
+    client.post("/api/v1/integrations/hh-browser/connect/start", headers=auth_headers, json={})
+    client.post(
+        "/api/v1/integrations/hh-browser/connect/identifier",
+        headers=auth_headers,
+        json={"identifier_type": "email", "identifier": "check@example.com"},
+    )
+    client.post("/api/v1/integrations/hh-browser/connect/code", headers=auth_headers, json={"code": "1234"})
+
+    validate = client.post("/api/v1/integrations/hh-browser/session/validate", headers=auth_headers)
+    assert validate.status_code == 200
+    assert validate.json()["outcome"] == "valid"
+    assert validate.json()["status"] == "connected"
+
+    refresh = client.post("/api/v1/integrations/hh-browser/session/refresh-status", headers=auth_headers)
+    assert refresh.status_code == 200
+    assert refresh.json()["status"] == "connected"
+
+
+def test_session_require_reauth_endpoint(client, auth_headers, fake_db) -> None:
+    factory = FakeFactory()
+    storage = MemoryStorage()
+    factory.push(FakeAdapter(["awaiting_identifier", "awaiting_code", "connected"]))
+    app.dependency_overrides[get_hh_connect_service] = _override_service(fake_db, factory, storage, FakeProbeFactory([True]))
+
+    client.post("/api/v1/integrations/hh-browser/connect/start", headers=auth_headers, json={})
+    client.post(
+        "/api/v1/integrations/hh-browser/connect/identifier",
+        headers=auth_headers,
+        json={"identifier_type": "email", "identifier": "reauth@example.com"},
+    )
+    client.post("/api/v1/integrations/hh-browser/connect/code", headers=auth_headers, json={"code": "1111"})
+
+    response = client.post("/api/v1/integrations/hh-browser/session/require-reauth", headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["status"] == "requires_reauth"
+    assert response.json()["requires_reauth"] is True

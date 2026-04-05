@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.schemas.hh_browser_integration import (
     HHBrowserConnectStartRequest,
     HHBrowserConnectionSummary,
+    HHBrowserSessionValidationResponse,
     HHBrowserSubmitCodeRequest,
     HHBrowserSubmitIdentifierRequest,
     HHBrowserSubmitPasswordRequest,
@@ -104,6 +105,30 @@ def hh_browser_session_check(
     service: HHBrowserConnectService = Depends(get_hh_connect_service),
 ) -> HHBrowserConnectionSummary:
     return service.check_session(user_id=current_user.id)
+
+
+@router.post("/session/validate", response_model=HHBrowserSessionValidationResponse)
+def hh_browser_session_validate(
+    current_user: User = Depends(get_current_user),
+    service: HHBrowserConnectService = Depends(get_hh_connect_service),
+) -> HHBrowserSessionValidationResponse:
+    return HHBrowserSessionValidationResponse.model_validate(service.validate_session(user_id=current_user.id))
+
+
+@router.post("/session/refresh-status", response_model=HHBrowserConnectionSummary)
+def hh_browser_session_refresh_status(
+    current_user: User = Depends(get_current_user),
+    service: HHBrowserConnectService = Depends(get_hh_connect_service),
+) -> HHBrowserConnectionSummary:
+    return service.refresh_session_status(user_id=current_user.id)
+
+
+@router.post("/session/require-reauth", response_model=HHBrowserConnectionSummary)
+def hh_browser_session_require_reauth(
+    current_user: User = Depends(get_current_user),
+    service: HHBrowserConnectService = Depends(get_hh_connect_service),
+) -> HHBrowserConnectionSummary:
+    return service.require_reauth(user_id=current_user.id)
 
 
 # Backward-compatible aliases for foundation endpoints used by existing product wiring.

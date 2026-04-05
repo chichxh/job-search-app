@@ -304,3 +304,58 @@ def test_restore_with_corrupted_storage_requires_reauth(fake_db) -> None:
     restored = service.restore_session(user_id=1)
     assert restored.status == "requires_reauth"
     assert restored.last_error_code == "SESSION_STATE_CORRUPTED"
+
+
+def test_validate_logged_out_sets_requires_reauth(fake_db) -> None:
+    adapter = FakeAdapter(["awaiting_identifier", "awaiting_code", "connected"])
+    service, _ = _service(fake_db, [adapter], probe_responses=[False])
+
+    service.start(user_id=1)
+    service.submit_identifier(user_id=1, identifier_type="email", identifier="user@example.com")
+    service.submit_code(user_id=1, code="1234")
+
+    outcome = service.validate_session(user_id=1)
+    assert outcome["outcome"] == "logged_out"
+    assert outcome["status"] == "requires_reauth"
+    assert outcome["requires_reauth"] is True
+    assert outcome["session_present"] is False
+
+
+def test_validate_missing_storage_keeps_disconnected(fake_db) -> None:
+    service, _ = _service(fake_db, [FakeAdapter(["awaiting_identifier"])], probe_responses=[True])
+
+    outcome = service.validate_session(user_id=1)
+    assert outcome["outcome"] == "invalid_storage"
+    assert outcome["status"] == "disconnected"
+    assert outcome["last_error_code"] == "SESSION_STATE_MISSING"
+
+
+def test_transient_validation_failure_marks_failed_without_wiping_session(fake_db) -> None:
+    class FailingProbeFactory:
+        def create(self, *, storage_state: dict):
+            class _Probe:
+                def check_authenticated(self) -> bool:
+                    raise HHBrowserAutomationError("TRANSIENT_NAVIGATION", "Timed out while checking HH session")
+
+                def close(self) -> None:
+                    return None
+
+            return _Probe()
+
+    storage = MemoryStorage()
+    service = HHBrowserConnectService(
+        fake_db,
+        adapter_factory=FakeFactory([FakeAdapter(["awaiting_identifier", "awaiting_code", "connected"])]),
+        runtime_registry=InMemoryRuntimeRegistry(timeout_seconds=120),
+        session_storage=storage,
+        session_probe_factory=FailingProbeFactory(),
+    )
+    service.start(user_id=1)
+    service.submit_identifier(user_id=1, identifier_type="email", identifier="user@example.com")
+    service.submit_code(user_id=1, code="1234")
+
+    outcome = service.validate_session(user_id=1)
+    assert outcome["outcome"] == "network/transient_failure"
+    assert outcome["status"] == "failed"
+    assert outcome["requires_reauth"] is False
+    assert outcome["session_present"] is True
