@@ -20,13 +20,14 @@ from app.schemas.hh_browser_integration import (
     HHBrowserSubmitPasswordRequest,
     HHManagedResumeVisibilityRead,
 )
-from app.services.hh_apply_service import HHApplyAutomationClientStub, HHApplyService
+from app.services.hh_apply_service import HHApplyService
 from app.services.hh_browser_connect_service import HHBrowserConnectService, InMemoryRuntimeRegistry, LocalSessionStorage
 from app.services.hh_resume_visibility_automation import PlaywrightResumeVisibilityAutomationClient
 from app.services.hh_resume_visibility_service import HHResumeVisibilityService
 from app.services.hh_targeted_resume_service import HHCreateTargetedResumeService, HHTargetedPayloadBuilder
 from app.services.hh_targeted_resume_automation import PlaywrightTargetedResumeAutomationClient
 from app.services.hh_browser_playwright import PlaywrightAdapterFactory, PlaywrightSessionProbeFactory
+from app.services.hh_apply_automation import PlaywrightHHApplyAutomationClient
 
 router = APIRouter(prefix="/integrations/hh-browser", tags=["hh-browser"], dependencies=[Depends(get_current_user)])
 
@@ -36,7 +37,7 @@ _adapter_factory = PlaywrightAdapterFactory()
 _probe_factory = PlaywrightSessionProbeFactory()
 _resume_automation_client = PlaywrightTargetedResumeAutomationClient()
 _resume_visibility_automation_client = PlaywrightResumeVisibilityAutomationClient()
-_apply_automation_client = HHApplyAutomationClientStub()
+_apply_automation_client = PlaywrightHHApplyAutomationClient()
 
 
 def get_hh_connect_service(db: Session = Depends(get_db)) -> HHBrowserConnectService:

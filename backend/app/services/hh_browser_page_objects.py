@@ -125,8 +125,14 @@ class VacancySelectorGroup:
 class ApplySurfaceSelectorGroup:
     surface_markers: tuple[SelectorQuery, ...]
     resume_selector: tuple[SelectorQuery, ...]
+    resume_cards: tuple[SelectorQuery, ...]
     cover_letter_input: tuple[SelectorQuery, ...]
+    cover_letter_required_markers: tuple[SelectorQuery, ...]
     submit_controls: tuple[SelectorQuery, ...]
+    success_markers: tuple[SelectorQuery, ...]
+    already_applied_markers: tuple[SelectorQuery, ...]
+    cannot_apply_markers: tuple[SelectorQuery, ...]
+    auth_lost_markers: tuple[SelectorQuery, ...]
 
 
 @dataclass(frozen=True)
@@ -324,15 +330,47 @@ DEFAULT_SELECTORS = SelectorRegistry(
             SelectorQuery("label", "Резюме"),
             SelectorQuery("text", "Выберите резюме"),
         ),
+        resume_cards=(
+            SelectorQuery("css", "[data-qa='resume-selector-item']"),
+            SelectorQuery("css", "[data-qa='resume-select-item']"),
+            SelectorQuery("css", "[data-qa*='resume']"),
+        ),
         cover_letter_input=(
             SelectorQuery("label", "Сопроводительное письмо"),
             SelectorQuery("css", "textarea[name*='cover']"),
             SelectorQuery("css", "[data-qa='vacancy-response-popup-form-letter-input']"),
         ),
+        cover_letter_required_markers=(
+            SelectorQuery("css", "textarea[required]"),
+            SelectorQuery("text", "Сопроводительное письмо обязательно"),
+            SelectorQuery("text", "Заполните сопроводительное письмо"),
+        ),
         submit_controls=(
             SelectorQuery("role", "Отправить", role="button"),
             SelectorQuery("role", "Откликнуться", role="button"),
             SelectorQuery("css", "button[type='submit']"),
+        ),
+        success_markers=(
+            SelectorQuery("text", "Ваш отклик отправлен"),
+            SelectorQuery("text", "Отклик успешно отправлен"),
+            SelectorQuery("text", "Резюме отправлено"),
+        ),
+        already_applied_markers=(
+            SelectorQuery("text", "Вы уже откликались"),
+            SelectorQuery("text", "Вы уже откликнулись"),
+            SelectorQuery("text", "Отклик отправлен ранее"),
+        ),
+        cannot_apply_markers=(
+            SelectorQuery("text", "Отклик недоступен"),
+            SelectorQuery("text", "Нельзя откликнуться"),
+            SelectorQuery("text", "Отклик на вакансию недоступен"),
+            SelectorQuery("text", "Прием откликов закрыт"),
+        ),
+        auth_lost_markers=(
+            SelectorQuery("role", "Войти", role="button"),
+            SelectorQuery("text", "Войдите на сайт"),
+            SelectorQuery("text", "Вход"),
+            SelectorQuery("css", "form[action*='/account/login']"),
         ),
     ),
 )
@@ -757,8 +795,13 @@ class VacancyApplyPage(BasePageObject):
             page_detected=self.is_active(),
             key_controls={
                 "resume_selector_present": self.resolver.find_first(self.selectors.apply_surface.resume_selector) is not None,
+                "resume_cards_present": self.resolver.find_first(self.selectors.apply_surface.resume_cards) is not None,
                 "cover_letter_input_present": self.resolver.find_first(self.selectors.apply_surface.cover_letter_input) is not None,
+                "cover_letter_required": self.is_cover_letter_required(),
                 "final_submit_present": self.resolver.find_first(self.selectors.apply_surface.submit_controls) is not None,
+                "already_applied_detected": self.detect_already_applied(),
+                "cannot_apply_detected": self.detect_cannot_apply(),
+                "auth_lost_detected": self.detect_auth_lost(),
             },
         )
 
@@ -768,10 +811,76 @@ class VacancyApplyPage(BasePageObject):
             required_controls={"surface_markers": self.selectors.apply_surface.surface_markers},
             optional_controls={
                 "resume_selector": self.selectors.apply_surface.resume_selector,
+                "resume_cards": self.selectors.apply_surface.resume_cards,
                 "cover_letter_input": self.selectors.apply_surface.cover_letter_input,
+                "cover_letter_required_markers": self.selectors.apply_surface.cover_letter_required_markers,
                 "submit_controls": self.selectors.apply_surface.submit_controls,
+                "success_markers": self.selectors.apply_surface.success_markers,
+                "already_applied_markers": self.selectors.apply_surface.already_applied_markers,
+                "cannot_apply_markers": self.selectors.apply_surface.cannot_apply_markers,
+                "auth_lost_markers": self.selectors.apply_surface.auth_lost_markers,
             },
         )
+
+    def detect_already_applied(self) -> bool:
+        return self.resolver.find_first(self.selectors.apply_surface.already_applied_markers) is not None
+
+    def detect_cannot_apply(self) -> bool:
+        return self.resolver.find_first(self.selectors.apply_surface.cannot_apply_markers) is not None
+
+    def detect_auth_lost(self) -> bool:
+        return self.resolver.find_first(self.selectors.apply_surface.auth_lost_markers) is not None
+
+    def detect_success(self) -> bool:
+        return self.resolver.find_first(self.selectors.apply_surface.success_markers) is not None
+
+    def has_resume_selection(self) -> bool:
+        return (
+            self.resolver.find_first(self.selectors.apply_surface.resume_selector) is not None
+            or self.resolver.find_first(self.selectors.apply_surface.resume_cards) is not None
+        )
+
+    def has_cover_letter_input(self) -> bool:
+        return self.resolver.find_first(self.selectors.apply_surface.cover_letter_input) is not None
+
+    def is_cover_letter_required(self) -> bool:
+        return self.resolver.find_first(self.selectors.apply_surface.cover_letter_required_markers) is not None
+
+    def select_resume_by_external_id(self, *, external_id: str) -> bool:
+        selector = f"a[href*='/resume/{external_id}']"
+        target = self.page.locator(selector)
+        if target.count() != 1:
+            return False
+        self.actions.run(action="select_resume_external_id", callback=target.first.click, debug_summary=lambda: self.capabilities())
+        return True
+
+    def select_resume_by_url(self, *, resume_url: str) -> bool:
+        target = self.page.locator(f"a[href='{resume_url}']")
+        if target.count() != 1:
+            return False
+        self.actions.run(action="select_resume_url", callback=target.first.click, debug_summary=lambda: self.capabilities())
+        return True
+
+    def select_resume_by_title(self, *, title: str) -> bool:
+        target = self.page.get_by_text(title)
+        if target.count() != 1:
+            return False
+        self.actions.run(action="select_resume_title", callback=target.first.click, debug_summary=lambda: self.capabilities())
+        return True
+
+    def fill_cover_letter(self, *, text: str) -> bool:
+        field = self.resolver.find_first(self.selectors.apply_surface.cover_letter_input)
+        if field is None:
+            return False
+        self.actions.run(action="fill_cover_letter", callback=lambda: field.fill(text), debug_summary=lambda: self.capabilities())
+        return True
+
+    def submit(self) -> bool:
+        submit = self.resolver.find_first(self.selectors.apply_surface.submit_controls)
+        if submit is None:
+            return False
+        self.actions.run(action="submit_apply", callback=submit.click, debug_summary=lambda: self.capabilities())
+        return True
 
 
 def maybe_capture_screenshot_on_failure(page: BrowserPage, *, prefix: str) -> str | None:
