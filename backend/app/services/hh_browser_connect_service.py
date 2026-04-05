@@ -78,6 +78,20 @@ class HHAdapterFactory(Protocol):
 class HHSessionStorage(Protocol):
     def save(self, *, user_id: int, connection_id: int, state: dict) -> str: ...
 
+    def load(self, *, ref: str) -> dict: ...
+
+    def delete(self, *, ref: str) -> None: ...
+
+
+class HHSessionProbeAdapter(Protocol):
+    def check_authenticated(self) -> bool: ...
+
+    def close(self) -> None: ...
+
+
+class HHSessionProbeFactory(Protocol):
+    def create(self, *, storage_state: dict) -> HHSessionProbeAdapter: ...
+
 
 @dataclass(slots=True)
 class RuntimeSession:
@@ -129,6 +143,24 @@ class LocalSessionStorage:
         filepath.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
         return f"local://hh-browser-session/{filepath.name}"
 
+    def load(self, *, ref: str) -> dict:
+        filepath = self._resolve_ref(ref)
+        return json.loads(filepath.read_text(encoding="utf-8"))
+
+    def delete(self, *, ref: str) -> None:
+        filepath = self._resolve_ref(ref)
+        if filepath.exists():
+            filepath.unlink()
+
+    def _resolve_ref(self, ref: str) -> Path:
+        prefix = "local://hh-browser-session/"
+        if not ref.startswith(prefix):
+            raise ValueError("Unsupported session reference format")
+        filename = ref.replace(prefix, "", 1)
+        if not filename or "/" in filename or ".." in filename:
+            raise ValueError("Invalid session reference path")
+        return self.base_dir / filename
+
 
 class HHBrowserConnectService:
     def __init__(
@@ -138,11 +170,13 @@ class HHBrowserConnectService:
         adapter_factory: HHAdapterFactory,
         runtime_registry: InMemoryRuntimeRegistry,
         session_storage: HHSessionStorage,
+        session_probe_factory: HHSessionProbeFactory | None = None,
     ) -> None:
         self.db = db
         self.adapter_factory = adapter_factory
         self.runtime_registry = runtime_registry
         self.session_storage = session_storage
+        self.session_probe_factory = session_probe_factory
 
     def get_state(self, *, user_id: int) -> HHBrowserConnectionSummary:
         connection = self._ensure_connection(user_id=user_id)
@@ -264,13 +298,43 @@ class HHBrowserConnectService:
     def cancel(self, *, user_id: int) -> HHBrowserConnectionSummary:
         connection = self._ensure_connection(user_id=user_id)
         self._close_runtime(connection.id)
+        if connection.session_state_ref:
+            self._delete_session_state(connection.session_state_ref)
         self._transition(connection, "disconnected")
         connection.requires_reauth = False
         connection.last_checked_at = self._now()
+        connection.session_state_ref = None
+        connection.session_expires_at = None
         connection.last_error_code = None
         connection.last_error_message = None
         self.db.commit()
         self._log_transition(event="cancel", connection=connection, runtime_session_id=None, detected_step=None, elapsed_ms=0)
+        return self._summary(connection)
+
+    def restore_session(self, *, user_id: int) -> HHBrowserConnectionSummary:
+        connection = self._ensure_connection(user_id=user_id)
+        result = self._check_or_restore(connection=connection, mode="restore")
+        self.db.commit()
+        self._log_transition(
+            event="restore_session",
+            connection=connection,
+            runtime_session_id=None,
+            detected_step=("connected" if result else "failed"),
+            elapsed_ms=0,
+        )
+        return self._summary(connection)
+
+    def check_session(self, *, user_id: int) -> HHBrowserConnectionSummary:
+        connection = self._ensure_connection(user_id=user_id)
+        self._check_or_restore(connection=connection, mode="check")
+        self.db.commit()
+        self._log_transition(
+            event="check_session",
+            connection=connection,
+            runtime_session_id=None,
+            detected_step=None,
+            elapsed_ms=0,
+        )
         return self._summary(connection)
 
     def _run_with_retry(self, callback, *, operation: str) -> HHLoginStep:
@@ -287,12 +351,13 @@ class HHBrowserConnectService:
     def _apply_step(self, connection: HHBrowserConnection, step: HHLoginStep) -> None:
         if step == "connected":
             runtime = self._runtime_or_fail(connection)
-            session_state = runtime.adapter.export_storage_state()
+            session_state = self._sanitize_storage_state(runtime.adapter.export_storage_state())
             session_ref = self.session_storage.save(user_id=connection.user_id, connection_id=connection.id, state=session_state)
             self._transition(connection, "connected")
             connection.session_state_ref = session_ref
             connection.last_authenticated_at = self._now()
             connection.last_checked_at = connection.last_authenticated_at
+            connection.session_expires_at = self._detect_session_expiry(session_state)
             connection.requires_reauth = False
             connection.last_error_code = None
             connection.last_error_message = None
@@ -356,6 +421,76 @@ class HHBrowserConnectService:
         runtime = self.runtime_registry.pop(connection_id)
         if runtime is not None:
             runtime.adapter.close()
+
+    def _check_or_restore(self, *, connection: HHBrowserConnection, mode: Literal["restore", "check"]) -> bool:
+        now = self._now()
+        connection.last_checked_at = now
+        if self.session_probe_factory is None:
+            self._mark_failed(
+                connection,
+                error_code="SESSION_PROBE_UNAVAILABLE",
+                error_message="Session probe adapter is not configured",
+            )
+            return False
+
+        if not connection.session_state_ref:
+            self._transition(connection, "disconnected")
+            connection.requires_reauth = False
+            connection.last_error_code = "SESSION_STATE_MISSING"
+            connection.last_error_message = "No persisted HH browser session"
+            return False
+
+        try:
+            storage_state = self.session_storage.load(ref=connection.session_state_ref)
+        except FileNotFoundError:
+            self._transition(connection, "requires_reauth")
+            connection.requires_reauth = True
+            connection.last_error_code = "SESSION_STATE_NOT_FOUND"
+            connection.last_error_message = "Persisted HH browser session was not found"
+            connection.session_state_ref = None
+            connection.session_expires_at = None
+            return False
+        except (json.JSONDecodeError, ValueError, OSError):
+            self._transition(connection, "requires_reauth")
+            connection.requires_reauth = True
+            connection.last_error_code = "SESSION_STATE_CORRUPTED"
+            connection.last_error_message = "Persisted HH browser session is corrupted"
+            return False
+
+        try:
+            probe = self.session_probe_factory.create(storage_state=storage_state)
+            try:
+                is_authenticated = probe.check_authenticated()
+            finally:
+                probe.close()
+        except HHBrowserAutomationError as exc:
+            self._mark_failed(
+                connection,
+                error_code=exc.code,
+                error_message=exc.message,
+                debug_summary=exc.debug_summary,
+            )
+            return False
+
+        if is_authenticated:
+            self._transition(connection, "connected")
+            connection.requires_reauth = False
+            connection.last_authenticated_at = now
+            connection.last_error_code = None
+            connection.last_error_message = None
+            if mode == "restore":
+                logger.info(
+                    "HH session restored | user_id=%s connection_id=%s",
+                    connection.user_id,
+                    connection.id,
+                )
+            return True
+
+        self._transition(connection, "requires_reauth")
+        connection.requires_reauth = True
+        connection.last_error_code = "SESSION_UNAUTHENTICATED"
+        connection.last_error_message = "Stored HH session is no longer authenticated"
+        return False
 
     def _ensure_connection(self, *, user_id: int) -> HHBrowserConnection:
         connection = next((item for item in self.db.query(HHBrowserConnection).all() if item.user_id == user_id), None)
@@ -431,6 +566,37 @@ class HHBrowserConnectService:
             for key, value in payload.items()
             if key not in {"html", "dom", "cookies", "storage"}
         }
+
+    @staticmethod
+    def _sanitize_storage_state(state: dict[str, Any]) -> dict[str, Any]:
+        sanitized: dict[str, Any] = {}
+        if isinstance(state.get("cookies"), list):
+            sanitized["cookies"] = state["cookies"]
+        if isinstance(state.get("origins"), list):
+            sanitized["origins"] = state["origins"]
+        return sanitized
+
+    @staticmethod
+    def _detect_session_expiry(state: dict[str, Any]) -> datetime | None:
+        cookies = state.get("cookies")
+        if not isinstance(cookies, list):
+            return None
+        expiries: list[float] = []
+        for cookie in cookies:
+            if not isinstance(cookie, dict):
+                continue
+            value = cookie.get("expires")
+            if isinstance(value, (int, float)) and value > 0:
+                expiries.append(float(value))
+        if not expiries:
+            return None
+        return datetime.fromtimestamp(min(expiries), tz=timezone.utc)
+
+    def _delete_session_state(self, ref: str) -> None:
+        try:
+            self.session_storage.delete(ref=ref)
+        except (OSError, ValueError):
+            logger.warning("Unable to delete HH session state file for ref=%s", redact_text(ref, max_len=80))
 
     @staticmethod
     def _now() -> datetime:

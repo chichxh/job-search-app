@@ -5,7 +5,7 @@ from app.services.hh_browser_connect_service import (
     HHBrowserAutomationError,
     HHBrowserConnectService,
     InMemoryRuntimeRegistry,
-    LocalSessionStorage,
+    HHSessionProbeAdapter,
 )
 
 
@@ -50,22 +50,61 @@ class FakeFactory:
         return self.adapters.pop(0)
 
 
-class MemoryStorage(LocalSessionStorage):
+class MemoryStorage:
     def __init__(self) -> None:
         self.saved: list[dict] = []
+        self.by_ref: dict[str, dict] = {}
+        self.deleted: list[str] = []
 
     def save(self, *, user_id: int, connection_id: int, state: dict) -> str:
-        self.saved.append({"user_id": user_id, "connection_id": connection_id, "state": state})
-        return f"local://hh-browser-session/u{user_id}-c{connection_id}"
+        ref = f"local://hh-browser-session/u{user_id}-c{connection_id}-{len(self.saved)+1}"
+        self.saved.append({"user_id": user_id, "connection_id": connection_id, "state": state, "ref": ref})
+        self.by_ref[ref] = state
+        return ref
+
+    def load(self, *, ref: str) -> dict:
+        if ref not in self.by_ref:
+            raise FileNotFoundError(ref)
+        return self.by_ref[ref]
+
+    def delete(self, *, ref: str) -> None:
+        self.deleted.append(ref)
+        self.by_ref.pop(ref, None)
 
 
-def _service(fake_db, adapters: list[FakeAdapter]) -> tuple[HHBrowserConnectService, MemoryStorage]:
+class StaticProbe(HHSessionProbeAdapter):
+    def __init__(self, *, authenticated: bool) -> None:
+        self.authenticated = authenticated
+        self.closed = False
+
+    def check_authenticated(self) -> bool:
+        return self.authenticated
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class ProbeFactory:
+    def __init__(self, responses: list[bool]) -> None:
+        self.responses = responses
+
+    def create(self, *, storage_state: dict) -> StaticProbe:
+        return StaticProbe(authenticated=self.responses.pop(0))
+
+
+def _service(
+    fake_db,
+    adapters: list[FakeAdapter],
+    *,
+    probe_responses: list[bool] | None = None,
+) -> tuple[HHBrowserConnectService, MemoryStorage]:
     storage = MemoryStorage()
     service = HHBrowserConnectService(
         fake_db,
         adapter_factory=FakeFactory(adapters),
         runtime_registry=InMemoryRuntimeRegistry(timeout_seconds=120),
         session_storage=storage,
+        session_probe_factory=ProbeFactory(probe_responses or [True]),
     )
     return service, storage
 
@@ -131,14 +170,17 @@ def test_invalid_transition_returns_http_400(fake_db) -> None:
 
 
 def test_cancel_sets_disconnected(fake_db) -> None:
-    adapter = FakeAdapter(["awaiting_identifier"])
-    service, _ = _service(fake_db, [adapter])
+    adapter = FakeAdapter(["awaiting_identifier", "awaiting_code", "connected"])
+    service, storage = _service(fake_db, [adapter])
 
     service.start(user_id=1)
+    service.submit_identifier(user_id=1, identifier_type="email", identifier="user@example.com")
+    service.submit_code(user_id=1, code="1234")
     state = service.cancel(user_id=1)
 
     assert state.status == "disconnected"
-    assert adapter.closed is True
+    assert state.session_present is False
+    assert storage.deleted
 
 
 def test_unknown_step_detection_returns_failed_with_normalized_error(fake_db) -> None:
@@ -208,3 +250,57 @@ def test_connected_state_survives_restore_when_session_reference_exists(fake_db)
     assert connected.status == "connected"
     assert restored.status == "connected"
     assert restored.session_present is True
+
+
+def test_restore_from_stored_state_marks_connected(fake_db) -> None:
+    adapter = FakeAdapter(["awaiting_identifier", "awaiting_code", "connected"])
+    service, _ = _service(fake_db, [adapter], probe_responses=[True])
+
+    service.start(user_id=1)
+    service.submit_identifier(user_id=1, identifier_type="email", identifier="user@example.com")
+    service.submit_code(user_id=1, code="1234")
+
+    restored = service.restore_session(user_id=1)
+
+    assert restored.status == "connected"
+    assert restored.requires_reauth is False
+
+
+def test_restore_with_missing_storage_ref_requires_reauth(fake_db) -> None:
+    adapter = FakeAdapter(["awaiting_identifier", "awaiting_code", "connected"])
+    service, storage = _service(fake_db, [adapter], probe_responses=[True])
+
+    service.start(user_id=1)
+    service.submit_identifier(user_id=1, identifier_type="email", identifier="user@example.com")
+    service.submit_code(user_id=1, code="1234")
+    stored_ref = next(iter(storage.by_ref))
+    storage.by_ref.pop(stored_ref, None)
+
+    restored = service.restore_session(user_id=1)
+
+    assert restored.status == "requires_reauth"
+    assert restored.last_error_code == "SESSION_STATE_NOT_FOUND"
+    assert restored.session_present is False
+
+
+def test_restore_with_corrupted_storage_requires_reauth(fake_db) -> None:
+    class CorruptedStorage(MemoryStorage):
+        def load(self, *, ref: str) -> dict:
+            raise ValueError("corrupted")
+
+    storage = CorruptedStorage()
+    service = HHBrowserConnectService(
+        fake_db,
+        adapter_factory=FakeFactory([FakeAdapter(["awaiting_identifier", "awaiting_code", "connected"])]),
+        runtime_registry=InMemoryRuntimeRegistry(timeout_seconds=120),
+        session_storage=storage,
+        session_probe_factory=ProbeFactory([True]),
+    )
+
+    service.start(user_id=1)
+    service.submit_identifier(user_id=1, identifier_type="email", identifier="user@example.com")
+    service.submit_code(user_id=1, code="1234")
+
+    restored = service.restore_session(user_id=1)
+    assert restored.status == "requires_reauth"
+    assert restored.last_error_code == "SESSION_STATE_CORRUPTED"

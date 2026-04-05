@@ -63,6 +63,59 @@ Happy-path:
 - Structured logs не содержат секретов (payload values не логируются).
 - Unknown/failure debug сводка safe-only (url/title/boolean markers).
 
+## Session persistence and restore/check lifecycle
+
+### Где хранится session state
+
+- После успешного перехода в `connected` сервис экспортирует `Playwright storage_state`.
+- Перед сохранением состояние нормализуется до минимально нужного payload:
+  - `cookies`
+  - `origins` (включая localStorage, если браузер его вернул)
+- Payload сохраняется через storage adapter (`LocalSessionStorage`) в файловое хранилище.
+- В таблице `hh_browser_connections` хранится только ссылка `session_state_ref` (например `local://hh-browser-session/<file>`).
+
+### Что сохраняется и что НЕ сохраняется
+
+Сохраняется:
+
+- browser cookies;
+- browser origins/localStorage из storage_state.
+
+Не сохраняется:
+
+- HH password;
+- OTP code;
+- raw input payloads connect flow;
+- session blob в DB (в БД только reference).
+
+### Restore/check flow
+
+Новые endpoints:
+
+- `POST /api/v1/integrations/hh-browser/session/restore`
+- `POST /api/v1/integrations/hh-browser/session/check`
+
+Оба endpoint:
+
+1. Загружают persisted state по `session_state_ref`;
+2. Поднимают отдельный browser context из storage_state;
+3. Открывают lightweight HH applicant page;
+4. Определяют authenticated vs unauthenticated;
+5. Возвращают нормализованный `HHBrowserConnectionSummary` (без cookies/tokens).
+
+Политика состояний:
+
+- restore/check success -> `connected`;
+- отсутствует `session_state_ref` -> `disconnected` + `SESSION_STATE_MISSING`;
+- ref указывает на отсутствующий файл -> `requires_reauth` + `SESSION_STATE_NOT_FOUND`;
+- storage state повреждён -> `requires_reauth` + `SESSION_STATE_CORRUPTED`;
+- HH показывает logout state -> `requires_reauth` + `SESSION_UNAUTHENTICATED`.
+
+### Disconnect cleanup
+
+- `cancel` / `disconnect` физически удаляют persisted session state из storage adapter.
+- После cleanup сбрасываются `session_state_ref` и `session_expires_at`.
+
 ## Ограничения
 
 - HH DOM может измениться; heuristic detection не гарантирует 100% покрытие всех вариантов UI.
