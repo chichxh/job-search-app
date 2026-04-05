@@ -87,7 +87,7 @@ npm run dev
    - `low_signal_resume.txt` → low-signal/too-short validation error;
    - `no_text_resume.pdf` → no-extractable-text validation error.
 
-## 7) Targeted HH resume creation verification (Settings)
+## 7) Targeted HH resume + visibility verification (Settings)
 
 1. В `/settings` подключить HH browser session до состояния `connected`.
 2. В секции **Targeted HH-резюме (MVP foundation)** убедиться, что action `Создать HH-резюме` активен.
@@ -105,10 +105,19 @@ npm run dev
    - status;
    - external HH URL (если вернулся);
    - created/updated timestamps.
-7. Проверить таблицу локального tracking (`HH managed resumes`) на наличие новой записи.
-8. Отключить HH browser session и убедиться, что action блокируется и отображается CTA на reconnect.
+7. Проверить предупреждение после создания: указано, что новое резюме может быть видно и рекомендуется действие `Скрыть от всех`.
+8. В таблице локального tracking (`HH managed resumes`) проверить visibility-блок:
+   - current mode;
+   - visibility status;
+   - visibility last checked/changed timestamps;
+   - visibility error (если есть).
+9. Нажать `Проверить видимость` и убедиться, что visibility status/last checked обновились.
+10. Нажать `Скрыть от всех`, проверить success-message и режим `Скрыто от всех`.
+11. Для unknown/failed состояния убедиться, что есть понятный retry path (кнопка `Проверить видимость` / `Скрыть от всех` остаётся доступной при активной сессии).
+12. Отключить HH browser session и убедиться, что visibility actions блокируются и отображается CTA на reconnect.
 
 Ограничения текущего шага:
-- visibility management пока не реализован;
+- поддержан только safe-path: check visibility + hide-from-all;
+- без employer-specific/privacy matrix;
 - apply automation пока не включён;
-- по умолчанию новый HH resume может быть виден всем работодателям до добавления visibility step.
+- по умолчанию новый HH resume может быть виден работодателям, поэтому hide-from-all рекомендован сразу после создания targeted-резюме.

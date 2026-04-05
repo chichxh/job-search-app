@@ -221,36 +221,49 @@ Import policy (MVP):
 
 
 
-## Targeted HH resume creation (frontend MVP)
+## Targeted HH resume + visibility safety UX (frontend MVP)
 
-Добавлен компактный frontend flow в `Settings` для запуска создания targeted HH-резюме и просмотра результата:
+В `Settings` реализован компактный safe-flow вокруг targeted HH-резюме:
 
 - точка входа: `/settings` → секция **Targeted HH-резюме (MVP foundation)**;
 - перед запуском показывается preview: `target title`, `source profile`, `source resume version`, `skills count`, `experiences count`, vacancy context;
 - поддержан dry-run preview (`POST /api/v1/integrations/hh-browser/resumes/create-targeted` с `dry_run=true`);
 - action `Создать HH-резюме` запускает реальный create flow;
-- после запуска отображается результат: title/status/external HH link/created/updated timestamps;
-- рядом показан компактный список локально отслеживаемых `HH managed resumes`.
+- после создания есть явный user-facing reminder, что для targeted-резюме безопасно сразу проверить visibility;
+- список tracked `HH managed resumes` теперь показывает visibility-блок:
+  - `current visibility mode`,
+  - `visibility status`,
+  - `visibility last checked at`,
+  - `visibility last changed at`,
+  - `visibility error` (если есть);
+- для каждого managed resume доступны компактные действия:
+  - `Проверить видимость` (`POST /api/v1/integrations/hh-browser/resumes/{id}/visibility/check`),
+  - `Скрыть от всех` (`POST /api/v1/integrations/hh-browser/resumes/{id}/visibility/hide-from-all`),
+  - `Обновить статус` (`GET /api/v1/integrations/hh-browser/resumes/{id}/visibility`).
+
+### Почему это безопасный MVP
+
+- По HH-документации новые резюме по умолчанию могут быть видимы работодателям.
+- Для точечных/экспериментальных резюме безопасный минимальный путь в продукте — проверить visibility и применить `Скрыть от всех`.
+- UX специально ограничен: нет полного privacy-dashboard, нет массовых операций и нет employer-specific matrix в этом шаге.
 
 ### Ограничения текущего MVP
 
-- поддерживается только **create targeted HH resume**;
-- управление visibility пока отсутствует (планируется следующим шагом);
+- не добавлен employer-specific visibility UI;
+- не добавлен share-link UI;
 - apply automation из этого UX не включён;
-- полноценный editor/CRM dashboard для managed HH resumes не входит в scope этого этапа.
+- нет bulk privacy operations/analytics dashboard.
 
-⚠️ Важно: по умолчанию новое HH-резюме на стороне HH может быть видно всем работодателям, пока отдельный visibility step не реализован в продукте.
-
-### Manual verification checklist (targeted HH resume)
+### Manual verification checklist (targeted HH resume + visibility)
 
 1. Открыть `/settings`, в секции **Интеграция HH через браузерную сессию** подключить HH до статуса `connected`.
 2. Перейти в секцию **Targeted HH-резюме (MVP foundation)**.
-3. Проверить preview (title/source profile/source resume/skills/experiences/vacancy context).
-4. Нажать `Обновить preview (dry-run)` и убедиться, что отображается краткая сводка dry-run.
-5. Нажать `Создать HH-резюме` и дождаться завершения.
-6. Проверить блок результата (title/status/HH link/created/updated).
-7. Проверить таблицу tracked managed resumes (включая vacancy context/source resume/status/updated/HH link).
-8. Отключить HH session и проверить, что создание блокируется и показывается CTA `Переподключить HH`.
+3. Нажать `Создать HH-резюме` и дождаться завершения.
+4. Проверить, что после создания показано предупреждение/подсказка о рекомендуемом безопасном шаге `Скрыть от всех`.
+5. В таблице tracked managed resumes найти созданное резюме и проверить visibility-поля (`mode/status/last checked/last changed`).
+6. Если visibility неизвестна (`unknown`), нажать `Проверить видимость` и убедиться, что статус обновился.
+7. Нажать `Скрыть от всех` и проверить success-message + режим `Скрыто от всех`.
+8. Принудительно разорвать HH session (disconnect/requires_reauth) и убедиться, что visibility actions не выполняются, а показывается CTA `Переподключить HH`.
 
 
 ### HH fallback JSON import (dev fixtures)

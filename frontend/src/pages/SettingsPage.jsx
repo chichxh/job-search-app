@@ -58,9 +58,12 @@ import {
   applyResumeImportDraft,
   cancelHhBrowserConnection,
   checkHhBrowserSession,
+  checkHhManagedResumeVisibility,
   createHhTargetedResume,
   disconnectHhBrowserConnection,
   getVacancies,
+  getHhManagedResumeVisibility,
+  hideHhManagedResumeFromAll,
   restoreHhBrowserSession,
   listHhManagedResumes,
   startHhOAuthConnect,
@@ -164,6 +167,21 @@ const HH_MANAGED_RESUME_STATUS_META = {
   failed: { label: 'Ошибка', tone: 'danger' },
   stale: { label: 'Требует обновления', tone: 'info' },
 };
+const HH_VISIBILITY_MODE_META = {
+  unknown: { label: 'Неизвестно', tone: 'muted' },
+  public_default: { label: 'Видно работодателям (по умолчанию HH)', tone: 'danger' },
+  hidden_from_all: { label: 'Скрыто от всех', tone: 'success' },
+  change_pending: { label: 'Обновляем...', tone: 'accent' },
+  change_failed: { label: 'Не удалось применить', tone: 'danger' },
+};
+const HH_VISIBILITY_STATUS_META = {
+  idle: { label: 'Не проверяли', tone: 'muted' },
+  checking: { label: 'Проверяем...', tone: 'accent' },
+  updated: { label: 'Актуально', tone: 'success' },
+  change_pending: { label: 'Меняем...', tone: 'accent' },
+  check_failed: { label: 'Ошибка проверки', tone: 'danger' },
+  change_failed: { label: 'Ошибка изменения', tone: 'danger' },
+};
 
 const emptyBySection = {
   skills: { name_raw: '', category: '', level: '', years: '', last_used_year: '', is_primary: false, evidence_text: '' },
@@ -228,6 +246,9 @@ export default function SettingsPage() {
   const [hhTargetBusy, setHhTargetBusy] = useState(false);
   const [hhTargetError, setHhTargetError] = useState('');
   const [hhTargetMessage, setHhTargetMessage] = useState('');
+  const [hhVisibilityBusyById, setHhVisibilityBusyById] = useState({});
+  const [hhVisibilityError, setHhVisibilityError] = useState('');
+  const [hhVisibilityMessage, setHhVisibilityMessage] = useState('');
   const [hhResumes, setHhResumes] = useState([]);
   const [hhResumeId, setHhResumeId] = useState('');
   const [hhBusy, setHhBusy] = useState(false);
@@ -937,12 +958,61 @@ export default function SettingsPage() {
     return formatApiError(requestError, 'Не удалось создать targeted HH-резюме.');
   }
 
+  function mapVisibilityActionError(requestError) {
+    const raw = String(requestError?.message ?? '');
+    if (raw.includes('Active HH browser session required')) {
+      return 'Нет активной HH-сессии. Переподключите HH и повторите действие.';
+    }
+    if (raw.includes('not found')) {
+      return 'Не удалось найти managed HH-резюме. Обновите список и попробуйте снова.';
+    }
+    if (raw.includes('Failed to fetch') || raw.includes('502') || raw.includes('503') || raw.includes('504')) {
+      return 'Сервис HH временно недоступен. Повторите попытку позже.';
+    }
+    return formatApiError(requestError, 'Операция с видимостью HH-резюме завершилась ошибкой.');
+  }
+
   async function refreshManagedResumesList() {
     try {
       const items = await listHhManagedResumes();
       setHhManagedResumes(items);
     } catch {
       setHhTargetError('Не удалось обновить список локально отслеживаемых HH-резюме.');
+    }
+  }
+
+  function updateManagedResumeVisibilityLocally(managedResumeId, visibilityPayload) {
+    setHhManagedResumes((current) => current.map((item) => {
+      if (item.id !== managedResumeId) {
+        return item;
+      }
+      return {
+        ...item,
+        desired_visibility_mode: visibilityPayload.desired_visibility_mode ?? item.desired_visibility_mode,
+        current_visibility_mode: visibilityPayload.current_visibility_mode ?? item.current_visibility_mode,
+        visibility_last_checked_at: visibilityPayload.visibility_last_checked_at ?? item.visibility_last_checked_at,
+        visibility_last_changed_at: visibilityPayload.visibility_last_changed_at ?? item.visibility_last_changed_at,
+        visibility_status: visibilityPayload.visibility_status ?? item.visibility_status,
+        visibility_error_code: visibilityPayload.visibility_error_code ?? null,
+        visibility_error_message: visibilityPayload.visibility_error_message ?? null,
+      };
+    }));
+  }
+
+  async function runManagedVisibilityAction({ managedResumeId, action, successMessage }) {
+    setHhVisibilityError('');
+    setHhVisibilityMessage('');
+    setHhVisibilityBusyById((current) => ({ ...current, [managedResumeId]: true }));
+    try {
+      const visibility = await action(managedResumeId);
+      updateManagedResumeVisibilityLocally(managedResumeId, visibility);
+      setHhVisibilityMessage(successMessage);
+      await refreshManagedResumesList();
+      await refreshHhBrowserStatus();
+    } catch (requestError) {
+      setHhVisibilityError(mapVisibilityActionError(requestError));
+    } finally {
+      setHhVisibilityBusyById((current) => ({ ...current, [managedResumeId]: false }));
     }
   }
 
@@ -1004,6 +1074,8 @@ export default function SettingsPage() {
       vacancy: vacancies.find((vacancy) => vacancy.id === item.vacancy_id) ?? null,
       sourceResume: resumes.find((resume) => resume.id === item.source_resume_version_id) ?? null,
       statusMeta: HH_MANAGED_RESUME_STATUS_META[item.status] ?? { label: item.status, tone: 'neutral' },
+      visibilityModeMeta: HH_VISIBILITY_MODE_META[item.current_visibility_mode] ?? { label: item.current_visibility_mode || '—', tone: 'neutral' },
+      visibilityStatusMeta: HH_VISIBILITY_STATUS_META[item.visibility_status] ?? { label: item.visibility_status || '—', tone: 'neutral' },
     })),
     [hhManagedResumes, resumes, vacancies],
   );
@@ -1268,10 +1340,10 @@ export default function SettingsPage() {
 
       <Section title="Targeted HH-резюме (MVP foundation)" defaultOpen>
         <p className="muted-text">
-          Этот экран запускает только создание targeted HH-резюме. Visibility management и apply automation будут добавлены следующими шагами.
+          Этот экран покрывает безопасный MVP: создание targeted HH-резюме + проверка текущей видимости + действие «Скрыть от всех».
         </p>
         <p className="muted-text">
-          Важно: по умолчанию новое HH-резюме может быть видно всем работодателям, пока не добавлен отдельный шаг управления видимостью.
+          Важно: по умолчанию новое HH-резюме на HH может быть видно работодателям. Для точечного резюме рекомендуем сразу применить «Скрыть от всех».
         </p>
         {!hhSessionActive ? (
           <div className="error-banner">
@@ -1382,6 +1454,9 @@ export default function SettingsPage() {
             <p><strong>External URL:</strong> {hhTargetLastResult.hh_resume_url ? <a href={hhTargetLastResult.hh_resume_url} target="_blank" rel="noreferrer">Открыть на HH</a> : '—'}</p>
             <p><strong>Created:</strong> {formatDateTime(hhTargetLastResult.created_at)}</p>
             <p><strong>Updated:</strong> {formatDateTime(hhTargetLastResult.updated_at)}</p>
+            <p className="muted-text">
+              Рекомендуемый безопасный шаг: сразу проверьте visibility и при необходимости нажмите «Скрыть от всех» в списке tracked HH-резюме ниже.
+            </p>
           </article>
         ) : null}
 
@@ -1392,6 +1467,8 @@ export default function SettingsPage() {
               Обновить список
             </button>
           </div>
+          {hhVisibilityError ? <ErrorBanner message={hhVisibilityError} /> : null}
+          {hhVisibilityMessage ? <p className="success-banner">{hhVisibilityMessage}</p> : null}
           {!managedResumeRows.length ? <p className="muted-text">Пока нет tracked HH managed resumes.</p> : null}
           {managedResumeRows.length ? (
             <div className="hh-managed-table-wrap">
@@ -1402,7 +1479,9 @@ export default function SettingsPage() {
                     <th>Vacancy context</th>
                     <th>Source resume version</th>
                     <th>Status</th>
+                    <th>Visibility</th>
                     <th>Updated</th>
+                    <th>Actions</th>
                     <th>HH link</th>
                   </tr>
                 </thead>
@@ -1419,7 +1498,79 @@ export default function SettingsPage() {
                           {item.statusMeta.label}
                         </span>
                       </td>
+                      <td>
+                        <p>
+                          <span className={`applications-status-chip applications-status-chip--${item.visibilityModeMeta.tone}`}>
+                            {item.visibilityModeMeta.label}
+                          </span>
+                        </p>
+                        <p className="muted-text">
+                          Статус:{' '}
+                          <span className={`applications-status-chip applications-status-chip--${item.visibilityStatusMeta.tone}`}>
+                            {item.visibilityStatusMeta.label}
+                          </span>
+                        </p>
+                        <p className="muted-text"><strong>Проверка:</strong> {formatDateTime(item.visibility_last_checked_at)}</p>
+                        <p className="muted-text"><strong>Изменение:</strong> {formatDateTime(item.visibility_last_changed_at)}</p>
+                        {item.visibility_error_message ? <p className="muted-text"><strong>Ошибка:</strong> {item.visibility_error_message}</p> : null}
+                        {item.current_visibility_mode === 'unknown' ? <p className="muted-text">Сначала проверьте видимость.</p> : null}
+                        {item.current_visibility_mode === 'hidden_from_all' ? <p className="muted-text">Безопасный режим уже включён.</p> : null}
+                      </td>
                       <td>{formatDateTime(item.updated_at)}</td>
+                      <td>
+                        {!hhSessionActive ? (
+                          <div className="settings-grid">
+                            <p className="muted-text">Нет активной HH-сессии.</p>
+                            <button
+                              className="button button--ghost button--sm"
+                              type="button"
+                              onClick={() => startHhConnectWizard(true)}
+                              disabled={hhTargetBusy || hhBrowserBusy || hhBrowserLoading}
+                            >
+                              Переподключить HH
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="settings-grid">
+                            <button
+                              className="button button--ghost button--sm"
+                              type="button"
+                              onClick={() => runManagedVisibilityAction({
+                                managedResumeId: item.id,
+                                action: checkHhManagedResumeVisibility,
+                                successMessage: 'Видимость HH-резюме обновлена.',
+                              })}
+                              disabled={hhTargetBusy || hhVisibilityBusyById[item.id]}
+                            >
+                              {hhVisibilityBusyById[item.id] ? 'Проверяем...' : 'Проверить видимость'}
+                            </button>
+                            <button
+                              className="button button--sm"
+                              type="button"
+                              onClick={() => runManagedVisibilityAction({
+                                managedResumeId: item.id,
+                                action: hideHhManagedResumeFromAll,
+                                successMessage: 'Готово: резюме скрыто от всех на HH.',
+                              })}
+                              disabled={hhTargetBusy || hhVisibilityBusyById[item.id] || item.current_visibility_mode === 'hidden_from_all'}
+                            >
+                              {hhVisibilityBusyById[item.id] ? 'Применяем...' : item.current_visibility_mode === 'hidden_from_all' ? 'Уже скрыто' : 'Скрыть от всех'}
+                            </button>
+                            <button
+                              className="button button--ghost button--sm"
+                              type="button"
+                              onClick={() => runManagedVisibilityAction({
+                                managedResumeId: item.id,
+                                action: getHhManagedResumeVisibility,
+                                successMessage: 'Локальный visibility-статус обновлён.',
+                              })}
+                              disabled={hhTargetBusy || hhVisibilityBusyById[item.id]}
+                            >
+                              {hhVisibilityBusyById[item.id] ? 'Обновляем...' : 'Обновить статус'}
+                            </button>
+                          </div>
+                        )}
+                      </td>
                       <td>{item.hh_resume_url ? <a href={item.hh_resume_url} target="_blank" rel="noreferrer">HH</a> : '—'}</td>
                     </tr>
                   ))}
