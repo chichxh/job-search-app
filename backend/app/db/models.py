@@ -153,6 +153,9 @@ class HHManagedResume(Base):
     hh_resume_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft_local", server_default="draft_local")
+    auto_hide_from_all_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
     desired_visibility_mode: Mapped[str] = mapped_column(
         String(32), nullable=False, default="hidden_from_all", server_default="hidden_from_all"
     )
@@ -171,6 +174,15 @@ class HHManagedResume(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+    @property
+    def user_opted_out_of_auto_hide_from_all(self) -> bool:
+        return not bool(self.auto_hide_from_all_enabled if self.auto_hide_from_all_enabled is not None else True)
+
+    @property
+    def intended_hidden_from_all(self) -> bool:
+        auto_hide = self.auto_hide_from_all_enabled if self.auto_hide_from_all_enabled is not None else True
+        return bool(auto_hide) and self.desired_visibility_mode == "hidden_from_all"
 
 
 class HHApplyRun(Base):

@@ -23,6 +23,7 @@ from app.db.models import (
 from app.schemas.hh_browser_integration import HHCreateTargetedResumeRequest, HHTargetedResumePayload
 from app.services.hh_action_control_service import HHActionControlService
 from app.services.hh_automation_diagnostics_service import diagnostic_for_code
+from app.services.hh_resume_visibility_service import HHResumeVisibilityService
 from app.services.hh_browser_error_taxonomy import normalize_automation_error_code
 
 logger = logging.getLogger(__name__)
@@ -240,11 +241,13 @@ class HHCreateTargetedResumeService:
         *,
         payload_builder: HHTargetedPayloadBuilder,
         automation_client: HHResumeAutomationClient,
+        visibility_service: HHResumeVisibilityService | None = None,
     ) -> None:
         self.db = db
         self.payload_builder = payload_builder
         self.automation_client = automation_client
         self.action_control = HHActionControlService(db)
+        self.visibility_service = visibility_service
 
     def create_targeted_resume(self, *, user_id: int, request: HHCreateTargetedResumeRequest) -> tuple[HHManagedResume, HHTargetedResumePayload]:
         request_fingerprint = (
@@ -298,7 +301,10 @@ class HHCreateTargetedResumeService:
                 vacancy_id=vacancy.id if vacancy else None,
                 title=payload.profession_title,
                 status="draft_local" if request.dry_run else "creating",
-                desired_visibility_mode="hidden_from_all",
+                auto_hide_from_all_enabled=not request.do_not_hide_from_all_employers,
+                desired_visibility_mode="hidden_from_all"
+                if not request.do_not_hide_from_all_employers
+                else "public_default",
                 current_visibility_mode="unknown",
                 visibility_status="idle",
             )
@@ -352,11 +358,24 @@ class HHCreateTargetedResumeService:
             managed.hh_resume_external_id = result.external_id
             managed.hh_resume_url = result.resume_url
             managed.title = result.title
+            if not managed.auto_hide_from_all_enabled:
+                managed.visibility_status = "updated"
+                managed.current_visibility_mode = "public_default"
+                managed.desired_visibility_mode = "public_default"
             managed.last_error_code = None
             managed.last_error_message = None
             managed.last_synced_at = datetime.now(timezone.utc)
             self.db.commit()
             self.db.refresh(managed)
+            if managed.auto_hide_from_all_enabled:
+                if self.visibility_service is not None:
+                    managed = self.visibility_service.hide_from_all(user_id=user_id, managed_resume_id=managed.id)
+                else:
+                    managed.visibility_status = "change_pending"
+                    managed.current_visibility_mode = "change_pending"
+                    managed.desired_visibility_mode = "hidden_from_all"
+                    self.db.commit()
+                    self.db.refresh(managed)
             self.action_control.finish_action(
                 action_run=action_decision.action_run,
                 status_value="completed",

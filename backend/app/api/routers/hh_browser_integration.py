@@ -54,10 +54,15 @@ def get_hh_connect_service(db: Session = Depends(get_db)) -> HHBrowserConnectSer
     )
 
 def get_hh_targeted_resume_service(db: Session = Depends(get_db)) -> HHCreateTargetedResumeService:
+    visibility_service = HHResumeVisibilityService(
+        db,
+        automation_client=_resume_visibility_automation_client,
+    )
     return HHCreateTargetedResumeService(
         db,
         payload_builder=HHTargetedPayloadBuilder(db),
         automation_client=_resume_automation_client,
+        visibility_service=visibility_service,
     )
 
 
@@ -68,9 +73,14 @@ def get_hh_resume_visibility_service(db: Session = Depends(get_db)) -> HHResumeV
     )
 
 def get_hh_apply_service(db: Session = Depends(get_db)) -> HHApplyService:
+    visibility_service = HHResumeVisibilityService(
+        db,
+        automation_client=_resume_visibility_automation_client,
+    )
     return HHApplyService(
         db,
         automation_client=_apply_automation_client,
+        visibility_service=visibility_service,
     )
 
 
@@ -223,8 +233,12 @@ def get_managed_resume(
 
 
 def _visibility_from_managed(item) -> HHManagedResumeVisibilityRead:
+    auto_hide_from_all_enabled = True if item.auto_hide_from_all_enabled is None else bool(item.auto_hide_from_all_enabled)
     return HHManagedResumeVisibilityRead(
         managed_resume_id=item.id,
+        auto_hide_from_all_enabled=auto_hide_from_all_enabled,
+        intended_hidden_from_all=auto_hide_from_all_enabled and item.desired_visibility_mode == "hidden_from_all",
+        user_opted_out_of_auto_hide_from_all=not auto_hide_from_all_enabled,
         desired_visibility_mode=item.desired_visibility_mode,
         current_visibility_mode=item.current_visibility_mode,
         visibility_last_checked_at=item.visibility_last_checked_at,

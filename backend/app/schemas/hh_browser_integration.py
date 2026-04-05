@@ -86,8 +86,23 @@ class HHBrowserSessionValidationResponse(BaseModel):
 
 
 HH_MANAGED_RESUME_STATUSES = ("draft_local", "creating", "created", "failed", "stale")
-HH_MANAGED_RESUME_VISIBILITY_MODES = ("public_default", "hidden_from_all", "unknown", "change_pending", "change_failed")
-HH_MANAGED_RESUME_VISIBILITY_STATUSES = ("idle", "checking", "check_failed", "change_pending", "change_failed", "updated")
+HH_MANAGED_RESUME_VISIBILITY_MODES = (
+    "public_default",
+    "hidden_from_all",
+    "visible_selected_employers",
+    "unknown",
+    "change_pending",
+    "change_failed",
+)
+HH_MANAGED_RESUME_VISIBILITY_STATUSES = (
+    "idle",
+    "checking",
+    "check_failed",
+    "change_pending",
+    "change_failed",
+    "updated",
+    "inferred_post_apply",
+)
 HH_APPLY_RUN_STATUSES = (
     "queued",
     "opening_vacancy",
@@ -110,6 +125,7 @@ class HHCreateTargetedResumeRequest(BaseModel):
     skills_focus: list[str] = Field(default_factory=list, max_length=30)
     include_skill_levels: bool = False
     max_experiences: int = Field(default=4, ge=1, le=10)
+    do_not_hide_from_all_employers: bool = False
     dry_run: bool = False
 
 
@@ -133,6 +149,9 @@ class HHManagedResumeRead(BaseModel):
     hh_resume_url: str | None = None
     title: str | None = None
     status: str
+    auto_hide_from_all_enabled: bool = True
+    intended_hidden_from_all: bool = True
+    user_opted_out_of_auto_hide_from_all: bool = False
     last_synced_at: datetime | None = None
     last_error_code: str | None = None
     last_error_message: str | None = None
@@ -177,6 +196,9 @@ class HHCreateTargetedResumeResponse(BaseModel):
 
 class HHManagedResumeVisibilityRead(BaseModel):
     managed_resume_id: int
+    auto_hide_from_all_enabled: bool = True
+    intended_hidden_from_all: bool = True
+    user_opted_out_of_auto_hide_from_all: bool = False
     desired_visibility_mode: str
     current_visibility_mode: str
     visibility_last_checked_at: datetime | None = None

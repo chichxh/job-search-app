@@ -21,10 +21,11 @@ from app.schemas.hh_browser_integration import HHApplyRequest
 from app.services.hh_action_control_service import HHActionControlService
 from app.services.hh_automation_diagnostics_service import diagnostic_for_code
 from app.services.hh_browser_error_taxonomy import normalize_automation_error_code
+from app.services.hh_resume_visibility_service import HHResumeVisibilityService
 
 logger = logging.getLogger(__name__)
 
-_SAFE_VISIBILITY_FOR_APPLY = {"hidden_from_all", "public_default", "unknown"}
+_SAFE_VISIBILITY_FOR_APPLY = {"hidden_from_all"}
 
 
 class HHApplyAutomationError(Exception):
@@ -93,9 +94,11 @@ class HHApplyService:
         db: Session,
         *,
         automation_client: HHApplyAutomationClient,
+        visibility_service: HHResumeVisibilityService | None = None,
     ) -> None:
         self.db = db
         self.automation_client = automation_client
+        self.visibility_service = visibility_service
         self.action_control = HHActionControlService(db)
 
     def apply(self, *, user_id: int, request: HHApplyRequest) -> HHApplyRun:
@@ -136,8 +139,11 @@ class HHApplyService:
             )
             cover_letter_text = self._resolve_cover_letter_text(request=request, cover_letter=cover_letter)
 
-            if request.force_visibility_check:
-                self._apply_visibility_policy(managed_resume=managed_resume)
+            self._apply_visibility_policy(
+                user_id=user_id,
+                managed_resume=managed_resume,
+                force_visibility_check=request.force_visibility_check,
+            )
 
             apply_run = self._prepare_apply_run(
                 user_id=user_id,
@@ -169,6 +175,7 @@ class HHApplyService:
             apply_run.result_message = (result.result_message or "Apply completed")[:160]
             apply_run.hh_response_ref = self._safe_response_ref(result.response_ref)
             apply_run.finished_at = self._now()
+            self._mark_post_apply_visibility_transition(managed_resume=managed_resume)
             self.db.commit()
             self.db.refresh(apply_run)
             self.action_control.finish_action(
@@ -300,9 +307,31 @@ class HHApplyService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
         return item
 
-    def _apply_visibility_policy(self, *, managed_resume: HHManagedResume) -> None:
+    def _apply_visibility_policy(
+        self,
+        *,
+        user_id: int,
+        managed_resume: HHManagedResume,
+        force_visibility_check: bool,
+    ) -> None:
+        auto_hide_enabled = managed_resume.auto_hide_from_all_enabled is not False
+        if not auto_hide_enabled:
+            return
+        managed_resume.desired_visibility_mode = "hidden_from_all"
         if managed_resume.current_visibility_mode in _SAFE_VISIBILITY_FOR_APPLY:
             return
+        if self.visibility_service is not None:
+            updated = self.visibility_service.hide_from_all(user_id=user_id, managed_resume_id=managed_resume.id)
+            if updated.current_visibility_mode in _SAFE_VISIBILITY_FOR_APPLY:
+                return
+        if not force_visibility_check:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "VISIBILITY_ENFORCEMENT_REQUIRED",
+                    "message": "Resume must be hidden from all employers before apply",
+                },
+            )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -310,6 +339,14 @@ class HHApplyService:
                 "message": "Resume visibility requires confirmation before apply",
             },
         )
+
+    def _mark_post_apply_visibility_transition(self, *, managed_resume: HHManagedResume) -> None:
+        if managed_resume.auto_hide_from_all_enabled is False:
+            return
+        managed_resume.current_visibility_mode = "visible_selected_employers"
+        managed_resume.visibility_status = "inferred_post_apply"
+        managed_resume.visibility_error_code = None
+        managed_resume.visibility_error_message = None
 
     def _set_status(self, apply_run: HHApplyRun, next_status: str) -> None:
         apply_run.status = next_status

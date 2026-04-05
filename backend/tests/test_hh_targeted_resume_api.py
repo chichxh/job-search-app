@@ -151,6 +151,9 @@ def test_create_targeted_creates_record_and_created_status(client, auth_headers,
     assert body["hh_resume_external_id"] == "hh-1-resume-1"
     assert body["hh_resume_url"] == "https://hh.ru/resume/abc123"
     assert body["title"] == "Senior Backend Engineer"
+    assert body["auto_hide_from_all_enabled"] is True
+    assert body["intended_hidden_from_all"] is True
+    assert body["user_opted_out_of_auto_hide_from_all"] is False
 
 
 def test_foreign_access_to_managed_resume_denied(client, auth_headers, foreign_auth_headers, fake_db) -> None:
@@ -226,3 +229,28 @@ def test_create_targeted_duplicate_request_is_idempotent(client, auth_headers, f
     assert any(
         item.action_type == "create_targeted_resume" and item.status == "duplicate_prevented" for item in action_runs
     )
+
+
+def test_create_targeted_explicit_opt_out_disables_auto_hide(client, auth_headers, fake_db) -> None:
+    _seed_profile_details(fake_db, profile_id=1)
+    fake_db.add(
+        models.HHBrowserConnection(
+            user_id=1,
+            status="connected",
+            requires_reauth=False,
+            session_state_ref="local://hh-browser-session/u1.json",
+        )
+    )
+    app.dependency_overrides[get_hh_targeted_resume_service] = _override_service(fake_db)
+
+    response = client.post(
+        "/api/v1/integrations/hh-browser/resumes/create-targeted",
+        headers=auth_headers,
+        json={"profile_id": 1, "vacancy_id": 1, "do_not_hide_from_all_employers": True},
+    )
+    assert response.status_code == 201
+    body = response.json()["managed_resume"]
+    assert body["auto_hide_from_all_enabled"] is False
+    assert body["intended_hidden_from_all"] is False
+    assert body["user_opted_out_of_auto_hide_from_all"] is True
+    assert body["desired_visibility_mode"] == "public_default"
