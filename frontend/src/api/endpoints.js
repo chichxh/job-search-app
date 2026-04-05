@@ -173,37 +173,33 @@ export const disconnectHh = () => apiFetch('/integrations/hh/connection', { meth
 
 
 export const getHhBrowserConnectionStatus = () => apiFetch('/integrations/hh-browser/status');
-export const initHhBrowserConnection = () =>
-  apiFetch('/integrations/hh-browser/connect/init', {
+export const getHhBrowserConnectState = () => apiFetch('/integrations/hh-browser/connect/state');
+export const startHhBrowserConnection = (payload = {}) =>
+  apiFetch('/integrations/hh-browser/connect/start', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({}),
+    body: JSON.stringify(payload),
   });
+export const submitHhBrowserIdentifier = (payload) =>
+  apiFetch('/integrations/hh-browser/connect/identifier', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+export const submitHhBrowserPassword = (payload) =>
+  apiFetch('/integrations/hh-browser/connect/password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+export const submitHhBrowserCode = (payload) =>
+  apiFetch('/integrations/hh-browser/connect/code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+export const cancelHhBrowserConnection = () => apiFetch('/integrations/hh-browser/connect/cancel', { method: 'POST' });
 export const disconnectHhBrowserConnection = () => apiFetch('/integrations/hh-browser/disconnect', { method: 'POST' });
-
-export const markHhBrowserAwaitingCode = () =>
-  apiFetch('/integrations/hh-browser/mark-awaiting-code', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ requires_reauth: false }),
-  });
-
-export const markHhBrowserConnected = () =>
-  apiFetch('/integrations/hh-browser/mark-connected', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({}),
-  });
-
-export const markHhBrowserFailed = () =>
-  apiFetch('/integrations/hh-browser/mark-failed', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      error_message: 'Foundation placeholder: status manually marked as failed from Settings UI.',
-      requires_reauth: false,
-    }),
-  });
 
 export const extractResumeImportFile = (profileId, file) => {
   const formData = new FormData();
