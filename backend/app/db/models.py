@@ -173,6 +173,32 @@ class HHManagedResume(Base):
     )
 
 
+class HHApplyRun(Base):
+    __tablename__ = "hh_apply_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    vacancy_id: Mapped[int] = mapped_column(ForeignKey("vacancies.id", ondelete="CASCADE"), nullable=False, index=True)
+    hh_resume_managed_id: Mapped[int] = mapped_column(
+        ForeignKey("hh_managed_resumes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_cover_letter_version_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("cover_letter_versions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued", server_default="queued")
+    hh_vacancy_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    result_type: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    result_message: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    hh_response_ref: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Profile(Base):
     __tablename__ = "profiles"
 

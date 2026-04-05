@@ -88,6 +88,16 @@ class HHBrowserSessionValidationResponse(BaseModel):
 HH_MANAGED_RESUME_STATUSES = ("draft_local", "creating", "created", "failed", "stale")
 HH_MANAGED_RESUME_VISIBILITY_MODES = ("public_default", "hidden_from_all", "unknown", "change_pending", "change_failed")
 HH_MANAGED_RESUME_VISIBILITY_STATUSES = ("idle", "checking", "check_failed", "change_pending", "change_failed", "updated")
+HH_APPLY_RUN_STATUSES = (
+    "queued",
+    "opening_vacancy",
+    "awaiting_resume_selection",
+    "awaiting_cover_letter",
+    "submitting",
+    "submitted",
+    "failed",
+    "retryable_failed",
+)
 
 
 class HHCreateTargetedResumeRequest(BaseModel):
@@ -186,4 +196,50 @@ class HHManagedResumeVisibilityRead(BaseModel):
     def validate_status_value(cls, value: str) -> str:
         if value not in HH_MANAGED_RESUME_VISIBILITY_STATUSES:
             raise ValueError("Unsupported visibility status")
+        return value
+
+
+class HHApplyRequest(BaseModel):
+    vacancy_id: int
+    hh_resume_managed_id: int
+    cover_letter_version_id: int | None = None
+    cover_letter_text: str | None = Field(default=None, max_length=7000)
+    dry_run: bool = False
+    force_visibility_check: bool = False
+
+    @field_validator("cover_letter_text")
+    @classmethod
+    def validate_cover_letter_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("cover_letter_text must be non-empty when provided")
+        return normalized
+
+
+class HHApplyRunRead(BaseModel):
+    id: int
+    user_id: int
+    profile_id: int
+    vacancy_id: int
+    hh_resume_managed_id: int
+    source_cover_letter_version_id: int | None = None
+    status: str
+    hh_vacancy_url: str | None = None
+    result_type: str | None = None
+    result_message: str | None = None
+    hh_response_ref: dict[str, Any] | None = None
+    started_at: datetime
+    finished_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("status")
+    @classmethod
+    def validate_apply_status(cls, value: str) -> str:
+        if value not in HH_APPLY_RUN_STATUSES:
+            raise ValueError("Unsupported apply status")
         return value

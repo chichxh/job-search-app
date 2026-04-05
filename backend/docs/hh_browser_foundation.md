@@ -45,6 +45,77 @@
 5. сохраняет `current_visibility_mode` + timestamps;
 6. при ошибке сохраняет только normalized safe summary (`visibility_error_*`), без raw DOM/cookies/session dumps.
 
+## HH vacancy apply MVP contract (backend/domain step-7 foundation)
+
+Добавлен backend/domain foundation для browser-driven apply flow `one vacancy -> one managed HH resume -> optional cover letter -> submit -> local tracked result`.
+
+Новая tracking-сущность: `hh_apply_runs`.
+
+Локально трекаются поля:
+
+- `user_id`, `profile_id`, `vacancy_id`, `hh_resume_managed_id`;
+- `source_cover_letter_version_id` (nullable);
+- `status`;
+- `hh_vacancy_url`;
+- `result_type`, `result_message`;
+- `hh_response_ref` (только safe metadata);
+- `started_at`, `finished_at`, `created_at`, `updated_at`.
+
+Поддержанные статусы apply-run в MVP:
+
+- `queued`
+- `opening_vacancy`
+- `awaiting_resume_selection`
+- `awaiting_cover_letter`
+- `submitting`
+- `submitted`
+- `failed`
+- `retryable_failed`
+
+Добавлены API endpoint'ы:
+
+- `POST /api/v1/integrations/hh-browser/apply`
+- `GET /api/v1/integrations/hh-browser/apply-runs`
+- `GET /api/v1/integrations/hh-browser/apply-runs/{id}`
+
+Request contract `POST /apply`:
+
+- `vacancy_id` (required)
+- `hh_resume_managed_id` (required)
+- `cover_letter_version_id` (optional)
+- `cover_letter_text` (optional override)
+- `dry_run` (optional)
+- `force_visibility_check` (optional)
+
+Validation в orchestration:
+
+1. требует активную HH browser session;
+2. проверяет ownership managed resume/profile/cover letter;
+3. проверяет существование вакансии в локальной DB;
+4. проверяет, что managed resume связан с HH (`hh_resume_external_id`);
+5. проверяет, что `cover_letter_text` не пустой и ограничен по размеру.
+
+MVP visibility policy:
+
+- если `force_visibility_check=false` — apply flow не блокируется на `unknown`;
+- если `force_visibility_check=true`, apply разрешается только для safe modes:
+  - `hidden_from_all`
+  - `public_default`
+  - `unknown`
+- если mode явно небезопасный (`change_pending`, `change_failed`) — возвращается normalized `VISIBILITY_CONFIRMATION_REQUIRED`.
+
+Логирование ограничено safe metadata:
+
+- `user_id`, `vacancy_id`, `hh_resume_managed_id`, `apply_run_id`;
+- текущий normalized result/status и длительность;
+- без полного текста cover letter, без cookies/session dumps, без raw page dumps.
+
+Явно вне scope этого PR:
+
+- фактическая browser submit automation;
+- auto-sync в applications funnel;
+- bulk/mass apply.
+
 ## Create targeted HH resume MVP (backend foundation)
 
 Добавлен backend foundation для создания таргетированного резюме в HH через browser orchestration contract:
