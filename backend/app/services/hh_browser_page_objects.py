@@ -118,6 +118,7 @@ class ResumeEditorSelectorGroup:
 class VacancySelectorGroup:
     vacancy_markers: tuple[SelectorQuery, ...]
     apply_entry: tuple[SelectorQuery, ...]
+    vacancy_unavailable_markers: tuple[SelectorQuery, ...]
     company_markers: tuple[SelectorQuery, ...]
 
 
@@ -313,6 +314,12 @@ DEFAULT_SELECTORS = SelectorRegistry(
             SelectorQuery("css", "[data-qa='vacancy-response-link-top']"),
             SelectorQuery("css", "[data-qa='vacancy-response-link-bottom']"),
         ),
+        vacancy_unavailable_markers=(
+            SelectorQuery("text", "Вакансия в архиве"),
+            SelectorQuery("text", "Вакансия недоступна"),
+            SelectorQuery("text", "Такой вакансии не существует"),
+            SelectorQuery("text", "Страница не найдена"),
+        ),
         company_markers=(
             SelectorQuery("css", "[data-qa='vacancy-company-name']"),
             SelectorQuery("css", "[data-qa='vacancy-company-logo']"),
@@ -420,6 +427,13 @@ class LocatorResolver:
             if locator is not None and locator.count() > 0:
                 return locator.count()
         return 0
+
+    def find_first_with_exact_count(self, queries: tuple[SelectorQuery, ...], *, expected_count: int) -> BrowserLocator | None:
+        for query in queries:
+            locator = self._resolve(query)
+            if locator is not None and locator.count() == expected_count:
+                return locator.first
+        return None
 
 
 class SafeActionRunner:
@@ -760,8 +774,15 @@ class VacancyPage(BasePageObject):
             key_controls={
                 "company_block_present": self.resolver.find_first(self.selectors.vacancy.company_markers) is not None,
                 "apply_available": self.resolver.find_first(self.selectors.vacancy.apply_entry) is not None,
+                "vacancy_unavailable_detected": self.detect_unavailable(),
             },
         )
+
+    def detect_apply_entry(self) -> bool:
+        return self.resolver.find_first(self.selectors.vacancy.apply_entry) is not None
+
+    def detect_unavailable(self) -> bool:
+        return self.resolver.find_first(self.selectors.vacancy.vacancy_unavailable_markers) is not None
 
     def open_apply_surface(self) -> None:
         apply_entry = self.resolver.find_first(self.selectors.vacancy.apply_entry)
@@ -779,6 +800,7 @@ class VacancyPage(BasePageObject):
             required_controls={"vacancy_markers": self.selectors.vacancy.vacancy_markers},
             optional_controls={
                 "apply_entry": self.selectors.vacancy.apply_entry,
+                "vacancy_unavailable_markers": self.selectors.vacancy.vacancy_unavailable_markers,
                 "company_markers": self.selectors.vacancy.company_markers,
             },
         )
@@ -867,6 +889,17 @@ class VacancyApplyPage(BasePageObject):
             return False
         self.actions.run(action="select_resume_title", callback=target.first.click, debug_summary=lambda: self.capabilities())
         return True
+
+    def select_single_resume_fallback(self) -> bool:
+        locator = self.resolver.find_first_with_exact_count(self.selectors.apply_surface.resume_cards, expected_count=1)
+        if locator is not None:
+            self.actions.run(
+                action="select_resume_single_fallback",
+                callback=locator.click,
+                debug_summary=lambda: self.capabilities(),
+            )
+            return True
+        return False
 
     def fill_cover_letter(self, *, text: str) -> bool:
         field = self.resolver.find_first(self.selectors.apply_surface.cover_letter_input)

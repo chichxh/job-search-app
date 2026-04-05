@@ -43,6 +43,26 @@ _FAILURE_DIAGNOSTIC_MAP: dict[str, HHFailureDiagnostic] = {
         reason="apply_surface_unavailable",
         guidance="Open vacancy apply page manually; retry after HH UI/apply controls are available.",
     ),
+    "vacancy_page_unavailable": HHFailureDiagnostic(
+        reason="vacancy_page_unavailable",
+        guidance="Vacancy is likely archived/unavailable on HH. Skip and choose another vacancy.",
+    ),
+    "response_unavailable": HHFailureDiagnostic(
+        reason="response_unavailable",
+        guidance="HH currently does not accept responses for this vacancy.",
+    ),
+    "apply_entry_not_found": HHFailureDiagnostic(
+        reason="apply_entry_not_found",
+        guidance="Apply button/link was not detected on vacancy page. Verify current HH layout.",
+    ),
+    "target_resume_not_selectable": HHFailureDiagnostic(
+        reason="resume_selection_mismatch",
+        guidance="Could not deterministically map managed resume to HH selection options.",
+    ),
+    "cover_letter_required": HHFailureDiagnostic(
+        reason="cover_letter_required",
+        guidance="Provide a cover letter text and retry.",
+    ),
     "already_applied": HHFailureDiagnostic(
         reason="already_applied",
         guidance="No retry needed; ensure local applications funnel was synced.",

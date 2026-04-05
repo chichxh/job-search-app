@@ -223,6 +223,20 @@ def test_vacancy_and_apply_surface_detection() -> None:
     assert apply_caps["key_controls"]["final_submit_present"] is True
 
 
+def test_vacancy_page_unavailable_detector() -> None:
+    page = FakePage(
+        url="https://hh.ru/vacancy/404",
+        visible={
+            "css:[data-qa='vacancy-title']": 1,
+            "text:Вакансия в архиве": 1,
+        },
+    )
+    helper = HHNavigationHelper(page=page)
+
+    assert helper.vacancy_page.detect_unavailable() is True
+    assert helper.vacancy_page.capabilities()["key_controls"]["vacancy_unavailable_detected"] is True
+
+
 def test_apply_surface_state_detectors_cover_terminal_states() -> None:
     page = FakePage(
         url="https://hh.ru/vacancy/123",
