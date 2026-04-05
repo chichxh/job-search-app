@@ -188,7 +188,40 @@ def test_apply_cover_letter_required_without_text() -> None:
             dry_run=False,
         )
 
-    assert exc.value.code == "COVER_LETTER_REQUIRED"
+    assert exc.value.code == "cover_letter_required"
+
+
+def test_apply_resume_selection_uses_single_card_fallback() -> None:
+    page = FakePage(
+        visible={
+            "css:[data-qa='applicant-dashboard']": 1,
+            "css:[data-qa='vacancy-title']": 1,
+            "role:button:Откликнуться": 1,
+            "css:[data-qa='vacancy-response-popup']": 1,
+            "label:Резюме": 1,
+            "css:[data-qa='resume-selector-item']": 1,
+            "role:button:Отправить": 1,
+            "text:Отклик успешно отправлен": 1,
+        }
+    )
+    client = _client(page)
+    connection, apply_run, managed_resume, vacancy = _entities()
+    managed_resume.hh_resume_external_id = None
+    managed_resume.hh_resume_url = None
+    managed_resume.title = "Не совпадающий заголовок"
+
+    result = client.apply_to_vacancy(
+        user_id=1,
+        connection=connection,
+        apply_run=apply_run,
+        managed_resume=managed_resume,
+        vacancy=vacancy,
+        cover_letter_text=None,
+        dry_run=False,
+    )
+
+    assert result.result_type == "submitted"
+    assert "css:[data-qa='resume-selector-item']" in page.clicked
 
 
 def test_apply_already_applied_path() -> None:
@@ -239,7 +272,7 @@ def test_apply_auth_lost_in_apply_surface() -> None:
             dry_run=False,
         )
 
-    assert exc.value.code == "SESSION_EXPIRED"
+    assert exc.value.code == "session_expired"
 
 
 def test_apply_missing_submit_control_normalized() -> None:
@@ -265,4 +298,53 @@ def test_apply_missing_submit_control_normalized() -> None:
             dry_run=False,
         )
 
-    assert exc.value.code == "APPLY_SUBMIT_FAILED"
+    assert exc.value.code == "apply_submit_failed"
+
+
+def test_apply_vacancy_unavailable_is_normalized() -> None:
+    page = FakePage(
+        visible={
+            "css:[data-qa='applicant-dashboard']": 1,
+            "css:[data-qa='vacancy-title']": 1,
+            "text:Вакансия в архиве": 1,
+        }
+    )
+    client = _client(page)
+    connection, apply_run, managed_resume, vacancy = _entities()
+
+    with pytest.raises(HHApplyAutomationError) as exc:
+        client.apply_to_vacancy(
+            user_id=1,
+            connection=connection,
+            apply_run=apply_run,
+            managed_resume=managed_resume,
+            vacancy=vacancy,
+            cover_letter_text=None,
+            dry_run=False,
+        )
+
+    assert exc.value.code == "vacancy_page_unavailable"
+
+
+def test_apply_entry_not_found_is_normalized() -> None:
+    page = FakePage(
+        visible={
+            "css:[data-qa='applicant-dashboard']": 1,
+            "css:[data-qa='vacancy-title']": 1,
+        }
+    )
+    client = _client(page)
+    connection, apply_run, managed_resume, vacancy = _entities()
+
+    with pytest.raises(HHApplyAutomationError) as exc:
+        client.apply_to_vacancy(
+            user_id=1,
+            connection=connection,
+            apply_run=apply_run,
+            managed_resume=managed_resume,
+            vacancy=vacancy,
+            cover_letter_text=None,
+            dry_run=False,
+        )
+
+    assert exc.value.code == "apply_entry_not_found"

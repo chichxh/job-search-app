@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 class PlaywrightHHApplyAutomationClient:
+    allow_optional_empty_cover_letter = True
+
     def __init__(
         self,
         *,
@@ -49,17 +51,29 @@ class PlaywrightHHApplyAutomationClient:
             vacancy_url = self._resolve_vacancy_url(vacancy)
             self._log_step("open_vacancy", apply_run_id=apply_run.id, user_id=user_id)
             nav.open_vacancy(vacancy_url)
+            if nav.vacancy_page.detect_unavailable():
+                raise HHApplyAutomationError(
+                    code="VACANCY_PAGE_UNAVAILABLE",
+                    message="HH vacancy page is unavailable or archived",
+                    response_ref=self._response_ref(vacancy_url=runtime.page.url, hh_response_type="vacancy_unavailable"),
+                )
             if nav.apply_page.detect_already_applied():
                 return HHApplyAutomationResult(
                     result_type="already_applied",
                     result_message="Response already exists for this vacancy",
                     response_ref=self._response_ref(vacancy_url=runtime.page.url, hh_response_type="already_applied"),
                 )
-            if nav.apply_page.detect_cannot_apply() or not nav.vacancy_page.capabilities()["key_controls"]["apply_available"]:
+            if nav.apply_page.detect_cannot_apply():
                 raise HHApplyAutomationError(
                     code="RESPONSE_UNAVAILABLE",
                     message="Vacancy does not accept responses right now",
                     response_ref=self._response_ref(vacancy_url=runtime.page.url, hh_response_type="response_unavailable"),
+                )
+            if not nav.vacancy_page.detect_apply_entry():
+                raise HHApplyAutomationError(
+                    code="APPLY_ENTRY_NOT_FOUND",
+                    message="Vacancy apply action is not available",
+                    response_ref=self._response_ref(vacancy_url=runtime.page.url, hh_response_type="apply_entry_missing"),
                 )
 
             self._log_step("open_apply_surface", apply_run_id=apply_run.id, user_id=user_id)
@@ -132,6 +146,12 @@ class PlaywrightHHApplyAutomationClient:
             return
         if managed_resume.title and nav.apply_page.select_resume_by_title(title=managed_resume.title):
             return
+        if nav.apply_page.select_single_resume_fallback():
+            logger.warning(
+                "hh_apply_resume_selection_fallback strategy=single_resume_card managed_resume_id=%s",
+                managed_resume.id,
+            )
+            return
 
         raise HHApplyAutomationError(
             code="TARGET_RESUME_NOT_SELECTABLE",
@@ -154,6 +174,12 @@ class PlaywrightHHApplyAutomationClient:
                 code="COVER_LETTER_REQUIRED",
                 message="Cover letter is required for this vacancy",
                 response_ref={"hh_response_type": "cover_letter_required"},
+            )
+        if not self.allow_optional_empty_cover_letter:
+            raise HHApplyAutomationError(
+                code="COVER_LETTER_POLICY_BLOCKED",
+                message="Cover letter policy blocks empty optional cover letter",
+                response_ref={"hh_response_type": "cover_letter_policy_blocked"},
             )
 
     def _detect_pre_submit_terminal_state(self, *, nav: HHNavigationHelper, vacancy_url: str) -> HHApplyAutomationResult | None:
