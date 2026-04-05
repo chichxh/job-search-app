@@ -18,11 +18,8 @@ from app.schemas.hh_browser_integration import (
     HHBrowserSubmitPasswordRequest,
 )
 from app.services.hh_browser_connect_service import HHBrowserConnectService, InMemoryRuntimeRegistry, LocalSessionStorage
-from app.services.hh_targeted_resume_service import (
-    HHCreateTargetedResumeService,
-    HHTargetedPayloadBuilder,
-    HHResumeAutomationClientStub,
-)
+from app.services.hh_targeted_resume_service import HHCreateTargetedResumeService, HHTargetedPayloadBuilder
+from app.services.hh_targeted_resume_automation import PlaywrightTargetedResumeAutomationClient
 from app.services.hh_browser_playwright import PlaywrightAdapterFactory, PlaywrightSessionProbeFactory
 
 router = APIRouter(prefix="/integrations/hh-browser", tags=["hh-browser"], dependencies=[Depends(get_current_user)])
@@ -31,7 +28,7 @@ _runtime_registry = InMemoryRuntimeRegistry(timeout_seconds=600)
 _session_storage = LocalSessionStorage()
 _adapter_factory = PlaywrightAdapterFactory()
 _probe_factory = PlaywrightSessionProbeFactory()
-_resume_automation_client = HHResumeAutomationClientStub()
+_resume_automation_client = PlaywrightTargetedResumeAutomationClient()
 
 
 def get_hh_connect_service(db: Session = Depends(get_db)) -> HHBrowserConnectService:
