@@ -117,6 +117,26 @@ class HHOAuthConnection(Base):
     )
 
 
+class HHBrowserConnection(Base):
+    __tablename__ = "hh_browser_connections"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_hh_browser_connections_user_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="disconnected", server_default="disconnected")
+    requires_reauth: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    last_authenticated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    session_state_ref: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    session_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    last_error_message: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Profile(Base):
     __tablename__ = "profiles"
 
