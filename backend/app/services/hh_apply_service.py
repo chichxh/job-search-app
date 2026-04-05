@@ -264,7 +264,15 @@ class HHApplyService:
         if not response_ref:
             return None
         safe: dict[str, Any] = {}
-        for key in ("hh_response_type", "hh_apply_id", "dry_run", "resume_external_id_present"):
+        for key in (
+            "hh_response_type",
+            "hh_apply_id",
+            "dry_run",
+            "resume_external_id_present",
+            "vacancy_url",
+            "applied_at",
+            "confirmation_summary",
+        ):
             if key in response_ref:
                 safe[key] = response_ref[key]
         return safe or None

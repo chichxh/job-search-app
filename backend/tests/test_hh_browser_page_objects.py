@@ -223,6 +223,27 @@ def test_vacancy_and_apply_surface_detection() -> None:
     assert apply_caps["key_controls"]["final_submit_present"] is True
 
 
+def test_apply_surface_state_detectors_cover_terminal_states() -> None:
+    page = FakePage(
+        url="https://hh.ru/vacancy/123",
+        visible={
+            "css:[data-qa='vacancy-response-popup']": 1,
+            "text:Вы уже откликались": 1,
+            "text:Отклик недоступен": 1,
+            "text:Войдите на сайт": 1,
+            "text:Ваш отклик отправлен": 1,
+            "css:textarea[required]": 1,
+        },
+    )
+    helper = HHNavigationHelper(page=page)
+
+    assert helper.apply_page.detect_already_applied() is True
+    assert helper.apply_page.detect_cannot_apply() is True
+    assert helper.apply_page.detect_auth_lost() is True
+    assert helper.apply_page.detect_success() is True
+    assert helper.apply_page.is_cover_letter_required() is True
+
+
 def test_navigation_helper_go_to_resumes_uses_click_then_goto_fallback() -> None:
     page_click = FakePage(visible={"text:Резюме": 1, "css:[data-qa='resume-list']": 1})
     helper_click = HHNavigationHelper(page=page_click)
