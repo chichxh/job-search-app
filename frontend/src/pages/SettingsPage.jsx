@@ -56,7 +56,13 @@ import {
   updateResumeVersion,
   updateSkill,
   applyResumeImportDraft,
+  disconnectHhBrowserConnection,
   startHhOAuthConnect,
+  getHhBrowserConnectionStatus,
+  initHhBrowserConnection,
+  markHhBrowserAwaitingCode,
+  markHhBrowserConnected,
+  markHhBrowserFailed,
 } from '../api/endpoints.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import Loading from '../components/Loading.jsx';
@@ -92,6 +98,14 @@ const DOCUMENT_STATUS_META = {
   draft: { label: 'Draft', tone: 'draft' },
   approved: { label: 'Approved', tone: 'approved' },
   archived: { label: 'Archived', tone: 'archived' },
+};
+const HH_BROWSER_STATUS_META = {
+  disconnected: { label: 'Disconnected', tone: 'muted' },
+  connecting: { label: 'Connecting', tone: 'accent' },
+  awaiting_code: { label: 'Awaiting code', tone: 'info' },
+  connected: { label: 'Connected', tone: 'success' },
+  requires_reauth: { label: 'Requires reauth', tone: 'danger' },
+  failed: { label: 'Failed', tone: 'danger' },
 };
 
 const emptyBySection = {
@@ -134,6 +148,11 @@ export default function SettingsPage() {
   const [resumes, setResumes] = useState([]);
   const [letters, setLetters] = useState([]);
   const [hhStatus, setHhStatus] = useState({ connected: false });
+  const [hhBrowserStatus, setHhBrowserStatus] = useState(null);
+  const [hhBrowserLoading, setHhBrowserLoading] = useState(false);
+  const [hhBrowserBusy, setHhBrowserBusy] = useState(false);
+  const [hhBrowserError, setHhBrowserError] = useState('');
+  const [hhBrowserMessage, setHhBrowserMessage] = useState('');
   const [hhResumes, setHhResumes] = useState([]);
   const [hhResumeId, setHhResumeId] = useState('');
   const [hhBusy, setHhBusy] = useState(false);
@@ -152,6 +171,7 @@ export default function SettingsPage() {
   const [resumeImportExtractedFileName, setResumeImportExtractedFileName] = useState('');
   const [resumeImportDraftResponse, setResumeImportDraftResponse] = useState(null);
   const [resumeImportApplySummary, setResumeImportApplySummary] = useState(null);
+  const isHhBrowserFoundationMode = import.meta.env.DEV || import.meta.env.VITE_HH_BROWSER_FOUNDATION_MODE === 'true';
 
   useEffect(() => {
     async function loadData() {
@@ -196,8 +216,12 @@ export default function SettingsPage() {
         setResumes(resumeData);
         setLetters(letterData);
 
-        const hhConnection = await getHhConnectionStatus();
+        const [hhConnection, hhBrowserConnection] = await Promise.all([
+          getHhConnectionStatus(),
+          getHhBrowserConnectionStatus(),
+        ]);
         setHhStatus(hhConnection);
+        setHhBrowserStatus(hhBrowserConnection);
         if (hhConnection.connected) {
           const resumes = await listHhResumes();
           setHhResumes(resumes);
@@ -362,6 +386,44 @@ export default function SettingsPage() {
       setToast('Пересчёт всего запущен.');
     } catch {
       setError('Endpoint /dev/profiles/{profile_id}/recompute-all недоступен.');
+    }
+  }
+
+  function formatDateTime(value) {
+    if (!value) {
+      return '—';
+    }
+    return new Date(value).toLocaleString();
+  }
+
+  async function refreshHhBrowserStatus({ showSuccess = false } = {}) {
+    setHhBrowserLoading(true);
+    setHhBrowserError('');
+    try {
+      const status = await getHhBrowserConnectionStatus();
+      setHhBrowserStatus(status);
+      if (showSuccess) {
+        setHhBrowserMessage('HH Browser status updated.');
+      }
+    } catch (requestError) {
+      setHhBrowserError(requestError.message || 'Не удалось загрузить HH Browser статус.');
+    } finally {
+      setHhBrowserLoading(false);
+    }
+  }
+
+  async function runHhBrowserAction(action, successMessage) {
+    setHhBrowserBusy(true);
+    setHhBrowserError('');
+    setHhBrowserMessage('');
+    try {
+      const status = await action();
+      setHhBrowserStatus(status);
+      setHhBrowserMessage(successMessage);
+    } catch (requestError) {
+      setHhBrowserError(requestError.message || 'Операция HH Browser завершилась с ошибкой.');
+    } finally {
+      setHhBrowserBusy(false);
     }
   }
 
@@ -667,6 +729,10 @@ export default function SettingsPage() {
 
   const visibleResumes = approvedOnlyResume ? resumes.filter((item) => item.status === 'approved') : resumes;
   const visibleLetters = approvedOnlyLetter ? letters.filter((item) => item.status === 'approved') : letters;
+  const hhBrowserStatusMeta = HH_BROWSER_STATUS_META[hhBrowserStatus?.status] ?? {
+    label: hhBrowserStatus?.status || 'Unknown',
+    tone: 'neutral',
+  };
   const profileCompleteness = useMemo(() => {
     const points = [
       Boolean(profile.full_name),
@@ -712,6 +778,89 @@ export default function SettingsPage() {
         </button>
         <Link to="/recommendations" className="button button--ghost">Перейти к рекомендациям</Link>
       </div>
+
+      <Section title="HH Browser connection (foundation)" defaultOpen>
+        <p className="muted-text">
+          Foundation-only status panel. HH пароль не хранится в этом интерфейсе; реальный login/OTP flow будет добавлен
+          следующим шагом.
+        </p>
+        {hhBrowserLoading ? <Loading message="Обновляем HH Browser статус..." /> : null}
+        {hhBrowserError ? <ErrorBanner message={hhBrowserError} /> : null}
+        {hhBrowserMessage ? <p className="success-banner">{hhBrowserMessage}</p> : null}
+
+        <div className="settings-grid settings-grid--two">
+          <p>
+            <strong>Status:</strong>{' '}
+            <span className={`applications-status-chip applications-status-chip--${hhBrowserStatusMeta.tone}`}>
+              {hhBrowserStatusMeta.label}
+            </span>
+          </p>
+          <p><strong>Session present:</strong> {hhBrowserStatus?.session_present ? 'Yes' : 'No'}</p>
+          <p><strong>Last authenticated:</strong> {formatDateTime(hhBrowserStatus?.last_authenticated_at)}</p>
+          <p><strong>Last error:</strong> {hhBrowserStatus?.last_error_message || '—'}</p>
+        </div>
+
+        <div className="recommendations-toolbar">
+          <button
+            className="button"
+            type="button"
+            onClick={() => runHhBrowserAction(initHhBrowserConnection, 'HH Browser connection initiated.')}
+            disabled={hhBrowserBusy || hhBrowserLoading}
+          >
+            {hhBrowserBusy ? 'Updating...' : 'Connect HH'}
+          </button>
+          <button
+            className="button button--ghost"
+            type="button"
+            onClick={() => runHhBrowserAction(disconnectHhBrowserConnection, 'HH Browser disconnected.')}
+            disabled={hhBrowserBusy || hhBrowserLoading}
+          >
+            Disconnect HH
+          </button>
+          <button
+            className="button button--ghost"
+            type="button"
+            onClick={() => refreshHhBrowserStatus({ showSuccess: true })}
+            disabled={hhBrowserBusy || hhBrowserLoading}
+          >
+            Refresh status
+          </button>
+        </div>
+
+        {isHhBrowserFoundationMode ? (
+          <>
+            <p className="muted-text">
+              Dev/foundation placeholders for backend status transition checks (not final product UX).
+            </p>
+            <div className="recommendations-toolbar">
+              <button
+                className="button button--ghost"
+                type="button"
+                onClick={() => runHhBrowserAction(markHhBrowserAwaitingCode, 'HH Browser marked as awaiting code.')}
+                disabled={hhBrowserBusy || hhBrowserLoading}
+              >
+                Mark awaiting code
+              </button>
+              <button
+                className="button button--ghost"
+                type="button"
+                onClick={() => runHhBrowserAction(markHhBrowserConnected, 'HH Browser marked as connected.')}
+                disabled={hhBrowserBusy || hhBrowserLoading}
+              >
+                Mark connected
+              </button>
+              <button
+                className="button button--ghost button--danger"
+                type="button"
+                onClick={() => runHhBrowserAction(markHhBrowserFailed, 'HH Browser marked as failed.')}
+                disabled={hhBrowserBusy || hhBrowserLoading}
+              >
+                Mark failed
+              </button>
+            </div>
+          </>
+        ) : null}
+      </Section>
 
       <Section title="Интеграция HH (MVP)" defaultOpen>
         <p className="muted-text">

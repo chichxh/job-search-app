@@ -196,6 +196,29 @@ Import policy (MVP):
 - коллекции `experiences/skills/languages/links` работают в режиме controlled replace-per-section (delete + insert из HH);
 - это предотвращает хаотичные дубли и делает поведение предсказуемым.
 
+## HH browser connection foundation UI
+
+В `Settings` добавлен компактный status-блок для foundation слоя HH browser automation:
+
+- показывает backend status из `GET /api/v1/integrations/hh-browser/status`;
+- отображает состояния: `disconnected`, `connecting`, `awaiting_code`, `connected`, `requires_reauth`, `failed`;
+- показывает безопасные метаданные: `last_authenticated_at`, `session_present`, `last_error_message`;
+- базовые действия: `Connect HH` (`POST /connect/init`) и `Disconnect HH` (`POST /disconnect`).
+
+В dev/foundation режиме (например, Vite dev server) дополнительно доступны placeholder-кнопки:
+
+- `Mark awaiting code` (`POST /mark-awaiting-code`)
+- `Mark connected` (`POST /mark-connected`)
+- `Mark failed` (`POST /mark-failed`)
+
+Это только foundation UX: без real HH login/OTP формы и без embedded browser.  
+Ручная проверка переходов состояния:
+
+1. Открыть `/settings` под авторизованным пользователем.
+2. В блоке **HH Browser connection (foundation)** нажать `Connect HH` и проверить статус `connecting`.
+3. В dev/foundation режиме использовать `Mark awaiting code` → `Mark connected` → `Mark failed`.
+4. Нажать `Disconnect HH` и проверить возврат в `disconnected`.
+
 
 
 ### HH fallback JSON import (dev fixtures)
