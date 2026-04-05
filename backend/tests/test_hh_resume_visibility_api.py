@@ -138,3 +138,28 @@ def test_visibility_check_updates_current_mode_predictably(client, auth_headers,
     assert body["current_visibility_mode"] == "public_default"
     assert body["visibility_status"] == "updated"
     assert body["visibility_error_code"] is None
+
+
+def test_hide_from_all_is_idempotent_when_already_hidden(client, auth_headers, fake_db) -> None:
+    fake_db.add(
+        models.HHManagedResume(
+            user_id=1,
+            profile_id=1,
+            title="Backend Engineer",
+            status="created",
+            hh_resume_external_id="hh-resume-1",
+            desired_visibility_mode="hidden_from_all",
+            current_visibility_mode="hidden_from_all",
+            visibility_status="updated",
+            visibility_last_changed_at=datetime.now(timezone.utc),
+        )
+    )
+    _seed_connected_session(fake_db)
+    app.dependency_overrides[get_hh_resume_visibility_service] = _override_service(fake_db)
+
+    response = client.post("/api/v1/integrations/hh-browser/resumes/1/visibility/hide-from-all", headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["current_visibility_mode"] == "hidden_from_all"
+
+    action_runs = fake_db.query(models.HHAutomationActionRun).all()
+    assert any(item.action_type == "hide_visibility" and item.operation_code == "HH_DUPLICATE_PREVENTED" for item in action_runs)

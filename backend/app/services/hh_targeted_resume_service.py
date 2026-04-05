@@ -20,6 +20,7 @@ from app.db.models import (
     Vacancy,
 )
 from app.schemas.hh_browser_integration import HHCreateTargetedResumeRequest, HHTargetedResumePayload
+from app.services.hh_action_control_service import HHActionControlService
 
 
 class HHResumeAutomationError(Exception):
@@ -238,66 +239,125 @@ class HHCreateTargetedResumeService:
         self.db = db
         self.payload_builder = payload_builder
         self.automation_client = automation_client
+        self.action_control = HHActionControlService(db)
 
     def create_targeted_resume(self, *, user_id: int, request: HHCreateTargetedResumeRequest) -> tuple[HHManagedResume, HHTargetedResumePayload]:
-        profile = self._owned_profile(profile_id=request.profile_id, user_id=user_id)
-        connection = self._require_active_session(user_id=user_id)
-        vacancy = self._resolve_vacancy(request.vacancy_id)
-        source_resume_version = self._resolve_source_resume_version(
-            profile_id=profile.id,
-            source_resume_version_id=request.source_resume_version_id,
+        request_fingerprint = (
+            f"create_targeted_resume:{user_id}:{request.profile_id}:{request.vacancy_id or 'none'}:"
+            f"{request.source_resume_version_id or 'none'}:{(request.target_title or '').strip().casefold()}"
         )
-
-        payload = self.payload_builder.build(
-            profile=profile,
-            vacancy=vacancy,
-            source_resume_version=source_resume_version,
-            request=request,
-        )
-
-        managed = HHManagedResume(
+        action_decision = self.action_control.start_action(
             user_id=user_id,
-            profile_id=profile.id,
-            source_resume_version_id=source_resume_version.id if source_resume_version else None,
-            vacancy_id=vacancy.id if vacancy else None,
-            title=payload.profession_title,
-            status="draft_local" if request.dry_run else "creating",
-            desired_visibility_mode="hidden_from_all",
-            current_visibility_mode="unknown",
-            visibility_status="idle",
+            action_type="create_targeted_resume",
+            target_type="profile",
+            target_id=request.profile_id,
+            target_ref=f"vacancy:{request.vacancy_id}" if request.vacancy_id else None,
+            request_fingerprint=request_fingerprint,
+            min_interval_seconds=3,
+            max_concurrent_per_user=2,
         )
-        self.db.add(managed)
-        self.db.commit()
-        self.db.refresh(managed)
-
-        if request.dry_run:
+        reused_managed_resume_id = (action_decision.reused_context or {}).get("managed_resume_id")
+        if action_decision.action_run.status == "duplicate_prevented" and reused_managed_resume_id is not None:
+            managed = self.get_managed_resume(user_id=user_id, managed_resume_id=int(reused_managed_resume_id))
+            payload = HHTargetedResumePayload(
+                profession_title=managed.title or "Специалист",
+                summary="Duplicate request skipped; already completed managed resume is reused.",
+                education=[],
+                skills=[],
+                skill_level_hints={},
+                work_experience=[],
+                targeted_emphasis=[],
+            )
             return managed, payload
 
         try:
-            result = self.automation_client.create_targeted_resume(
-                user_id=user_id,
-                connection=connection,
-                payload=payload,
-                dry_run=False,
+            profile = self._owned_profile(profile_id=request.profile_id, user_id=user_id)
+            connection = self._require_active_session(user_id=user_id)
+            vacancy = self._resolve_vacancy(request.vacancy_id)
+            source_resume_version = self._resolve_source_resume_version(
+                profile_id=profile.id,
+                source_resume_version_id=request.source_resume_version_id,
             )
-        except HHResumeAutomationError as exc:
-            managed.status = "failed"
-            managed.last_error_code = exc.code[:64]
-            managed.last_error_message = "HH automation failed. Reconnect and retry."
+
+            payload = self.payload_builder.build(
+                profile=profile,
+                vacancy=vacancy,
+                source_resume_version=source_resume_version,
+                request=request,
+            )
+
+            managed = HHManagedResume(
+                user_id=user_id,
+                profile_id=profile.id,
+                source_resume_version_id=source_resume_version.id if source_resume_version else None,
+                vacancy_id=vacancy.id if vacancy else None,
+                title=payload.profession_title,
+                status="draft_local" if request.dry_run else "creating",
+                desired_visibility_mode="hidden_from_all",
+                current_visibility_mode="unknown",
+                visibility_status="idle",
+            )
+            self.db.add(managed)
             self.db.commit()
             self.db.refresh(managed)
-            return managed, payload
 
-        managed.status = "created"
-        managed.hh_resume_external_id = result.external_id
-        managed.hh_resume_url = result.resume_url
-        managed.title = result.title
-        managed.last_error_code = None
-        managed.last_error_message = None
-        managed.last_synced_at = datetime.now(timezone.utc)
-        self.db.commit()
-        self.db.refresh(managed)
-        return managed, payload
+            if request.dry_run:
+                self.action_control.finish_action(
+                    action_run=action_decision.action_run,
+                    status_value="completed",
+                    operation_code="HH_TARGETED_RESUME_DRY_RUN_COMPLETED",
+                    safe_summary="Targeted resume dry run completed without side effects",
+                    context_ref={"managed_resume_id": managed.id},
+                )
+                return managed, payload
+
+            try:
+                result = self.automation_client.create_targeted_resume(
+                    user_id=user_id,
+                    connection=connection,
+                    payload=payload,
+                    dry_run=False,
+                )
+            except HHResumeAutomationError as exc:
+                managed.status = "failed"
+                managed.last_error_code = exc.code[:64]
+                managed.last_error_message = "HH automation failed. Reconnect and retry."
+                self.db.commit()
+                self.db.refresh(managed)
+                self.action_control.finish_action(
+                    action_run=action_decision.action_run,
+                    status_value="retryable_failed",
+                    operation_code="HH_TARGETED_RESUME_RETRYABLE_FAILED",
+                    safe_summary=f"Targeted resume creation failed with code={exc.code[:32]}",
+                    context_ref={"managed_resume_id": managed.id},
+                )
+                return managed, payload
+
+            managed.status = "created"
+            managed.hh_resume_external_id = result.external_id
+            managed.hh_resume_url = result.resume_url
+            managed.title = result.title
+            managed.last_error_code = None
+            managed.last_error_message = None
+            managed.last_synced_at = datetime.now(timezone.utc)
+            self.db.commit()
+            self.db.refresh(managed)
+            self.action_control.finish_action(
+                action_run=action_decision.action_run,
+                status_value="completed",
+                operation_code="HH_TARGETED_RESUME_CREATED",
+                safe_summary="Targeted resume created and linked to HH external resume",
+                context_ref={"managed_resume_id": managed.id},
+            )
+            return managed, payload
+        except HTTPException:
+            self.action_control.finish_action(
+                action_run=action_decision.action_run,
+                status_value="failed",
+                operation_code="HH_TARGETED_RESUME_REJECTED",
+                safe_summary="Targeted resume action rejected by policy guard",
+            )
+            raise
 
     def list_managed_resumes(self, *, user_id: int) -> list[HHManagedResume]:
         items = self.db.query(HHManagedResume).all()

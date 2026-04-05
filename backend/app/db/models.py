@@ -199,6 +199,36 @@ class HHApplyRun(Base):
     )
 
 
+class HHAutomationActionRun(Base):
+    __tablename__ = "hh_automation_action_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    action_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    triggered_by: Mapped[str] = mapped_column(String(32), nullable=False, default="user", server_default="user")
+    target_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    target_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    target_ref: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    request_fingerprint: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="running", server_default="running")
+    operation_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    safe_summary: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    retry_of_action_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("hh_automation_action_runs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    parent_action_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("hh_automation_action_runs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    context_ref: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Profile(Base):
     __tablename__ = "profiles"
 

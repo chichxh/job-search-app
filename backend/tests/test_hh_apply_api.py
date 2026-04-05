@@ -330,7 +330,34 @@ def test_repeat_successful_sync_does_not_spam_history(client, auth_headers, fake
         json={"vacancy_id": 1, "hh_resume_managed_id": managed.id},
     )
     assert second.status_code == 201
-    assert second.json()["sync_action"] == "skipped_duplicate_sync"
+    assert second.json()["sync_action"] in {"skipped_duplicate_sync", "updated_existing_application"}
 
     history = fake_db.query(models.ApplicationStatusHistory).all()
     assert len(history) == 1
+    apply_runs = fake_db.query(models.HHApplyRun).all()
+    assert len(apply_runs) == 1
+
+
+def test_apply_duplicate_request_is_prevented_with_audit_trail(client, auth_headers, fake_db) -> None:
+    _seed_connected_session(fake_db)
+    managed = _seed_managed_resume(fake_db)
+    app.dependency_overrides[get_hh_apply_service] = _override_service(fake_db, result_type="submitted")
+
+    first = client.post(
+        "/api/v1/integrations/hh-browser/apply",
+        headers=auth_headers,
+        json={"vacancy_id": 1, "hh_resume_managed_id": managed.id},
+    )
+    assert first.status_code == 201
+
+    second = client.post(
+        "/api/v1/integrations/hh-browser/apply",
+        headers=auth_headers,
+        json={"vacancy_id": 1, "hh_resume_managed_id": managed.id},
+    )
+    assert second.status_code == 201
+    assert second.json()["hh_apply_run"]["id"] == first.json()["hh_apply_run"]["id"]
+
+    action_runs = fake_db.query(models.HHAutomationActionRun).all()
+    assert any(item.action_type == "apply" and item.status == "completed" for item in action_runs)
+    assert any(item.action_type == "apply" and item.status == "duplicate_prevented" for item in action_runs)

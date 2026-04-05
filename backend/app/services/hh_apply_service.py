@@ -18,6 +18,7 @@ from app.db.models import (
     Vacancy,
 )
 from app.schemas.hh_browser_integration import HHApplyRequest
+from app.services.hh_action_control_service import HHActionControlService
 from app.services.hh_apply_application_sync_service import HHApplyApplicationSyncService
 
 logger = logging.getLogger(__name__)
@@ -97,40 +98,59 @@ class HHApplyService:
         self.db = db
         self.automation_client = automation_client
         self.sync_service = sync_service or HHApplyApplicationSyncService(db)
+        self.action_control = HHActionControlService(db)
 
     def apply(self, *, user_id: int, request: HHApplyRequest) -> HHApplyRun:
         return self.apply_with_outcome(user_id=user_id, request=request).apply_run
 
     def apply_with_outcome(self, *, user_id: int, request: HHApplyRequest) -> HHApplyExecutionOutcome:
         started_perf = time.perf_counter()
-        connection = self._require_active_session(user_id=user_id)
-        vacancy = self._require_vacancy(request.vacancy_id)
-        managed_resume = self._require_managed_resume(
+        request_fingerprint = f"apply:{user_id}:{request.vacancy_id}:{request.hh_resume_managed_id}"
+        action_decision = self.action_control.start_action(
             user_id=user_id,
-            managed_resume_id=request.hh_resume_managed_id,
+            action_type="apply",
+            target_type="managed_resume_vacancy",
+            target_id=request.hh_resume_managed_id,
+            target_ref=f"vacancy:{request.vacancy_id}",
+            request_fingerprint=request_fingerprint,
+            min_interval_seconds=3,
+            max_concurrent_per_user=2,
         )
-        profile = self._require_owned_profile(user_id=user_id, profile_id=managed_resume.profile_id)
-
-        cover_letter = self._resolve_cover_letter_version(
-            user_id=user_id,
-            profile_id=profile.id,
-            cover_letter_version_id=request.cover_letter_version_id,
-        )
-        cover_letter_text = self._resolve_cover_letter_text(request=request, cover_letter=cover_letter)
-
-        if request.force_visibility_check:
-            self._apply_visibility_policy(managed_resume=managed_resume)
-
-        apply_run = self._prepare_apply_run(
-            user_id=user_id,
-            profile_id=profile.id,
-            vacancy_id=vacancy.id,
-            managed_resume_id=managed_resume.id,
-            cover_letter_version_id=cover_letter.id if cover_letter else None,
-            hh_vacancy_url=vacancy.url,
-        )
+        if action_decision.action_run.status == "duplicate_prevented":
+            reused_apply_run_id = (action_decision.reused_context or {}).get("apply_run_id")
+            if reused_apply_run_id:
+                reused = self.get_run(user_id=user_id, apply_run_id=int(reused_apply_run_id))
+                sync_result = self._sync_to_local_application(reused)
+                return HHApplyExecutionOutcome(apply_run=reused, sync_result=sync_result)
 
         try:
+            connection = self._require_active_session(user_id=user_id)
+            vacancy = self._require_vacancy(request.vacancy_id)
+            managed_resume = self._require_managed_resume(
+                user_id=user_id,
+                managed_resume_id=request.hh_resume_managed_id,
+            )
+            profile = self._require_owned_profile(user_id=user_id, profile_id=managed_resume.profile_id)
+
+            cover_letter = self._resolve_cover_letter_version(
+                user_id=user_id,
+                profile_id=profile.id,
+                cover_letter_version_id=request.cover_letter_version_id,
+            )
+            cover_letter_text = self._resolve_cover_letter_text(request=request, cover_letter=cover_letter)
+
+            if request.force_visibility_check:
+                self._apply_visibility_policy(managed_resume=managed_resume)
+
+            apply_run = self._prepare_apply_run(
+                user_id=user_id,
+                profile_id=profile.id,
+                vacancy_id=vacancy.id,
+                managed_resume_id=managed_resume.id,
+                cover_letter_version_id=cover_letter.id if cover_letter else None,
+                hh_vacancy_url=vacancy.url,
+            )
+
             self._set_status(apply_run, "opening_vacancy")
             self._set_status(apply_run, "awaiting_resume_selection")
             if cover_letter_text:
@@ -155,6 +175,13 @@ class HHApplyService:
             self.db.commit()
             self.db.refresh(apply_run)
             sync_result = self._sync_to_local_application(apply_run)
+            self.action_control.finish_action(
+                action_run=action_decision.action_run,
+                status_value="completed",
+                operation_code="HH_APPLY_COMPLETED",
+                safe_summary=f"HH apply completed with result={apply_run.result_type or 'unknown'}",
+                context_ref={"apply_run_id": apply_run.id},
+            )
             logger.info(
                 "hh_apply_run_submitted user_id=%s vacancy_id=%s hh_resume_managed_id=%s apply_run_id=%s result_type=%s duration_ms=%s",
                 user_id,
@@ -165,6 +192,14 @@ class HHApplyService:
                 int((time.perf_counter() - started_perf) * 1000),
             )
             return HHApplyExecutionOutcome(apply_run=apply_run, sync_result=sync_result)
+        except HTTPException:
+            self.action_control.finish_action(
+                action_run=action_decision.action_run,
+                status_value="cancelled",
+                operation_code="HH_APPLY_REJECTED",
+                safe_summary="HH apply request rejected by policy guard",
+            )
+            raise
         except HHApplyAutomationError as exc:
             apply_run.status = "retryable_failed" if exc.retryable else "failed"
             apply_run.result_type = exc.code[:64]
@@ -174,6 +209,13 @@ class HHApplyService:
             self.db.commit()
             self.db.refresh(apply_run)
             sync_result = self._sync_to_local_application(apply_run)
+            self.action_control.finish_action(
+                action_run=action_decision.action_run,
+                status_value="retryable_failed" if exc.retryable else "failed",
+                operation_code="HH_APPLY_RETRYABLE_FAILED" if exc.retryable else "HH_APPLY_TERMINAL_FAILED",
+                safe_summary=f"HH apply failed with code={exc.code[:32]}",
+                context_ref={"apply_run_id": apply_run.id},
+            )
             logger.warning(
                 "hh_apply_run_failed user_id=%s vacancy_id=%s hh_resume_managed_id=%s apply_run_id=%s result_type=%s duration_ms=%s",
                 user_id,
