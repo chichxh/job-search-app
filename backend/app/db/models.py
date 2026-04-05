@@ -293,6 +293,14 @@ class Application(Base):
     cover_letter_version_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("cover_letter_versions.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    last_hh_apply_run_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("hh_apply_runs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    hh_managed_resume_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("hh_managed_resumes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    external_apply_status: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    last_external_apply_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
@@ -301,6 +309,7 @@ class Application(Base):
 
 class ApplicationStatusHistory(Base):
     __tablename__ = "application_status_history"
+    __table_args__ = (UniqueConstraint("hh_apply_run_id", name="uq_application_status_history_hh_apply_run_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     application_id: Mapped[int] = mapped_column(
@@ -309,6 +318,9 @@ class ApplicationStatusHistory(Base):
     from_status: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     to_status: Mapped[str] = mapped_column(String(32), nullable=False)
     note: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    hh_apply_run_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("hh_apply_runs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 

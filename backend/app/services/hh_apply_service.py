@@ -18,6 +18,7 @@ from app.db.models import (
     Vacancy,
 )
 from app.schemas.hh_browser_integration import HHApplyRequest
+from app.services.hh_apply_application_sync_service import HHApplyApplicationSyncService
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +81,16 @@ class HHApplyAutomationClientStub:
 
 
 class HHApplyService:
-    def __init__(self, db: Session, *, automation_client: HHApplyAutomationClient) -> None:
+    def __init__(
+        self,
+        db: Session,
+        *,
+        automation_client: HHApplyAutomationClient,
+        sync_service: HHApplyApplicationSyncService | None = None,
+    ) -> None:
         self.db = db
         self.automation_client = automation_client
+        self.sync_service = sync_service or HHApplyApplicationSyncService(db)
 
     def apply(self, *, user_id: int, request: HHApplyRequest) -> HHApplyRun:
         started_perf = time.perf_counter()
@@ -135,13 +143,14 @@ class HHApplyService:
                 dry_run=request.dry_run,
             )
 
-            apply_run.status = "submitted"
+            apply_run.status = "already_applied" if result.result_type == "already_applied" else "submitted"
             apply_run.result_type = result.result_type[:64]
             apply_run.result_message = (result.result_message or "Apply completed")[:160]
             apply_run.hh_response_ref = self._safe_response_ref(result.response_ref)
             apply_run.finished_at = self._now()
             self.db.commit()
             self.db.refresh(apply_run)
+            self._sync_to_local_application(apply_run)
             logger.info(
                 "hh_apply_run_submitted user_id=%s vacancy_id=%s hh_resume_managed_id=%s apply_run_id=%s result_type=%s duration_ms=%s",
                 user_id,
@@ -160,6 +169,7 @@ class HHApplyService:
             apply_run.finished_at = self._now()
             self.db.commit()
             self.db.refresh(apply_run)
+            self._sync_to_local_application(apply_run)
             logger.warning(
                 "hh_apply_run_failed user_id=%s vacancy_id=%s hh_resume_managed_id=%s apply_run_id=%s result_type=%s duration_ms=%s",
                 user_id,
@@ -181,6 +191,10 @@ class HHApplyService:
         if item is None or item.user_id != user_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
         return item
+
+    def sync_run_to_application(self, *, user_id: int, apply_run_id: int):
+        run = self.get_run(user_id=user_id, apply_run_id=apply_run_id)
+        return self.sync_service.sync_apply_run(apply_run=run)
 
     def _resolve_cover_letter_text(self, *, request: HHApplyRequest, cover_letter: CoverLetterVersion | None) -> str | None:
         if request.cover_letter_text is not None:
@@ -279,3 +293,14 @@ class HHApplyService:
 
     def _now(self) -> datetime:
         return datetime.now(timezone.utc)
+
+    def _sync_to_local_application(self, apply_run: HHApplyRun) -> None:
+        try:
+            self.sync_service.sync_apply_run(apply_run=apply_run)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "hh_apply_sync_failed apply_run_id=%s profile_id=%s vacancy_id=%s",
+                apply_run.id,
+                apply_run.profile_id,
+                apply_run.vacancy_id,
+            )

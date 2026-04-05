@@ -95,6 +95,7 @@ HH_APPLY_RUN_STATUSES = (
     "awaiting_cover_letter",
     "submitting",
     "submitted",
+    "already_applied",
     "failed",
     "retryable_failed",
 )
@@ -243,3 +244,12 @@ class HHApplyRunRead(BaseModel):
         if value not in HH_APPLY_RUN_STATUSES:
             raise ValueError("Unsupported apply status")
         return value
+
+
+class HHApplyRunSyncResponse(BaseModel):
+    apply_run_id: int
+    synced: bool
+    reason: str
+    application_id: int | None = None
+    application_status: str | None = None
+

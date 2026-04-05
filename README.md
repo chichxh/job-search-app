@@ -188,9 +188,29 @@ Manual сценарий MVP:
 - `retryable_failed` — безопасно повторить после восстановления HH сессии/контекста;
 - `already_applied` — calm info state (не показывается как generic error).
 
+### Sync policy: HH apply -> local applications funnel (MVP)
+
+Логика синхронизации теперь явная и локальная (без двустороннего sync с HH кабинетом):
+
+- `submitted`:
+  - upsert `applications` по `(profile_id, vacancy_id)`;
+  - статус локальной заявки выставляется в `applied`;
+  - обновляются связи `last_hh_apply_run_id`, `hh_managed_resume_id`, `cover_letter_version_id`, `external_apply_status=submitted`, `last_external_apply_at`;
+  - пишется запись в `application_status_history` c `hh_apply_run_id`.
+- `already_applied`:
+  - дубликаты `applications` не создаются;
+  - локальная заявка синхронизируется в `applied`, но `external_apply_status=already_applied` (предсказуемое отражение результата HH).
+- `failed` / `retryable_failed`:
+  - локальный статус не переводится в `applied`.
+
+Идемпотентность:
+
+- повторный sync одного и того же `hh_apply_run` не создает дубликаты applications;
+- повторный sync не шумит history, так как `application_status_history.hh_apply_run_id` уникален.
+
 ### Важно для текущего шага roadmap
 
-- ❗ В этом шаге **нет automatic sync** в applications funnel.
+- ❗ Это **локальный funnel sync**, а не enterprise CRM/ATS и не full account sync HH.
 - ❗ Нет bulk apply UI.
 - ❗ Нет post-apply chat actions.
 
@@ -209,7 +229,7 @@ Manual сценарий MVP:
    - `updated/finished`,
    - `safe message`,
    - ссылку на HH vacancy (если есть).
-9. Подтвердить, что запись в applications funnel автоматически не создаётся/не синхронизируется на этом шаге.
+9. Подтвердить, что успешный apply (`submitted`/`already_applied`) появился в `applications` и получил запись в `application_status_history`.
 
 ## HH clusters and extra params
 
