@@ -149,6 +149,8 @@ def test_create_targeted_creates_record_and_created_status(client, auth_headers,
     body = response.json()["managed_resume"]
     assert body["status"] == "created"
     assert body["hh_resume_external_id"] == "hh-1-resume-1"
+    assert body["hh_resume_url"] == "https://hh.ru/resume/abc123"
+    assert body["title"] == "Senior Backend Engineer"
 
 
 def test_foreign_access_to_managed_resume_denied(client, auth_headers, foreign_auth_headers, fake_db) -> None:
