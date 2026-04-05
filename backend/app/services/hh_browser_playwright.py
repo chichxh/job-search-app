@@ -4,6 +4,7 @@ import os
 from typing import Any, Literal
 
 from app.services.hh_browser_connect_service import HHBrowserAutomationError, HHLoginPageAdapter, HHLoginStep, HHSessionProbeAdapter
+from app.services.hh_browser_error_taxonomy import AutomationErrorCode
 from app.services.hh_browser_page_objects import HHLoginFlowPageModel, NormalizedAutomationError, to_legacy_step
 
 
@@ -92,12 +93,16 @@ class PlaywrightHHLoginAdapter(HHLoginPageAdapter):
             self._runtime.page.wait_for_timeout(500)
             elapsed = 0
             while elapsed <= self._step_wait_timeout_ms:
-                step = to_legacy_step(self._flow.detect_step().step_code)
+                step = to_legacy_step(self._flow.ensure_step_detected().step_code)
                 if step != "failed":
                     return step
                 self._runtime.page.wait_for_timeout(250)
                 elapsed += 250
-            return "failed"
+            raise HHBrowserAutomationError(
+                AutomationErrorCode.PAGE_NOT_RECOGNIZED,
+                "Unable to detect a stable HH login step within timeout",
+                debug_summary=self._flow.safe_summary(),
+            )
         except NormalizedAutomationError as exc:
             raise HHBrowserAutomationError(exc.code, exc.message, debug_summary=exc.debug_summary) from exc
         except self._runtime.playwright_timeout_error as exc:

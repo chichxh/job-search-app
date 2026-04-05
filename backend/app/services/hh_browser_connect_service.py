@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import HHBrowserConnection
 from app.schemas.hh_browser_integration import HHBrowserConnectionDebug, HHBrowserConnectionSummary
+from app.services.hh_browser_error_taxonomy import normalize_automation_error_code
 from app.utils.log_safety import redact_text
 
 logger = logging.getLogger(__name__)
@@ -45,14 +46,14 @@ _ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "failed": {"connecting", "disconnected"},
 }
 
-_RETRYABLE_AUTOMATION_CODES = {"TRANSIENT_NAVIGATION", "TRANSIENT_WAIT"}
-_TRANSIENT_VALIDATION_CODES = {"TRANSIENT_NAVIGATION", "TRANSIENT_WAIT", "NETWORK_ERROR"}
+_RETRYABLE_AUTOMATION_CODES = {"TRANSIENT_NAVIGATION", "TRANSIENT_WAIT", "transient_navigation", "transient_wait"}
+_TRANSIENT_VALIDATION_CODES = {"TRANSIENT_NAVIGATION", "TRANSIENT_WAIT", "NETWORK_ERROR", "transient_navigation", "transient_wait", "network_error"}
 
 
 class HHBrowserAutomationError(Exception):
     def __init__(self, code: str, message: str, *, debug_summary: dict[str, Any] | None = None) -> None:
         super().__init__(message)
-        self.code = code
+        self.code = normalize_automation_error_code(code)
         self.message = message
         self.debug_summary = debug_summary or {}
 

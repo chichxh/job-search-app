@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from app.services.hh_browser_page_objects import HHLoginFlowPageModel, HHNavigationHelper, to_legacy_step
+from app.services.hh_browser_error_taxonomy import AutomationErrorCode
+from app.services.hh_browser_page_objects import (
+    HHLoginFlowPageModel,
+    HHNavigationHelper,
+    NormalizedAutomationError,
+    maybe_capture_screenshot_on_failure,
+    to_legacy_step,
+)
 
 
 @dataclass
@@ -36,6 +43,7 @@ class FakePage:
     clicked: list[str] = field(default_factory=list)
     waits: list[int] = field(default_factory=list)
     navigated: list[str] = field(default_factory=list)
+    screenshots: list[str] = field(default_factory=list)
 
     def title(self) -> str:
         return self.page_title
@@ -61,6 +69,9 @@ class FakePage:
 
     def wait_for_timeout(self, timeout_ms: int) -> None:
         self.waits.append(timeout_ms)
+
+    def screenshot(self, *, path: str, full_page: bool = True) -> None:
+        self.screenshots.append(path)
 
 
 def test_detect_identifier_step() -> None:
@@ -213,7 +224,7 @@ def test_vacancy_and_apply_surface_detection() -> None:
 
 
 def test_navigation_helper_go_to_resumes_uses_click_then_goto_fallback() -> None:
-    page_click = FakePage(visible={"text:Резюме": 1})
+    page_click = FakePage(visible={"text:Резюме": 1, "css:[data-qa='resume-list']": 1})
     helper_click = HHNavigationHelper(page=page_click)
     helper_click.go_to_resumes()
     assert "text:Резюме" in page_click.clicked
@@ -225,7 +236,7 @@ def test_navigation_helper_go_to_resumes_uses_click_then_goto_fallback() -> None
 
 
 def test_navigation_helper_open_vacancy_and_apply_orchestration() -> None:
-    page = FakePage(visible={"role:button:Откликнуться": 1})
+    page = FakePage(visible={"role:button:Откликнуться": 1, "css:[data-qa='vacancy-response-popup']": 1})
     helper = HHNavigationHelper(page=page)
 
     helper.open_vacancy("https://hh.ru/vacancy/999")
@@ -233,3 +244,55 @@ def test_navigation_helper_open_vacancy_and_apply_orchestration() -> None:
 
     assert page.navigated == ["https://hh.ru/vacancy/999"]
     assert "role:button:Откликнуться" in page.clicked
+
+
+def test_login_diagnostics_report_includes_selector_health_and_fallback() -> None:
+    page = FakePage(visible={"css:input[type='email']": 1})
+    flow = HHLoginFlowPageModel(page=page)
+
+    report = flow.diagnostics_report()
+
+    email_health = report["selector_health"]["identifier_email"]["selector_health"]["identifier_email"]
+    assert report["current_detected_step"] == "identifier"
+    assert email_health["matched"] is True
+    assert email_health["used_fallback"] is True
+    assert email_health["matched_query"] == "css:input[type='email']"
+
+
+def test_selector_health_summary_reports_missing_required_controls() -> None:
+    page = FakePage(visible={})
+    helper = HHNavigationHelper(page=page)
+
+    summary = helper.selector_health_summary()
+
+    assert summary["current_detected_page"] == "unknown"
+    assert summary["pages"]["vacancy"]["missing_required_controls"] == ["vacancy_markers"]
+
+
+def test_navigation_failures_map_to_taxonomy_codes() -> None:
+    page_vacancy = FakePage(visible={})
+    helper_vacancy = HHNavigationHelper(page=page_vacancy)
+    try:
+        helper_vacancy.open_vacancy("https://hh.ru/other/123")
+        assert False, "Expected navigation failure"
+    except NormalizedAutomationError as exc:
+        assert exc.code == AutomationErrorCode.UNEXPECTED_NAVIGATION
+
+    page_apply = FakePage(visible={"css:[data-qa='vacancy-title']": 1, "role:button:Откликнуться": 1})
+    helper_apply = HHNavigationHelper(page=page_apply)
+    try:
+        helper_apply.open_apply_surface()
+        assert False, "Expected apply failure"
+    except NormalizedAutomationError as exc:
+        assert exc.code == AutomationErrorCode.APPLY_SURFACE_NOT_AVAILABLE
+
+
+def test_screenshot_hook_is_safe_and_does_not_leak_credentials(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("HH_AUTOMATION_SCREENSHOT_DIR", str(tmp_path))
+    page = FakePage(url="https://hh.ru/account/login?token=secret")
+
+    screenshot_path = maybe_capture_screenshot_on_failure(page, prefix="submit_identifier failure")
+
+    assert screenshot_path is not None
+    assert "secret" not in screenshot_path
+    assert page.screenshots and page.screenshots[0] == screenshot_path
