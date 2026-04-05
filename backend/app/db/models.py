@@ -137,6 +137,31 @@ class HHBrowserConnection(Base):
     )
 
 
+class HHManagedResume(Base):
+    __tablename__ = "hh_managed_resumes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_resume_version_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("resume_versions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    vacancy_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("vacancies.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    hh_resume_external_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
+    hh_resume_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft_local", server_default="draft_local")
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    last_error_message: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Profile(Base):
     __tablename__ = "profiles"
 

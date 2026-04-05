@@ -7,14 +7,22 @@ from app.api.dependencies.auth import get_current_user
 from app.db.models import User
 from app.db.session import get_db
 from app.schemas.hh_browser_integration import (
+    HHCreateTargetedResumeRequest,
+    HHCreateTargetedResumeResponse,
     HHBrowserConnectStartRequest,
     HHBrowserConnectionSummary,
+    HHManagedResumeRead,
     HHBrowserSessionValidationResponse,
     HHBrowserSubmitCodeRequest,
     HHBrowserSubmitIdentifierRequest,
     HHBrowserSubmitPasswordRequest,
 )
 from app.services.hh_browser_connect_service import HHBrowserConnectService, InMemoryRuntimeRegistry, LocalSessionStorage
+from app.services.hh_targeted_resume_service import (
+    HHCreateTargetedResumeService,
+    HHTargetedPayloadBuilder,
+    HHResumeAutomationClientStub,
+)
 from app.services.hh_browser_playwright import PlaywrightAdapterFactory, PlaywrightSessionProbeFactory
 
 router = APIRouter(prefix="/integrations/hh-browser", tags=["hh-browser"], dependencies=[Depends(get_current_user)])
@@ -23,6 +31,7 @@ _runtime_registry = InMemoryRuntimeRegistry(timeout_seconds=600)
 _session_storage = LocalSessionStorage()
 _adapter_factory = PlaywrightAdapterFactory()
 _probe_factory = PlaywrightSessionProbeFactory()
+_resume_automation_client = HHResumeAutomationClientStub()
 
 
 def get_hh_connect_service(db: Session = Depends(get_db)) -> HHBrowserConnectService:
@@ -32,6 +41,13 @@ def get_hh_connect_service(db: Session = Depends(get_db)) -> HHBrowserConnectSer
         runtime_registry=_runtime_registry,
         session_storage=_session_storage,
         session_probe_factory=_probe_factory,
+    )
+
+def get_hh_targeted_resume_service(db: Session = Depends(get_db)) -> HHCreateTargetedResumeService:
+    return HHCreateTargetedResumeService(
+        db,
+        payload_builder=HHTargetedPayloadBuilder(db),
+        automation_client=_resume_automation_client,
     )
 
 
@@ -146,3 +162,34 @@ def hh_browser_disconnect_legacy(
     service: HHBrowserConnectService = Depends(get_hh_connect_service),
 ) -> HHBrowserConnectionSummary:
     return service.cancel(user_id=current_user.id)
+
+
+@router.post("/resumes/create-targeted", response_model=HHCreateTargetedResumeResponse, status_code=201)
+def create_targeted_resume(
+    payload: HHCreateTargetedResumeRequest,
+    current_user: User = Depends(get_current_user),
+    service: HHCreateTargetedResumeService = Depends(get_hh_targeted_resume_service),
+) -> HHCreateTargetedResumeResponse:
+    managed_resume, targeted_payload = service.create_targeted_resume(user_id=current_user.id, request=payload)
+    return HHCreateTargetedResumeResponse(
+        managed_resume=HHManagedResumeRead.model_validate(managed_resume),
+        payload_preview=targeted_payload if payload.dry_run else None,
+    )
+
+
+@router.get("/resumes", response_model=list[HHManagedResumeRead])
+def list_managed_resumes(
+    current_user: User = Depends(get_current_user),
+    service: HHCreateTargetedResumeService = Depends(get_hh_targeted_resume_service),
+) -> list[HHManagedResumeRead]:
+    return [HHManagedResumeRead.model_validate(item) for item in service.list_managed_resumes(user_id=current_user.id)]
+
+
+@router.get("/resumes/{managed_resume_id}", response_model=HHManagedResumeRead)
+def get_managed_resume(
+    managed_resume_id: int,
+    current_user: User = Depends(get_current_user),
+    service: HHCreateTargetedResumeService = Depends(get_hh_targeted_resume_service),
+) -> HHManagedResumeRead:
+    item = service.get_managed_resume(user_id=current_user.id, managed_resume_id=managed_resume_id)
+    return HHManagedResumeRead.model_validate(item)

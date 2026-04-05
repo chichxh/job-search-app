@@ -2,6 +2,40 @@
 
 Этот PR завершает шаг `connect/login/OTP flow` с акцентом на устойчивость runtime orchestration и безопасную диагностику.
 
+## Create targeted HH resume MVP (backend foundation)
+
+Добавлен backend foundation для создания таргетированного резюме в HH через browser orchestration contract:
+
+- tracking-сущность `hh_managed_resumes` для хранения локального состояния артефактов HH (`draft_local`, `creating`, `created`, `failed`, `stale`);
+- endpoint создания:
+  - `POST /api/v1/integrations/hh-browser/resumes/create-targeted`;
+- endpoint просмотра:
+  - `GET /api/v1/integrations/hh-browser/resumes`;
+  - `GET /api/v1/integrations/hh-browser/resumes/{id}`;
+- deterministic payload builder (без heavy AI rewriting), который собирает:
+  - target title/profession,
+  - summary,
+  - education,
+  - skills (+ optional уровни),
+  - work experience,
+  - targeted emphasis.
+
+В текущем MVP orchestration уже:
+
+1. проверяет активную HH browser session;
+2. валидирует ownership profile/source resume/vacancy;
+3. создает `hh_managed_resumes` запись;
+4. вызывает automation client contract;
+5. сохраняет `hh_resume_external_id/url/title` при успехе;
+6. сохраняет safe error summary при неуспехе.
+
+Явно **не входит** в текущий scope:
+
+- fill-and-submit всего HH resume constructor wizard;
+- visibility control automation;
+- vacancy respond/apply automation;
+- full reverse-sync резюме из HH в локальную модель.
+
 ## Что усилено
 
 - Централизован selector/heuristics layer для HH login page в `PlaywrightHHLoginAdapter`.
