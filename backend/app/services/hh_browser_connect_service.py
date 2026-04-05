@@ -49,18 +49,13 @@ _ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "failed": {"connecting", "disconnected"},
 }
 
-_RETRYABLE_AUTOMATION_CODES = {"TRANSIENT_NAVIGATION", "TRANSIENT_WAIT", "transient_navigation", "transient_wait"}
-_TRANSIENT_VALIDATION_CODES = {"TRANSIENT_NAVIGATION", "TRANSIENT_WAIT", "NETWORK_ERROR", "transient_navigation", "transient_wait", "network_error"}
+_RETRYABLE_AUTOMATION_CODES = {"transient_navigation", "transient_wait"}
+_TRANSIENT_VALIDATION_CODES = {"transient_navigation", "transient_wait", "network_error"}
 _USER_ERROR_MESSAGES: dict[str, str] = {
-    "PLAYWRIGHT_UNAVAILABLE": "Browser automation runtime is unavailable.",
     "playwright_unavailable": "Browser automation runtime is unavailable.",
-    "TRANSIENT_NAVIGATION": "HH login page is temporarily unavailable. Retry in a moment.",
     "transient_navigation": "HH login page is temporarily unavailable. Retry in a moment.",
-    "TRANSIENT_WAIT": "HH login step timed out. Retry in a moment.",
     "transient_wait": "HH login step timed out. Retry in a moment.",
-    "SESSION_PERSIST_FAILED": "Unable to persist HH session. Restart connect flow.",
     "session_persist_failed": "Unable to persist HH session. Restart connect flow.",
-    "UNRECOGNIZED_STATE": "Unable to continue HH login flow. Restart connect flow.",
     "page_not_recognized": "Unable to continue HH login flow. Restart connect flow.",
 }
 
@@ -463,7 +458,7 @@ class HHBrowserConnectService:
         self._transition(connection, "requires_reauth")
         connection.requires_reauth = True
         connection.last_checked_at = self._now()
-        connection.last_error_code = "REAUTH_REQUIRED_MANUAL"
+        connection.last_error_code = "reauth_required_manual"
         connection.last_error_message = "Manual reauthentication requested"
         self.db.commit()
         return self._summary(connection)
@@ -477,7 +472,7 @@ class HHBrowserConnectService:
                 if exc.code not in _RETRYABLE_AUTOMATION_CODES or attempt >= attempts:
                     raise
                 logger.warning("HH transient failure | operation=%s attempt=%s code=%s", operation, attempt, exc.code)
-        raise HHBrowserAutomationError("TRANSIENT_WAIT", "Retry budget exhausted")
+        raise HHBrowserAutomationError("transient_wait", "Retry budget exhausted")
 
     def _apply_step(self, connection: HHBrowserConnection, step: HHLoginStep) -> None:
         if step == "connected":
@@ -487,7 +482,7 @@ class HHBrowserConnectService:
             try:
                 session_ref = self.session_storage.save(user_id=connection.user_id, connection_id=connection.id, state=session_state)
             except (OSError, ValueError) as exc:
-                raise HHBrowserAutomationError("SESSION_PERSIST_FAILED", "Unable to store HH session state") from exc
+                raise HHBrowserAutomationError("session_persist_failed", "Unable to store HH session state") from exc
             self._transition(connection, "connected")
             connection.session_state_ref = session_ref
             connection.last_authenticated_at = self._now()
@@ -506,7 +501,7 @@ class HHBrowserConnectService:
             debug_summary = runtime.adapter.safe_debug_summary() if runtime is not None else {}
             self._mark_failed(
                 connection,
-                error_code="UNRECOGNIZED_STATE",
+                error_code="page_not_recognized",
                 error_message="Unable to determine HH login step",
                 debug_summary=debug_summary,
             )
@@ -526,7 +521,7 @@ class HHBrowserConnectService:
         self._transition(connection, "failed")
         connection.requires_reauth = False
         connection.last_checked_at = self._now()
-        connection.last_error_code = redact_text(error_code, max_len=64)
+        connection.last_error_code = redact_text(normalize_automation_error_code(error_code), max_len=64)
         connection.last_error_message = redact_text(error_message, max_len=160)
         self._close_runtime(connection.id)
         self.db.commit()
@@ -544,17 +539,17 @@ class HHBrowserConnectService:
     def _runtime_or_fail(self, connection: HHBrowserConnection) -> RuntimeSession:
         runtime = self.runtime_registry.get(connection.id)
         if runtime is None:
-            self._mark_failed(connection, error_code="SESSION_TIMEOUT", error_message="Live browser session expired")
+            self._mark_failed(connection, error_code="session_timeout", error_message="Live browser session expired")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"code": "SESSION_TIMEOUT", "message": "Live browser session expired, restart connect flow"},
+                detail={"code": "session_timeout", "message": "Live browser session expired, restart connect flow"},
             )
         return runtime
 
     def _expire_stale_runtime(self, connection: HHBrowserConnection) -> None:
         runtime = self.runtime_registry.get(connection.id)
         if runtime is None and connection.status in {"connecting", "awaiting_identifier", "awaiting_password", "awaiting_code"}:
-            self._mark_failed(connection, error_code="SESSION_TIMEOUT", error_message="Live browser session expired")
+            self._mark_failed(connection, error_code="session_timeout", error_message="Live browser session expired")
 
     def _close_runtime(self, connection_id: int) -> None:
         runtime = self.runtime_registry.pop(connection_id)
@@ -573,14 +568,14 @@ class HHBrowserConnectService:
         if not connection.session_state_ref:
             return HHSessionValidationResult(
                 outcome="invalid_storage",
-                error_code="SESSION_STATE_MISSING",
+                error_code="session_state_missing",
                 error_message="No persisted HH browser session",
             )
 
         if connection.session_expires_at and connection.session_expires_at <= now:
             return HHSessionValidationResult(
                 outcome="expired",
-                error_code="SESSION_EXPIRED",
+                error_code="session_expired",
                 error_message="Persisted HH browser session reached cookie expiry",
                 clear_session_ref=True,
             )
@@ -590,14 +585,14 @@ class HHBrowserConnectService:
         except FileNotFoundError:
             return HHSessionValidationResult(
                 outcome="invalid_storage",
-                error_code="SESSION_STATE_NOT_FOUND",
+                error_code="session_state_not_found",
                 error_message="Persisted HH browser session was not found",
                 clear_session_ref=True,
             )
         except (json.JSONDecodeError, ValueError, OSError):
             return HHSessionValidationResult(
                 outcome="invalid_storage",
-                error_code="SESSION_STATE_CORRUPTED",
+                error_code="session_state_corrupted",
                 error_message="Persisted HH browser session is corrupted",
                 clear_session_ref=True,
             )
@@ -606,7 +601,7 @@ class HHBrowserConnectService:
         if detected_expiry and detected_expiry <= now:
             return HHSessionValidationResult(
                 outcome="expired",
-                error_code="SESSION_EXPIRED",
+                error_code="session_expired",
                 error_message="Persisted HH browser session reached cookie expiry",
                 clear_session_ref=True,
                 detected_session_expires_at=detected_expiry,
@@ -619,9 +614,7 @@ class HHBrowserConnectService:
             finally:
                 probe.close()
         except HHBrowserAutomationError as exc:
-            outcome: HHSessionValidationOutcome = (
-                "network/transient_failure" if exc.code in _TRANSIENT_VALIDATION_CODES else "network/transient_failure"
-            )
+            outcome: HHSessionValidationOutcome = "network/transient_failure"
             return HHSessionValidationResult(
                 outcome=outcome,
                 error_code=exc.code,
@@ -637,7 +630,7 @@ class HHBrowserConnectService:
 
         return HHSessionValidationResult(
             outcome="logged_out",
-            error_code="SESSION_LOGGED_OUT",
+            error_code="session_logged_out",
             error_message="Stored HH session is no longer authenticated",
             clear_session_ref=True,
             detected_session_expires_at=detected_expiry,
@@ -668,7 +661,7 @@ class HHBrowserConnectService:
         if result.outcome in {"expired", "logged_out"}:
             self._transition(connection, "requires_reauth")
             connection.requires_reauth = True
-            connection.last_error_code = redact_text(result.error_code or "SESSION_REAUTH_REQUIRED", max_len=64)
+            connection.last_error_code = redact_text(result.error_code or "session_reauth_required", max_len=64)
             connection.last_error_message = redact_text(result.error_message or "HH reauthentication is required", max_len=160)
             if result.clear_session_ref and connection.session_state_ref:
                 self._delete_session_state(connection.session_state_ref)
@@ -685,10 +678,10 @@ class HHBrowserConnectService:
             return
 
         if result.outcome == "invalid_storage":
-            target_status: HHConnectStatus = "disconnected" if result.error_code == "SESSION_STATE_MISSING" else "requires_reauth"
+            target_status: HHConnectStatus = "disconnected" if result.error_code == "session_state_missing" else "requires_reauth"
             self._transition(connection, target_status)
             connection.requires_reauth = target_status == "requires_reauth"
-            connection.last_error_code = redact_text(result.error_code or "SESSION_STATE_INVALID", max_len=64)
+            connection.last_error_code = redact_text(result.error_code or "session_state_invalid", max_len=64)
             connection.last_error_message = redact_text(result.error_message or "Persisted HH session state is invalid", max_len=160)
             if result.clear_session_ref and connection.session_state_ref:
                 self._delete_session_state(connection.session_state_ref)
@@ -698,7 +691,7 @@ class HHBrowserConnectService:
 
         self._transition(connection, "failed")
         connection.requires_reauth = False
-        connection.last_error_code = redact_text(result.error_code or "SESSION_VALIDATION_FAILED", max_len=64)
+        connection.last_error_code = redact_text(result.error_code or "session_validation_failed", max_len=64)
         connection.last_error_message = redact_text(result.error_message or "Transient failure during HH session validation", max_len=160)
 
     def _ensure_connection(self, *, user_id: int) -> HHBrowserConnection:

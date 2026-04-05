@@ -21,6 +21,7 @@ from app.schemas.hh_browser_integration import HHApplyRequest
 from app.services.hh_action_control_service import HHActionControlService
 from app.services.hh_apply_application_sync_service import HHApplyApplicationSyncService
 from app.services.hh_automation_diagnostics_service import diagnostic_for_code
+from app.services.hh_browser_error_taxonomy import normalize_automation_error_code
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ _SAFE_VISIBILITY_FOR_APPLY = {"hidden_from_all", "public_default", "unknown"}
 class HHApplyAutomationError(Exception):
     def __init__(self, code: str, message: str, *, retryable: bool = False, response_ref: dict[str, Any] | None = None) -> None:
         super().__init__(message)
-        self.code = code
+        self.code = normalize_automation_error_code(code)
         self.message = message
         self.retryable = retryable
         self.response_ref = response_ref or {}

@@ -103,7 +103,7 @@ curl -fsS -H "Authorization: Bearer $TOKEN" \
 ### Частые кейсы
 
 - **HH session expired / requires_reauth**
-  - Признак: `status=requires_reauth`, `last_error_code=SESSION_EXPIRED|SESSION_LOGGED_OUT`.
+  - Признак: `status=requires_reauth`, `last_error_code=session_expired|session_logged_out`.
   - Действие: перезапустить connect flow (`/connect/start` → identifier/password/code).
 
 - **Create resume failed**
@@ -130,5 +130,5 @@ curl -fsS -H "Authorization: Bearer $TOKEN" \
 ### Когда retry / reconnect / selectors inspect
 
 - **Retry**: transient/navigation/apply surface проблемы, `retryable_failed`.
-- **Reconnect**: `SESSION_EXPIRED`, `SESSION_TIMEOUT`, `requires_reauth=true`.
+- **Reconnect**: `session_expired`, `session_timeout`, `requires_reauth=true`.
 - **Inspect selector/page objects**: `selector_not_found`, `page_not_recognized`, повторяемые visibility/constructor/apply UI ошибки.

@@ -195,7 +195,7 @@ def test_unknown_step_detection_returns_failed_with_normalized_error(fake_db) ->
     state = service.start(user_id=1)
 
     assert state.status == "failed"
-    assert state.last_error_code == "UNRECOGNIZED_STATE"
+    assert state.last_error_code == "page_not_recognized"
     assert "Unable to determine HH login step" in (state.last_error_message or "")
 
 
@@ -214,7 +214,7 @@ def test_timeout_handling_marks_connection_failed(fake_db) -> None:
         assert False, "Expected timeout exception"
     except HTTPException as exc:
         assert exc.status_code == 400
-        assert exc.detail["code"] == "SESSION_TIMEOUT"
+        assert exc.detail["code"] == "session_timeout"
 
     state = service.get_state(user_id=1)
     assert state.status == "failed"
@@ -283,7 +283,7 @@ def test_restore_with_missing_storage_ref_requires_reauth(fake_db) -> None:
     restored = service.restore_session(user_id=1)
 
     assert restored.status == "requires_reauth"
-    assert restored.last_error_code == "SESSION_STATE_NOT_FOUND"
+    assert restored.last_error_code == "session_state_not_found"
     assert restored.session_present is False
 
 
@@ -307,7 +307,7 @@ def test_restore_with_corrupted_storage_requires_reauth(fake_db) -> None:
 
     restored = service.restore_session(user_id=1)
     assert restored.status == "requires_reauth"
-    assert restored.last_error_code == "SESSION_STATE_CORRUPTED"
+    assert restored.last_error_code == "session_state_corrupted"
 
 
 def test_validate_logged_out_sets_requires_reauth(fake_db) -> None:
@@ -370,7 +370,7 @@ def test_validate_missing_storage_keeps_disconnected(fake_db) -> None:
     outcome = service.validate_session(user_id=1)
     assert outcome["outcome"] == "invalid_storage"
     assert outcome["status"] == "disconnected"
-    assert outcome["last_error_code"] == "SESSION_STATE_MISSING"
+    assert outcome["last_error_code"] == "session_state_missing"
 
 
 def test_transient_validation_failure_marks_failed_without_wiping_session(fake_db) -> None:
