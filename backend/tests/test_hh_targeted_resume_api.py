@@ -22,7 +22,7 @@ class FakeAutomationClient(HHResumeAutomationClient):
     def create_targeted_resume(self, *, user_id, connection, payload, dry_run):
         if self.should_fail:
             raise HHResumeAutomationError(
-                code="INTERNAL_AUTOMATION_ERROR",
+                code="internal_automation_error",
                 message="secret-token-123 is invalid and should be redacted",
             )
         return HHCreateResumeResult(
@@ -190,7 +190,7 @@ def test_failed_automation_persists_safe_error(client, auth_headers, fake_db) ->
     assert response.status_code == 201
     managed = response.json()["managed_resume"]
     assert managed["status"] == "failed"
-    assert managed["last_error_code"] == "INTERNAL_AUTOMATION_ERROR"
+    assert managed["last_error_code"] == "internal_automation_error"
     assert "secret-token-123" not in (managed["last_error_message"] or "")
 
 

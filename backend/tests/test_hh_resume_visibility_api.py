@@ -33,7 +33,7 @@ class FakeVisibilityAutomation(HHResumeVisibilityAutomationClient):
     def hide_from_all(self, *, user_id, connection, managed_resume):
         if self.fail_hide:
             raise HHResumeVisibilityAutomationError(
-                code="VISIBILITY_CHANGE_FAILED",
+                code="visibility_change_failed",
                 message="raw html: super secret",
             )
         now = datetime.now(timezone.utc)
@@ -114,7 +114,7 @@ def test_visibility_failure_persists_normalized_error(client, auth_headers, fake
     body = response.json()
     assert body["current_visibility_mode"] == "change_failed"
     assert body["visibility_status"] == "change_failed"
-    assert body["visibility_error_code"] == "VISIBILITY_CHANGE_FAILED"
+    assert body["visibility_error_code"] == "visibility_change_failed"
     assert "super secret" not in (body["visibility_error_message"] or "")
 
 

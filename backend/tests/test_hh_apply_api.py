@@ -20,7 +20,7 @@ class FakeApplyAutomationClient(HHApplyAutomationClient):
     def apply_to_vacancy(self, *, user_id, connection, apply_run, managed_resume, vacancy, cover_letter_text, dry_run):
         if self.should_fail:
             raise HHApplyAutomationError(
-                code="TRANSIENT_WAIT",
+                code="transient_wait",
                 message="temporary issue",
                 retryable=self.retryable,
                 response_ref={"hh_response_type": "captcha"},
@@ -145,7 +145,7 @@ def test_apply_failure_persists_normalized_error(client, auth_headers, fake_db) 
     assert response.status_code == 201
     body = response.json()["hh_apply_run"]
     assert body["status"] == "retryable_failed"
-    assert body["result_type"] == "TRANSIENT_WAIT"
+    assert body["result_type"] == "transient_wait"
     assert "temporary issue" not in (body["result_message"] or "")
     assert fake_db.query(models.Application).all() == []
 

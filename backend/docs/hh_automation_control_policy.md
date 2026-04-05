@@ -115,3 +115,11 @@ Key operation codes added:
 - `HH_ACTION_SPAM_PREVENTED`
 
 No sensitive raw payloads or credentials are stored in audit summaries.
+
+## 7. Error code normalization contract
+
+Automation-facing error codes are persisted in canonical `snake_case` form across connection/session, targeted resume, visibility, and apply flows.
+
+- Legacy uppercase aliases from older adapters are normalized at service boundaries.
+- API responses and diagnostics should expose the normalized safe code only (for example, `transient_wait`, `page_not_recognized`, `session_expired`).
+- `last_error_message` / `result_message` remain short user-facing summaries and must not include low-level traces or secret material.

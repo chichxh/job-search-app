@@ -23,6 +23,7 @@ from app.db.models import (
 from app.schemas.hh_browser_integration import HHCreateTargetedResumeRequest, HHTargetedResumePayload
 from app.services.hh_action_control_service import HHActionControlService
 from app.services.hh_automation_diagnostics_service import diagnostic_for_code
+from app.services.hh_browser_error_taxonomy import normalize_automation_error_code
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 class HHResumeAutomationError(Exception):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
-        self.code = code
+        self.code = normalize_automation_error_code(code)
         self.message = message
 
 

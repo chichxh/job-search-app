@@ -10,7 +10,7 @@ def test_hh_diagnostics_summary_includes_safe_operational_view(client, auth_head
             status="requires_reauth",
             requires_reauth=True,
             session_state_ref="local://hh-browser-session/session_123.json",
-            last_error_code="SESSION_EXPIRED",
+            last_error_code="session_expired",
             last_error_message="Persisted HH browser session reached cookie expiry",
         )
     )
@@ -46,7 +46,7 @@ def test_hh_diagnostics_summary_includes_safe_operational_view(client, auth_head
             request_fingerprint="fp-2",
             status="failed",
             operation_code="HH_CONNECT_FAILED",
-            safe_summary="HH connect flow failed with code=SESSION_EXPIRED",
+            safe_summary="HH connect flow failed with code=session_expired",
         )
     )
 

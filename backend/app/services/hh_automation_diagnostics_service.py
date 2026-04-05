@@ -19,11 +19,11 @@ class HHFailureDiagnostic:
 
 
 _FAILURE_DIAGNOSTIC_MAP: dict[str, HHFailureDiagnostic] = {
-    "SESSION_EXPIRED": HHFailureDiagnostic(
+    "session_expired": HHFailureDiagnostic(
         reason="session_expired",
         guidance="Reconnect HH browser session and re-run the action.",
     ),
-    "SESSION_TIMEOUT": HHFailureDiagnostic(
+    "session_timeout": HHFailureDiagnostic(
         reason="runtime_session_expired",
         guidance="Restart connect flow because runtime browser session timed out.",
     ),
@@ -43,11 +43,11 @@ _FAILURE_DIAGNOSTIC_MAP: dict[str, HHFailureDiagnostic] = {
         reason="apply_surface_unavailable",
         guidance="Open vacancy apply page manually; retry after HH UI/apply controls are available.",
     ),
-    "ALREADY_APPLIED": HHFailureDiagnostic(
+    "already_applied": HHFailureDiagnostic(
         reason="already_applied",
         guidance="No retry needed; ensure local applications funnel was synced.",
     ),
-    "RESUME_SELECTION_MISMATCH": HHFailureDiagnostic(
+    "resume_selection_mismatch": HHFailureDiagnostic(
         reason="resume_selection_mismatch",
         guidance="Verify chosen managed resume matches HH vacancy apply selector.",
     ),

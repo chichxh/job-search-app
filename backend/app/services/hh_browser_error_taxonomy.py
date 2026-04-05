@@ -22,6 +22,5 @@ LEGACY_AUTOMATION_ERROR_ALIASES = {
 
 
 def normalize_automation_error_code(code: str) -> str:
-    if code in LEGACY_AUTOMATION_ERROR_ALIASES:
-        return LEGACY_AUTOMATION_ERROR_ALIASES[code]
-    return code
+    normalized = LEGACY_AUTOMATION_ERROR_ALIASES.get(code, code)
+    return normalized.strip().lower()
