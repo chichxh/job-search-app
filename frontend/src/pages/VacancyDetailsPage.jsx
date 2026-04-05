@@ -132,6 +132,18 @@ const HH_APPLY_RESULT_TYPE_META = {
   already_applied: { label: 'Вы уже откликались', tone: 'info' },
 };
 
+const HH_SYNC_REASON_LABELS = {
+  synced: 'Локальная заявка создана/обновлена из HH apply.',
+  already_applied_mapped: 'HH уже содержит отклик, локальная заявка синхронизирована в applied.',
+  not_syncable_status: 'Для этого статуса HH apply синхронизация в воронку не выполняется.',
+};
+
+const HH_SYNC_ACTION_LABELS = {
+  created: 'Создана локальная заявка',
+  updated: 'Обновлена локальная заявка',
+  skipped: 'Локальная заявка не изменялась',
+};
+
 function isHhSessionActive(status) {
   return Boolean(status?.status === 'connected' && status?.session_present && !status?.requires_reauth);
 }
@@ -212,6 +224,7 @@ export default function VacancyDetailsPage() {
   const [hhApplyError, setHhApplyError] = useState('');
   const [hhApplySuccess, setHhApplySuccess] = useState('');
   const [hhApplyBusy, setHhApplyBusy] = useState(false);
+  const [hhApplyOutcome, setHhApplyOutcome] = useState(null);
   const [selectedHhManagedResumeId, setSelectedHhManagedResumeId] = useState('');
   const [selectedCoverLetterId, setSelectedCoverLetterId] = useState('');
 
@@ -373,29 +386,42 @@ export default function VacancyDetailsPage() {
 
     setHhApplyError('');
     setHhApplySuccess('');
+    setHhApplyOutcome(null);
     setHhApplyBusy(true);
     try {
-      const run = await createHhApplyRun({
+      const response = await createHhApplyRun({
         vacancy_id: Number(vacancyId),
         hh_resume_managed_id: Number(selectedHhManagedResumeId),
         cover_letter_version_id: selectedCoverLetterId ? Number(selectedCoverLetterId) : null,
       });
-      setHhApplyRuns((current) => [run, ...current]);
+      const run = response?.hh_apply_run ?? response;
+      const linkedApplication = response?.linked_application ?? null;
+      setHhApplyRuns((current) => [run, ...current.filter((item) => item.id !== run.id)]);
+      setHhApplyOutcome({
+        run,
+        linkedApplication,
+        syncReason: response?.sync_reason ?? null,
+        syncAction: response?.sync_action ?? null,
+        selectedManagedResume: selectedManagedResume ?? null,
+        selectedCoverLetter: selectedCoverLetter ?? null,
+      });
 
-      const safeResultMessage = getSafeText(run.result_message, 'Отклик обработан.');
-      if (run.result_type === 'already_applied') {
-        setHhApplySuccess(`Вы уже откликались на эту вакансию. ${safeResultMessage}`);
-      } else if (run.status === 'submitted') {
-        setHhApplySuccess(`Отклик отправлен. ${safeResultMessage}`);
+      const safeResultMessage = getSafeText(run?.result_message, 'Отклик обработан.');
+      if (run?.result_type === 'already_applied') {
+        setHhApplySuccess(`На HH уже есть отклик. ${safeResultMessage}`);
+      } else if (run?.status === 'submitted') {
+        setHhApplySuccess(`Отклик отправлен и сохранён в локальной воронке. ${safeResultMessage}`);
+      } else if (run?.status === 'retryable_failed') {
+        setHhApplySuccess(`Отклик не завершён: ошибку можно исправить и повторить. ${safeResultMessage}`);
       } else {
-        setHhApplySuccess(`Запуск завершён со статусом ${run.status}. ${safeResultMessage}`);
+        setHhApplySuccess(`Запуск завершён со статусом ${run?.status}. ${safeResultMessage}`);
       }
     } catch (requestError) {
       setHhApplyError(getUserFacingError(requestError, 'Не удалось отправить отклик через HH.'));
     } finally {
       setHhApplyBusy(false);
     }
-  }, [selectedCoverLetterId, selectedHhManagedResumeId, vacancyId]);
+  }, [selectedCoverLetter, selectedCoverLetterId, selectedHhManagedResumeId, selectedManagedResume, vacancyId]);
 
   const handleTrackApplication = useCallback(async () => {
     if (!vacancyId) {
@@ -955,6 +981,88 @@ export default function VacancyDetailsPage() {
               </>
             )}
           </article>
+
+          {hhApplyOutcome?.run ? (
+            <article className="vacancy-details__docgen-result">
+              <h3 className="vacancy-details__section-title">Результат последнего запуска</h3>
+              <div className="inline-status-row">
+                <StatusPill tone={getApplyStatusMeta(hhApplyOutcome.run.status).tone}>
+                  status: {getApplyStatusMeta(hhApplyOutcome.run.status).label}
+                </StatusPill>
+                <StatusPill tone={HH_APPLY_RESULT_TYPE_META[hhApplyOutcome.run.result_type]?.tone ?? 'neutral'}>
+                  result: {formatApplyResultType(hhApplyOutcome.run)}
+                </StatusPill>
+              </div>
+              <ul className="structured-list">
+                <li>
+                  <strong>Локальный funnel:</strong>
+                  {' '}
+                  {hhApplyOutcome.linkedApplication ? (
+                    <>
+                      синхронизирован в статус
+                      {' '}
+                      <strong>{hhApplyOutcome.linkedApplication.status}</strong>
+                      {' '}
+                      ·
+                      {' '}
+                      <Link className="vacancy-details__link" to={`/applications`}>Открыть воронку</Link>
+                    </>
+                  ) : (
+                    'не обновлялся'
+                  )}
+                </li>
+                {hhApplyOutcome.linkedApplication?.id ? (
+                  <li>
+                    <strong>Локальная заявка:</strong>
+                    {' '}
+                    #{hhApplyOutcome.linkedApplication.id}
+                    {' '}
+                    ({hhApplyOutcome.syncAction ? HH_SYNC_ACTION_LABELS[hhApplyOutcome.syncAction] ?? hhApplyOutcome.syncAction : 'синхронизирована'})
+                  </li>
+                ) : null}
+                {hhApplyOutcome.syncReason ? (
+                  <li>
+                    <strong>Sync summary:</strong>
+                    {' '}
+                    {HH_SYNC_REASON_LABELS[hhApplyOutcome.syncReason] ?? hhApplyOutcome.syncReason}
+                  </li>
+                ) : null}
+                <li>
+                  <strong>HH resume used:</strong>
+                  {' '}
+                  {hhApplyOutcome.selectedManagedResume
+                    ? `${hhApplyOutcome.selectedManagedResume.title || `HH resume #${hhApplyOutcome.selectedManagedResume.id}`} (#${hhApplyOutcome.selectedManagedResume.id})`
+                    : `#${hhApplyOutcome.run.hh_resume_managed_id}`}
+                </li>
+                <li>
+                  <strong>Cover letter used:</strong>
+                  {' '}
+                  {hhApplyOutcome.selectedCoverLetter
+                    ? `${hhApplyOutcome.selectedCoverLetter.title || `Cover letter #${hhApplyOutcome.selectedCoverLetter.id}`} (#${hhApplyOutcome.selectedCoverLetter.id})`
+                    : 'без cover letter'}
+                </li>
+                <li><strong>Last apply timestamp:</strong> {formatDateTime(hhApplyOutcome.run.finished_at ?? hhApplyOutcome.run.updated_at) ?? '—'}</li>
+                <li><strong>Result summary:</strong> {getSafeText(hhApplyOutcome.run.result_message, '—')}</li>
+              </ul>
+              {hhApplyOutcome.run.status === 'retryable_failed' ? (
+                <p className="info-banner">
+                  Ошибка временная: проверьте HH-сессию/документы и повторите отклик кнопкой «Откликнуться через HH».
+                  Локальная воронка не обновлена, пока запуск не станет submitted/already_applied.
+                </p>
+              ) : null}
+              {hhApplyOutcome.run.status === 'failed' ? (
+                <p className="error-banner">
+                  Отклик завершился ошибкой без возможности безопасного ретрая. Локальная воронка не обновлена автоматически.
+                </p>
+              ) : null}
+              {hhApplyOutcome.run.result_type === 'already_applied' ? (
+                <p className="info-banner">
+                  HH уже содержит ваш отклик на эту вакансию; это не ошибка.
+                  {hhApplyOutcome.linkedApplication ? ' Локальная заявка отражает это состояние.' : ' Локальная заявка не была обновлена.'}
+                </p>
+              ) : null}
+            </article>
+          ) : null}
         </SectionCard>
       </div>
     </section>
