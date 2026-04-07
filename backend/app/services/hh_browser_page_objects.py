@@ -17,8 +17,9 @@ class NormalizedAutomationError(Exception):
         self.debug_summary = debug_summary or {}
 
 
-StepCode = Literal["role_selection", "identifier", "password", "code", "authenticated", "unknown"]
+StepCode = Literal["role_choice", "identifier", "password", "code", "authenticated", "unknown"]
 IdentifierType = Literal["phone", "email"]
+
 
 
 class BrowserLocator(Protocol):
@@ -85,6 +86,13 @@ class LoginSelectorGroup:
     password_entry_button: tuple[SelectorQuery, ...]
     authenticated_markers: tuple[SelectorQuery, ...]
 
+@dataclass(frozen=True)
+class RoleChoiceSelectorGroup:
+    chooser_markers: tuple[SelectorQuery, ...]
+    applicant_card: tuple[SelectorQuery, ...]
+    applicant_checked: tuple[SelectorQuery, ...]
+    chooser_submit: tuple[SelectorQuery, ...]
+
 
 @dataclass(frozen=True)
 class ApplicantHomeSelectorGroup:
@@ -142,6 +150,7 @@ class ApplySurfaceSelectorGroup:
 
 @dataclass(frozen=True)
 class SelectorRegistry:
+    role_choice: RoleChoiceSelectorGroup
     login: LoginSelectorGroup
     applicant_home: ApplicantHomeSelectorGroup
     resumes_list: ResumesListSelectorGroup
@@ -151,29 +160,34 @@ class SelectorRegistry:
 
 
 DEFAULT_SELECTORS = SelectorRegistry(
+    role_choice=RoleChoiceSelectorGroup(
+        chooser_markers=(
+            SelectorQuery("css", "[data-qa='account-type-cards']"),
+            SelectorQuery("css", "input[name='account-type']"),
+        ),
+        applicant_card=(
+            SelectorQuery("css", "label:has(input[data-qa^='account-type-card-APPLICANT'])"),
+            SelectorQuery("css", "input[data-qa^='account-type-card-APPLICANT']"),
+        ),
+        applicant_checked=(
+            SelectorQuery("css", "input[data-qa^='account-type-card-APPLICANT'][checked]"),
+            SelectorQuery("css", "input[data-qa*='account-type-card-APPLICANT checked']"),
+        ),
+        chooser_submit=(
+            SelectorQuery("css", "button[data-qa='submit-button']"),
+            SelectorQuery("role", "Войти", role="button"),
+        ),
+    ),
     login=LoginSelectorGroup(
-        role_selection_markers=(
-        SelectorQuery("text", "Я ищу работу"),
-        SelectorQuery("text", "Я ищу сотрудников"),
-        SelectorQuery("role", "Вход", role="heading"),
-        ),
-        role_selection_applicant_option=(
-        SelectorQuery("text", "Я ищу работу"),
-        SelectorQuery("text", "Профиль соискателя"),
-        ),
-        role_selection_submit_button=(
-        SelectorQuery("role", "Войти", role="button"),
-        SelectorQuery("css", "button[type='submit']"),
-        ),
-        # PRIMARY: human-visible labels are most stable for i18n login forms.
-        # FALLBACK: type/name CSS handles HH experiments with anonymous inputs.
         identifier_phone=(
+        SelectorQuery("css", "input[data-qa^='credential-type-PHONE']"),
         SelectorQuery("label", "Телефон"),
         SelectorQuery("label", "Телефон или почта"),
         SelectorQuery("css", "input[type='tel']"),
         SelectorQuery("css", "input[name*='login']"),
         ),
         identifier_email=(
+        SelectorQuery("css", "input[data-qa^='credential-type-EMAIL']"),
         SelectorQuery("label", "Почта"),
         SelectorQuery("label", "Телефон или почта"),
         SelectorQuery("css", "input[type='email']"),
@@ -196,16 +210,19 @@ DEFAULT_SELECTORS = SelectorRegistry(
         ),
         continue_button=(
         # Keep continue separate from submit to detect identifier step robustly.
+        SelectorQuery("css", "button[data-qa='submit-button']"),
         SelectorQuery("role", "Дальше", role="button"),
         SelectorQuery("role", "Продолжить", role="button"),
         ),
         submit_button=(
+        SelectorQuery("css", "button[data-qa='submit-button']"),
         SelectorQuery("role", "Войти", role="button"),
         SelectorQuery("role", "Подтвердить", role="button"),
         SelectorQuery("role", "Продолжить", role="button"),
         SelectorQuery("css", "button[type='submit']"),
         ),
         password_entry_button=(
+        SelectorQuery("css", "button[data-qa='expand-login-by-password']"),
         SelectorQuery("role", "Войти с паролем", role="button"),
         SelectorQuery("text", "Войти с паролем"),
         ),
@@ -542,6 +559,49 @@ class BasePageObject:
             missing_required_controls=missing_required,
             selector_health=selector_health,
         )
+
+
+class HHRoleChoicePage(BasePageObject):
+    def is_active(self) -> bool:
+        return self.resolver.find_first(self.selectors.role_choice.chooser_markers) is not None
+
+    def applicant_already_selected(self) -> bool:
+        return self.resolver.find_first(self.selectors.role_choice.applicant_checked) is not None
+
+    def select_applicant(self) -> None:
+        if self.applicant_already_selected():
+            return
+
+        locator = self.resolver.find_first(self.selectors.role_choice.applicant_card)
+        if locator is None:
+            raise NormalizedAutomationError(
+                AutomationErrorCode.SELECTOR_NOT_FOUND,
+                "Unable to find applicant role card on HH role chooser page",
+                debug_summary=self._summary(),
+            )
+
+        self.actions.run(
+            action="select_applicant_role",
+            callback=locator.click,
+            debug_summary=lambda: self._summary(),
+        )
+        self.page.wait_for_timeout(250)
+
+    def submit(self) -> None:
+        locator = self.resolver.find_first(self.selectors.role_choice.chooser_submit)
+        if locator is None:
+            raise NormalizedAutomationError(
+                AutomationErrorCode.SELECTOR_NOT_FOUND,
+                "Unable to find submit button on HH role chooser page",
+                debug_summary=self._summary(),
+            )
+
+        self.actions.run(
+            action="submit_role_choice",
+            callback=locator.click,
+            debug_summary=lambda: self._summary(),
+        )
+        self.page.wait_for_timeout(500)
 
 
 class HHIdentifierPage(BasePageObject):
@@ -1099,6 +1159,7 @@ class HHLoginFlowPageModel:
         self.selectors = selectors
         self.resolver = LocatorResolver(page)
         self.action_runner = action_runner or SafeActionRunner()
+        self.role_choice_page = HHRoleChoicePage(page=page, selectors=selectors, resolver=self.resolver, actions=self.action_runner)
         self.role_selection_page = HHRoleSelectionPage(page=page, selectors=selectors, resolver=self.resolver, actions=self.action_runner)
         self.identifier_page = HHIdentifierPage(page=page, selectors=selectors, resolver=self.resolver, actions=self.action_runner)
         self.password_page = HHPasswordPage(page=page, selectors=selectors, resolver=self.resolver, actions=self.action_runner)
@@ -1108,6 +1169,9 @@ class HHLoginFlowPageModel:
     def detect_step(self) -> StepDetectionResult:
         if self.authenticated_page.is_active():
             return StepDetectionResult("authenticated", self.safe_summary())
+
+        if self.role_choice_page.is_active():
+            return StepDetectionResult("role_choice", self.safe_summary())
 
         if self.role_selection_page.is_active():
             self.role_selection_page.choose_applicant_and_continue()
@@ -1130,6 +1194,14 @@ class HHLoginFlowPageModel:
                 return StepDetectionResult("password", self.safe_summary())
 
         return StepDetectionResult("unknown", self.safe_summary())
+    
+    def advance_from_role_choice_if_present(self) -> bool:
+        if not self.role_choice_page.is_active():
+            return False
+
+        self.role_choice_page.select_applicant()
+        self.role_choice_page.submit()
+        return True
 
     def fill_identifier(self, *, identifier: str, identifier_type: IdentifierType) -> None:
         self.identifier_page.fill_identifier(identifier=identifier, identifier_type=identifier_type)
@@ -1153,6 +1225,7 @@ class HHLoginFlowPageModel:
         return {
             "url": self.page.url,
             "title": self.page.title(),
+            "has_role_choice": self.role_choice_page.is_active(),
             "has_role_selection": self.role_selection_page.is_active(),
             "has_identifier_input": self.identifier_page.is_active(),
             "has_password_input": self.password_page.is_active(),
@@ -1169,6 +1242,17 @@ class HHLoginFlowPageModel:
                 "identifier_email": self.identifier_page._selector_report(
                     page_name="identifier",
                     required_controls={"identifier_email": self.selectors.login.identifier_email},
+                ),
+                "role_choice": self.role_choice_page._selector_report(
+                    page_name="role_choice",
+                    required_controls={
+                        "chooser_markers": self.selectors.role_choice.chooser_markers,
+                        "chooser_submit": self.selectors.role_choice.chooser_submit,
+                    },
+                    optional_controls={
+                        "applicant_card": self.selectors.role_choice.applicant_card,
+                        "applicant_checked": self.selectors.role_choice.applicant_checked,
+                    },
                 ),
                 "identifier_phone": self.identifier_page._selector_report(
                     page_name="identifier",
@@ -1204,6 +1288,7 @@ class HHLoginFlowPageModel:
 
 def to_legacy_step(step_code: StepCode) -> Literal["awaiting_identifier", "awaiting_password", "awaiting_code", "connected", "failed"]:
     mapping = {
+        "role_choice": "failed",
         "role_selection": "failed",
         "identifier": "awaiting_identifier",
         "password": "awaiting_password",

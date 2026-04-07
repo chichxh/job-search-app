@@ -50,6 +50,9 @@ class PlaywrightHHLoginAdapter(HHLoginPageAdapter):
                 wait_until="domcontentloaded",
                 timeout=self._navigation_timeout_ms,
             )
+            # HH can still show a role chooser even with ?role=applicant.
+            # If so, select applicant flow and continue before normal step detection.
+            self._flow.advance_from_role_choice_if_present()
             return self._wait_step_detected()
         except self._runtime.playwright_timeout_error as exc:
             raise HHBrowserAutomationError("TRANSIENT_NAVIGATION", "Timed out while opening HH login page") from exc
@@ -99,7 +102,15 @@ class PlaywrightHHLoginAdapter(HHLoginPageAdapter):
                     self._runtime.page.wait_for_timeout(250)
                     elapsed += 250
                     continue
-                step = to_legacy_step(detection.step_code)
+                detected = self._flow.ensure_step_detected()
+
+                if detected.step_code == "role_choice":
+                    self._flow.advance_from_role_choice_if_present()
+                    self._runtime.page.wait_for_timeout(600)
+                    elapsed += 600
+                    continue
+
+                step = to_legacy_step(detected.step_code)
                 if step != "failed":
                     return step
                 self._runtime.page.wait_for_timeout(250)
