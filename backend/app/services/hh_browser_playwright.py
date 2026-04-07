@@ -94,7 +94,12 @@ class PlaywrightHHLoginAdapter(HHLoginPageAdapter):
             self._runtime.page.wait_for_timeout(500)
             elapsed = 0
             while elapsed <= self._step_wait_timeout_ms:
-                step = to_legacy_step(self._flow.ensure_step_detected().step_code)
+                detection = self._flow.ensure_step_detected()
+                if detection.step_code == "role_selection":
+                    self._runtime.page.wait_for_timeout(250)
+                    elapsed += 250
+                    continue
+                step = to_legacy_step(detection.step_code)
                 if step != "failed":
                     return step
                 self._runtime.page.wait_for_timeout(250)
