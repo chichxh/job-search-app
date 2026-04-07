@@ -17,7 +17,7 @@ class NormalizedAutomationError(Exception):
         self.debug_summary = debug_summary or {}
 
 
-StepCode = Literal["identifier", "password", "code", "authenticated", "unknown"]
+StepCode = Literal["role_selection", "identifier", "password", "code", "authenticated", "unknown"]
 IdentifierType = Literal["phone", "email"]
 
 
@@ -73,6 +73,9 @@ class SelectorMatchDiagnostics:
 
 @dataclass(frozen=True)
 class LoginSelectorGroup:
+    role_selection_markers: tuple[SelectorQuery, ...]
+    role_selection_applicant_option: tuple[SelectorQuery, ...]
+    role_selection_submit_button: tuple[SelectorQuery, ...]
     identifier_phone: tuple[SelectorQuery, ...]
     identifier_email: tuple[SelectorQuery, ...]
     password_input: tuple[SelectorQuery, ...]
@@ -149,6 +152,19 @@ class SelectorRegistry:
 
 DEFAULT_SELECTORS = SelectorRegistry(
     login=LoginSelectorGroup(
+        role_selection_markers=(
+        SelectorQuery("text", "Я ищу работу"),
+        SelectorQuery("text", "Я ищу сотрудников"),
+        SelectorQuery("role", "Вход", role="heading"),
+        ),
+        role_selection_applicant_option=(
+        SelectorQuery("text", "Я ищу работу"),
+        SelectorQuery("text", "Профиль соискателя"),
+        ),
+        role_selection_submit_button=(
+        SelectorQuery("role", "Войти", role="button"),
+        SelectorQuery("css", "button[type='submit']"),
+        ),
         # PRIMARY: human-visible labels are most stable for i18n login forms.
         # FALLBACK: type/name CSS handles HH experiments with anonymous inputs.
         identifier_phone=(
@@ -604,6 +620,24 @@ class HHCodePage(BasePageObject):
                 debug_summary=self._summary(),
             )
         self.actions.run(action="submit_code", callback=locator.click, debug_summary=lambda: self._summary())
+
+
+class HHRoleSelectionPage(BasePageObject):
+    def is_active(self) -> bool:
+        return self.resolver.find_first(self.selectors.login.role_selection_markers) is not None
+
+    def choose_applicant_and_continue(self) -> bool:
+        option = self.resolver.find_first(self.selectors.login.role_selection_applicant_option)
+        if option is not None:
+            self.actions.run(action="select_applicant_profile", callback=option.click, debug_summary=lambda: self._summary())
+            self.page.wait_for_timeout(150)
+
+        submit = self.resolver.find_first(self.selectors.login.role_selection_submit_button)
+        if submit is None:
+            return False
+        self.actions.run(action="submit_role_selection", callback=submit.click, debug_summary=lambda: self._summary())
+        self.page.wait_for_timeout(350)
+        return True
 
 
 class HHAuthenticatedPage(BasePageObject):
@@ -1065,6 +1099,7 @@ class HHLoginFlowPageModel:
         self.selectors = selectors
         self.resolver = LocatorResolver(page)
         self.action_runner = action_runner or SafeActionRunner()
+        self.role_selection_page = HHRoleSelectionPage(page=page, selectors=selectors, resolver=self.resolver, actions=self.action_runner)
         self.identifier_page = HHIdentifierPage(page=page, selectors=selectors, resolver=self.resolver, actions=self.action_runner)
         self.password_page = HHPasswordPage(page=page, selectors=selectors, resolver=self.resolver, actions=self.action_runner)
         self.code_page = HHCodePage(page=page, selectors=selectors, resolver=self.resolver, actions=self.action_runner)
@@ -1073,6 +1108,10 @@ class HHLoginFlowPageModel:
     def detect_step(self) -> StepDetectionResult:
         if self.authenticated_page.is_active():
             return StepDetectionResult("authenticated", self.safe_summary())
+
+        if self.role_selection_page.is_active():
+            self.role_selection_page.choose_applicant_and_continue()
+            return StepDetectionResult("role_selection", self.safe_summary())
 
         if self.password_page.is_active():
             return StepDetectionResult("password", self.safe_summary())
@@ -1114,6 +1153,7 @@ class HHLoginFlowPageModel:
         return {
             "url": self.page.url,
             "title": self.page.title(),
+            "has_role_selection": self.role_selection_page.is_active(),
             "has_identifier_input": self.identifier_page.is_active(),
             "has_password_input": self.password_page.is_active(),
             "has_code_input": self.code_page.is_active(),
@@ -1164,6 +1204,7 @@ class HHLoginFlowPageModel:
 
 def to_legacy_step(step_code: StepCode) -> Literal["awaiting_identifier", "awaiting_password", "awaiting_code", "connected", "failed"]:
     mapping = {
+        "role_selection": "failed",
         "identifier": "awaiting_identifier",
         "password": "awaiting_password",
         "code": "awaiting_code",
