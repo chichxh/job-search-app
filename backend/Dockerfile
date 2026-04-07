@@ -7,20 +7,46 @@ WORKDIR /app
 
 ARG INSTALL_ML=false
 
-# 1) Ставим базовые зависимости
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --retries 10 --timeout 120 -r /app/requirements.txt
-RUN python -m playwright install --with-deps chromium
 
-# 2) Опционально ставим ML-зависимости отдельным слоем
+# Системные зависимости для Chromium (Playwright)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgbm1 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxkbcommon0 \
+    libxrandr2 \
+    xdg-utils \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Ставим сам браузер Playwright
+RUN python -m playwright install chromium
+
 COPY requirements-ml.txt /app/requirements-ml.txt
 RUN if [ "$INSTALL_ML" = "true" ]; then \
       pip install --no-cache-dir --retries 10 --timeout 120 -r /app/requirements-ml.txt; \
     fi
 
-# 3) Копируем код (на деле в compose он будет еще и volume-монтироваться)
 COPY app /app/app
 
 EXPOSE 8000
-
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

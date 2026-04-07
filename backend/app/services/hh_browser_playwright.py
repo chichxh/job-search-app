@@ -7,6 +7,7 @@ from app.services.hh_browser_connect_service import HHBrowserAutomationError, HH
 from app.services.hh_browser_error_taxonomy import AutomationErrorCode
 from app.services.hh_browser_page_objects import HHLoginFlowPageModel, NormalizedAutomationError, to_legacy_step
 
+HH_BROWSER_BASE_URL = os.getenv("HH_BROWSER_BASE_URL", "https://spb.hh.ru").rstrip("/")
 
 class PlaywrightBrowserRuntime:
     def __init__(self, *, storage_state: dict | None = None) -> None:
@@ -45,7 +46,7 @@ class PlaywrightHHLoginAdapter(HHLoginPageAdapter):
     def open_login_page(self) -> HHLoginStep:
         try:
             self._runtime.page.goto(
-                "https://hh.ru/account/login",
+                f"{HH_BROWSER_BASE_URL}/account/login",
                 wait_until="domcontentloaded",
                 timeout=self._navigation_timeout_ms,
             )
@@ -124,7 +125,11 @@ class PlaywrightHHSessionProbe(HHSessionProbeAdapter):
 
     def check_authenticated(self) -> bool:
         try:
-            self._runtime.page.goto("https://hh.ru/applicant/resumes", wait_until="domcontentloaded", timeout=self._timeout_ms)
+            self._runtime.page.goto(
+                f"{HH_BROWSER_BASE_URL}/applicant/resumes",
+                wait_until="domcontentloaded",
+                timeout=self._timeout_ms,
+            )
             return self._flow.detect_step().step_code == "authenticated"
         except self._runtime.playwright_timeout_error as exc:
             raise HHBrowserAutomationError("TRANSIENT_NAVIGATION", "Timed out while checking HH session") from exc
