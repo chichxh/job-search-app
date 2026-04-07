@@ -7,7 +7,7 @@ from app.services.hh_browser_connect_service import HHBrowserAutomationError, HH
 from app.services.hh_browser_error_taxonomy import AutomationErrorCode
 from app.services.hh_browser_page_objects import HHLoginFlowPageModel, NormalizedAutomationError, to_legacy_step
 
-HH_BROWSER_BASE_URL = os.getenv("HH_BROWSER_BASE_URL", "https://spb.hh.ru").rstrip("/")
+HH_BROWSER_BASE_URL = os.getenv("HH_BROWSER_BASE_URL", "https://spb.hh.ru?role=applicant").rstrip("/")
 
 class PlaywrightBrowserRuntime:
     def __init__(self, *, storage_state: dict | None = None) -> None:

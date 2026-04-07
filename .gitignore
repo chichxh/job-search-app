@@ -5,3 +5,4 @@ __pycache__/
 dist/
 backend/.runtime/
 **/hh_browser_sessions/
+/hh-screens

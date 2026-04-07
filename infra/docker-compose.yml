@@ -50,6 +50,7 @@ services:
     volumes:
       # монтируем исходники, чтобы изменения на Windows сразу были видны в контейнере
       - ../backend:/app
+      - ../hh-screens:/hh-screens
     ports:
       - "8000:8000"
     depends_on:
