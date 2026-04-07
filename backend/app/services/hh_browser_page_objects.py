@@ -74,9 +74,6 @@ class SelectorMatchDiagnostics:
 
 @dataclass(frozen=True)
 class LoginSelectorGroup:
-    role_selection_markers: tuple[SelectorQuery, ...]
-    role_selection_applicant_option: tuple[SelectorQuery, ...]
-    role_selection_submit_button: tuple[SelectorQuery, ...]
     identifier_phone: tuple[SelectorQuery, ...]
     identifier_email: tuple[SelectorQuery, ...]
     password_input: tuple[SelectorQuery, ...]
@@ -682,24 +679,6 @@ class HHCodePage(BasePageObject):
         self.actions.run(action="submit_code", callback=locator.click, debug_summary=lambda: self._summary())
 
 
-class HHRoleSelectionPage(BasePageObject):
-    def is_active(self) -> bool:
-        return self.resolver.find_first(self.selectors.login.role_selection_markers) is not None
-
-    def choose_applicant_and_continue(self) -> bool:
-        option = self.resolver.find_first(self.selectors.login.role_selection_applicant_option)
-        if option is not None:
-            self.actions.run(action="select_applicant_profile", callback=option.click, debug_summary=lambda: self._summary())
-            self.page.wait_for_timeout(150)
-
-        submit = self.resolver.find_first(self.selectors.login.role_selection_submit_button)
-        if submit is None:
-            return False
-        self.actions.run(action="submit_role_selection", callback=submit.click, debug_summary=lambda: self._summary())
-        self.page.wait_for_timeout(350)
-        return True
-
-
 class HHAuthenticatedPage(BasePageObject):
     def is_active(self) -> bool:
         if "/applicant" in self.page.url or "/resume" in self.page.url:
@@ -1160,7 +1139,6 @@ class HHLoginFlowPageModel:
         self.resolver = LocatorResolver(page)
         self.action_runner = action_runner or SafeActionRunner()
         self.role_choice_page = HHRoleChoicePage(page=page, selectors=selectors, resolver=self.resolver, actions=self.action_runner)
-        self.role_selection_page = HHRoleSelectionPage(page=page, selectors=selectors, resolver=self.resolver, actions=self.action_runner)
         self.identifier_page = HHIdentifierPage(page=page, selectors=selectors, resolver=self.resolver, actions=self.action_runner)
         self.password_page = HHPasswordPage(page=page, selectors=selectors, resolver=self.resolver, actions=self.action_runner)
         self.code_page = HHCodePage(page=page, selectors=selectors, resolver=self.resolver, actions=self.action_runner)
@@ -1172,10 +1150,6 @@ class HHLoginFlowPageModel:
 
         if self.role_choice_page.is_active():
             return StepDetectionResult("role_choice", self.safe_summary())
-
-        if self.role_selection_page.is_active():
-            self.role_selection_page.choose_applicant_and_continue()
-            return StepDetectionResult("role_selection", self.safe_summary())
 
         if self.password_page.is_active():
             return StepDetectionResult("password", self.safe_summary())
@@ -1226,7 +1200,6 @@ class HHLoginFlowPageModel:
             "url": self.page.url,
             "title": self.page.title(),
             "has_role_choice": self.role_choice_page.is_active(),
-            "has_role_selection": self.role_selection_page.is_active(),
             "has_identifier_input": self.identifier_page.is_active(),
             "has_password_input": self.password_page.is_active(),
             "has_code_input": self.code_page.is_active(),
@@ -1289,7 +1262,6 @@ class HHLoginFlowPageModel:
 def to_legacy_step(step_code: StepCode) -> Literal["awaiting_identifier", "awaiting_password", "awaiting_code", "connected", "failed"]:
     mapping = {
         "role_choice": "failed",
-        "role_selection": "failed",
         "identifier": "awaiting_identifier",
         "password": "awaiting_password",
         "code": "awaiting_code",
