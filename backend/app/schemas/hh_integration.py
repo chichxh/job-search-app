@@ -46,3 +46,17 @@ class HHProviderError(BaseModel):
     detail: str
 
     model_config = ConfigDict(extra="ignore")
+
+
+class HHDemoProfileSummary(BaseModel):
+    full_name: str
+    title: str
+    city: str
+    skills_count: int
+    experiences_count: int
+
+
+class HHDemoConnectResponse(BaseModel):
+    status: str
+    mode: str
+    profile: HHDemoProfileSummary
