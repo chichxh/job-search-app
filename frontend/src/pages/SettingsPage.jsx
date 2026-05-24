@@ -104,7 +104,7 @@ const SCHEDULE_OPTIONS = [
 ];
 const SUPPORTED_RESUME_IMPORT_EXTENSIONS = ['txt', 'md', 'docx', 'pdf', 'rtf'];
 const DOCUMENT_STATUS_META = {
-  draft: { label: 'Draft', tone: 'draft' },
+  draft: { label: 'Черновик', tone: 'draft' },
   approved: { label: 'Approved', tone: 'approved' },
   archived: { label: 'Archived', tone: 'archived' },
 };
@@ -196,8 +196,8 @@ const emptyBySection = {
   certificates: { name: '', issuer: '', issued_at: '', expires_at: '', url: '' },
   languages: { language: '', level: '' },
   links: { type: '', url: '', label: '' },
-  resumes: { title: '', vacancy_id: '', content_text: '', status: 'draft', format: 'plain', source: 'user' },
-  letters: { title: '', subject: '', vacancy_id: '', content_text: '', status: 'draft', source: 'user' },
+  resumes: { title: '', vacancy_id: '', content_text: '', status: 'draft', format: 'plain', источник: 'user' },
+  letters: { title: '', subject: '', vacancy_id: '', content_text: '', status: 'draft', источник: 'user' },
 };
 
 export default function SettingsPage() {
@@ -440,7 +440,7 @@ export default function SettingsPage() {
     setToast('');
 
     const payload = Object.fromEntries(
-      Object.entries(item).filter(([entryKey]) => !['id', 'profile_id', 'created_at', 'approved_at'].includes(entryKey)),
+      Object.entries(item).filter(([entryKey]) => !['id', 'profile_id', 'создано', 'approved_at'].includes(entryKey)),
     );
 
     Object.keys(payload).forEach((entryKey) => {
@@ -1470,7 +1470,7 @@ export default function SettingsPage() {
               </span>
             </p>
             <p><strong>External URL:</strong> {hhTargetLastResult.hh_resume_url ? <a href={hhTargetLastResult.hh_resume_url} target="_blank" rel="noreferrer">Открыть на HH</a> : '—'}</p>
-            <p><strong>Created:</strong> {formatDateTime(hhTargetLastResult.created_at)}</p>
+            <p><strong>Created:</strong> {formatDateTime(hhTargetLastResult.создано)}</p>
             <p><strong>Updated:</strong> {formatDateTime(hhTargetLastResult.updated_at)}</p>
             <p className="muted-text">
               Рекомендуемый безопасный шаг: сразу проверьте visibility и при необходимости нажмите «Скрыть от всех» в списке tracked HH-резюме ниже.
@@ -2012,12 +2012,12 @@ function renderDocCards(sectionKey, items, setItems, ops, savingByKey, saveItem,
       {items.map((item, index) => {
         const localId = item.id ?? `new-${index}`;
         const key = `${sectionKey}-${localId}`;
-        const statusMeta = DOCUMENT_STATUS_META[item.status] || { label: item.status || 'Draft', tone: 'draft' };
+        const statusMeta = DOCUMENT_STATUS_META[item.status] || { label: item.status || 'Черновик', tone: 'draft' };
         return (
           <InlineEditorCard
             key={key}
             title={`${item.title || 'Без названия'}`}
-            summary={`Статус: ${statusMeta.label} · created_at: ${item.created_at || '—'} · vacancy_id: ${item.vacancy_id || '—'}`}
+            summary={`Статус: ${statusMeta.label} · создано: ${item.создано || '—'} · vacancy_id: ${item.vacancy_id || '—'}`}
             value={item}
             disabled={Boolean(savingByKey[key])}
             onSave={(draft) => saveItem(sectionKey, draft, { ...ops, setItems })}
@@ -2026,7 +2026,7 @@ function renderDocCards(sectionKey, items, setItems, ops, savingByKey, saveItem,
               <div className="document-editor">
                 <div className="inline-status-row">
                   <span className={`doc-state-badge doc-state-badge--${statusMeta.tone}`}>{statusMeta.label}</span>
-                  <span className="muted-text">source: {draft.source || 'user'}</span>
+                  <span className="muted-text">источник: {draft.source || 'user'}</span>
                 </div>
                 <div className="settings-grid settings-grid--two">
                   <TextField label="Название" value={draft.title ?? ''} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />

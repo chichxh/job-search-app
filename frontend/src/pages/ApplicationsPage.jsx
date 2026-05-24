@@ -33,15 +33,15 @@ const STATUSES = [
 ];
 
 const STATUS_META = {
-  saved: { label: 'Saved', tone: 'neutral' },
-  planned: { label: 'Planned', tone: 'info' },
-  applied: { label: 'Applied', tone: 'info' },
-  hr_screen: { label: 'HR screen', tone: 'info' },
-  tech_interview: { label: 'Tech interview', tone: 'accent' },
-  test_task: { label: 'Test task', tone: 'accent' },
-  offer: { label: 'Offer', tone: 'success' },
-  rejected: { label: 'Rejected', tone: 'danger' },
-  archived: { label: 'Archived', tone: 'muted' },
+  saved: { label: 'Сохранено', tone: 'neutral' },
+  planned: { label: 'Запланировано', tone: 'info' },
+  applied: { label: 'Отклик отправлен', tone: 'info' },
+  hr_screen: { label: 'Скрининг HR', tone: 'info' },
+  tech_interview: { label: 'Техническое интервью', tone: 'accent' },
+  test_task: { label: 'Тестовое задание', tone: 'accent' },
+  offer: { label: 'Оффер', tone: 'success' },
+  rejected: { label: 'Отказ', tone: 'danger' },
+  archived: { label: 'В архиве', tone: 'muted' },
 };
 
 const ACTIVE_EXCLUDED_STATUSES = new Set(['rejected', 'archived']);
@@ -60,7 +60,7 @@ function groupByStatus(items) {
 
 function getNotePreview(note) {
   if (!note) {
-    return 'No notes yet';
+    return 'Пока нет заметок';
   }
   if (note.length <= 100) {
     return note;
@@ -79,8 +79,8 @@ function getExternalApplyStatusLabel(status) {
   if (status === 'already_applied') {
     return 'already_applied (на HH уже был отклик)';
   }
-  if (status === 'submitted') {
-    return 'submitted';
+  if (status === 'отправлено') {
+    return 'отправлено';
   }
   return status;
 }
@@ -178,7 +178,7 @@ export default function ApplicationsPage() {
       setHistoryByApplicationId((current) => ({ ...current, [applicationId]: history }));
       return history;
     } catch (requestError) {
-      setError(requestError.message || 'Failed to load status history');
+      setError(requestError.message || 'Не удалось загрузить историю статусов');
       return [];
     } finally {
       setHistoryLoadingIds((current) => current.filter((id) => id !== applicationId));
@@ -190,7 +190,7 @@ export default function ApplicationsPage() {
       const history = await listApplicationHistory(profileId, applicationId);
       setHistoryByApplicationId((current) => ({ ...current, [applicationId]: history }));
     } catch (requestError) {
-      setError(requestError.message || 'Failed to refresh status history');
+      setError(requestError.message || 'Не удалось обновить историю статусов');
     }
   }, [profileId]);
 
@@ -207,7 +207,7 @@ export default function ApplicationsPage() {
       });
       await ensureHistoryLoaded(applicationId);
     } catch (requestError) {
-      setError(requestError.message || 'Failed to load application details');
+      setError(requestError.message || 'Не удалось загрузить детали отклика');
     } finally {
       setDetailsLoading(false);
     }

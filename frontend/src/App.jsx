@@ -16,7 +16,7 @@ function AuthStateScreen({ title, message }) {
   return (
     <section className="auth-page auth-page--status">
       <article className="auth-status-card">
-        <p className="auth-card__eyebrow">Session</p>
+        <p className="auth-card__eyebrow">Сессия</p>
         <h1>{title}</h1>
         <Loading message={message} />
       </article>

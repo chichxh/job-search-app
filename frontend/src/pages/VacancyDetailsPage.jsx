@@ -453,7 +453,7 @@ export default function VacancyDetailsPage() {
       setLastGeneratedResult({ type: 'resume', document: createdDraft });
       await loadDocuments({ silent: true });
     } catch (requestError) {
-      setGenerateError(getUserFacingError(requestError, 'Failed to generate resume.'));
+      setGenerateError(getUserFacingError(requestError, 'Не удалось сгенерировать резюме.'));
     } finally {
       setIsGeneratingResume(false);
     }
@@ -470,7 +470,7 @@ export default function VacancyDetailsPage() {
       setLastGeneratedResult({ type: 'cover_letter', document: createdDraft });
       await loadDocuments({ silent: true });
     } catch (requestError) {
-      setGenerateError(getUserFacingError(requestError, 'Failed to generate cover letter.'));
+      setGenerateError(getUserFacingError(requestError, 'Не удалось сгенерировать сопроводительное письмо.'));
     } finally {
       setIsGeneratingCoverLetter(false);
     }
@@ -495,7 +495,7 @@ export default function VacancyDetailsPage() {
       const approved = await approveResumeVersion(profileId, id);
       setResumeDocuments((current) => current.map((item) => (item.id === id ? approved : item)));
     } catch (requestError) {
-      setApproveError(getUserFacingError(requestError, 'Failed to approve resume.'));
+      setApproveError(getUserFacingError(requestError, 'Не удалось одобрить резюме.'));
     } finally {
       setApprovingResumeById((current) => ({ ...current, [id]: false }));
     }
@@ -511,7 +511,7 @@ export default function VacancyDetailsPage() {
       const approved = await approveCoverLetterVersion(profileId, id);
       setCoverLetterDocuments((current) => current.map((item) => (item.id === id ? approved : item)));
     } catch (requestError) {
-      setApproveError(getUserFacingError(requestError, 'Failed to approve cover letter.'));
+      setApproveError(getUserFacingError(requestError, 'Не удалось одобрить сопроводительное письмо.'));
     } finally {
       setApprovingCoverLetterById((current) => ({ ...current, [id]: false }));
     }
@@ -804,7 +804,7 @@ export default function VacancyDetailsPage() {
             <div className="vacancy-details__docgen-list">
               {[['resume', resumeDocuments], ['cover_letter', coverLetterDocuments]].map(([type, items]) => (
                 <article className="vacancy-details__docgen-result" key={type}>
-                  <h3 className="vacancy-details__section-title">{type === 'resume' ? 'Resume versions' : 'Cover letter versions'}</h3>
+                  <h3 className="vacancy-details__section-title">{type === 'resume' ? 'Версии резюме' : 'Версии сопроводительных писем'}</h3>
                   {items.length ? (
                     <ul className="vacancy-details__doc-list">
                       {items.map((item) => (
@@ -817,7 +817,7 @@ export default function VacancyDetailsPage() {
                           <p className="vacancy-details__doc-meta"><strong>генерация:</strong> {renderMetadataCompact(item.метаданные_генерации)}</p>
                           <pre className="vacancy-details__description">{toPreviewText(item.content_text)}</pre>
                           {item.status === 'draft' ? (
-                            <button className="button button--secondary" type="button" onClick={() => startEditingDocument(type, item)}>Edit</button>
+                            <button className="button button--secondary" type="button" onClick={() => startEditingDocument(type, item)}>Изменить</button>
                           ) : null}
                           {editingDocumentKey === `${type}:${item.id}` ? (
                             <div className="vacancy-details__edit-panel">
@@ -829,7 +829,7 @@ export default function VacancyDetailsPage() {
                                 <button className="button" type="button" onClick={() => saveEditingDocument(type, item.id)} disabled={Boolean(savingEditByKey[`${type}:${item.id}`])}>
                                   {savingEditByKey[`${type}:${item.id}`] ? 'Сохраняем...' : 'Сохранить'}
                                 </button>
-                                <button className="button button--secondary" type="button" onClick={cancelEditingDocument} disabled={Boolean(savingEditByKey[`${type}:${item.id}`])}>Cancel</button>
+                                <button className="button button--secondary" type="button" onClick={cancelEditingDocument} disabled={Boolean(savingEditByKey[`${type}:${item.id}`])}>Отмена</button>
                               </div>
                             </div>
                           ) : null}
