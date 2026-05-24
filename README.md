@@ -155,6 +155,15 @@ Manual сценарий MVP:
 - [ ] Generate cover letter draft
 - [ ] Approve generated document
 
+## Demo HH authorization
+
+Для защиты доступен безопасный demo endpoint без реального HH OAuth/browser session:
+
+- `POST /api/v1/integrations/hh/demo-connect`
+- endpoint работает только при `DEMO_MODE=true` или `HH_DEMO_MODE=true`;
+- при вызове endpoint помечает HH как `connected` в режиме `demo` и импортирует тестовый HH-профиль в текущий профиль пользователя;
+- endpoint не требует логин/пароль/SMS/капчу и не ходит во внешнюю HH-сессию.
+
 ## HH apply from vacancy page (compact MVP UX)
 
 На странице `/vacancies/:vacancyId` добавлен компактный user-facing flow **«Откликнуться через HH»** без bulk apply и без chat orchestration.

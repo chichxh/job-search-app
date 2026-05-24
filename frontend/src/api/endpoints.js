@@ -156,6 +156,7 @@ export const startHhImport = (payload) =>
 
 export const getHhConnectionStatus = () => apiFetch('/integrations/hh/status');
 export const startHhOAuthConnect = () => apiFetch('/integrations/hh/connect/start', { method: 'POST' });
+export const demoConnectHh = () => apiFetch('/integrations/hh/demo-connect', { method: 'POST' });
 export const listHhResumes = () => apiFetch('/integrations/hh/resumes');
 export const importProfileFromHh = (payload) =>
   apiFetch('/integrations/hh/import', {

@@ -82,3 +82,43 @@ def test_hh_callback_uses_safe_redirect_on_oauth_failure(client, monkeypatch) ->
     assert response.status_code == 302
     location = response.headers.get("location", "")
     assert "connect_failed" in location
+
+
+def test_hh_demo_connect_returns_403_when_demo_mode_disabled(client, auth_headers, monkeypatch) -> None:
+    monkeypatch.delenv("DEMO_MODE", raising=False)
+    monkeypatch.delenv("HH_DEMO_MODE", raising=False)
+
+    response = client.post("/api/v1/integrations/hh/demo-connect", headers=auth_headers)
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Demo HH connection is disabled"
+
+
+def test_hh_demo_connect_returns_connected_in_demo_mode(client, auth_headers, monkeypatch) -> None:
+    monkeypatch.setenv("DEMO_MODE", "true")
+
+    response = client.post("/api/v1/integrations/hh/demo-connect", headers=auth_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "connected"
+    assert payload["mode"] == "demo"
+    assert payload["profile"]["full_name"] == "пользователь Тестовый"
+    assert payload["profile"]["title"] == "Junior Python Developer"
+    assert payload["profile"]["city"] == "Москва"
+    assert payload["profile"]["skills_count"] == 7
+    assert payload["profile"]["experiences_count"] == 2
+
+
+def test_hh_demo_connect_updates_profile_with_demo_data(client, auth_headers, fake_db, monkeypatch) -> None:
+    monkeypatch.setenv("HH_DEMO_MODE", "true")
+
+    response = client.post("/api/v1/integrations/hh/demo-connect", headers=auth_headers)
+    assert response.status_code == 200
+
+    profile = fake_db.get(models.Profile, 1)
+    assert profile is not None
+    assert profile.title == "Junior Python Developer"
+    assert profile.city == "Москва"
+    assert profile.full_name == "пользователь Тестовый"
+    assert profile.skills_text == "Python, FastAPI, PostgreSQL, Docker, REST API, Git, SQL"
