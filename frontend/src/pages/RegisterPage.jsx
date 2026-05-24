@@ -33,18 +33,18 @@ export default function RegisterPage() {
     <section className="auth-page">
       <div className="auth-layout">
         <aside className="auth-layout__side">
-          <p className="auth-layout__eyebrow">Get started</p>
+          <p className="auth-layout__eyebrow">Начните работу</p>
           <h1>Создайте аккаунт</h1>
-          <p className="auth-layout__copy">После регистрации вы сразу попадёте в рабочий флоу: вакансии → ranking → отклики.</p>
+          <p className="auth-layout__copy">После регистрации вы сразу попадёте в рабочий флоу: вакансии → ранжирование → отклики.</p>
           <ul className="auth-layout__list">
             <li>Единый профиль для рекомендаций и документов</li>
             <li>Быстрый старт без дополнительной настройки</li>
-            <li>Чистый интерфейс для daily-use работы</li>
+            <li>Чистый интерфейс для ежедневной работы</li>
           </ul>
         </aside>
 
         <form className="auth-card" onSubmit={handleSubmit}>
-          <p className="auth-card__eyebrow">Create account</p>
+          <p className="auth-card__eyebrow">Создать аккаунт</p>
           <h2>Регистрация</h2>
           <p className="auth-card__hint">Минимум полей — максимум фокуса на поиске работы.</p>
           {error ? <ErrorBanner message={error} /> : null}
@@ -55,7 +55,7 @@ export default function RegisterPage() {
           </label>
 
           <label>
-            Password (min 8 chars)
+            Пароль (минимум 8 символов)
             <input type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required />
           </label>
 

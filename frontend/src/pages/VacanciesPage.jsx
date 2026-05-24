@@ -45,7 +45,7 @@ export default function VacanciesPage() {
         }
       } catch (requestError) {
         if (isMounted) {
-          setError(requestError.message || 'Failed to load vacancies.');
+          setError(requestError.message || 'Не удалось загрузить вакансии.');
         }
       } finally {
         if (isMounted) {
@@ -188,16 +188,16 @@ export default function VacanciesPage() {
       >
         <div className="inline-status-row">
           <StatusPill tone={isImporting ? 'info' : importSuccess ? 'success' : 'neutral'}>
-            {isImporting ? `Task ${importTaskId || '—'} · ${importState}` : importSuccess || 'Готово к запуску импорта'}
+            {isImporting ? `Задача ${importTaskId || '—'} · ${importState}` : importSuccess || 'Готово к запуску импорта'}
           </StatusPill>
-          <p className="flow-hint">После импорта перейдите в <Link className="vacancy-details__link" to="/recommendations">Recommendations</Link> и пересчитайте ranking.</p>
+          <p className="flow-hint">После импорта перейдите в <Link className="vacancy-details__link" to="/recommendations">Рекомендации</Link> и пересчитайте ранжирование.</p>
         </div>
       </SectionCard>
 
       {importError ? <ErrorBanner message={importError} /> : null}
 
       <SectionCard className="vacancy-list-shell" title="Список вакансий" subtitle={`Всего: ${vacancies.length} · Показано: ${filteredVacancies.length}`}>
-        <div className="toolbar toolbar--subtle vacancy-filters" aria-label="Vacancy filters">
+        <div className="toolbar toolbar--subtle vacancy-filters" aria-label="Фильтры вакансий">
           <input
             className="vacancy-filters__search"
             type="search"
@@ -229,8 +229,8 @@ export default function VacanciesPage() {
                     <p className="vacancy-row__meta">{getSafeText(vacancy.company_name ?? vacancy.company, 'Компания не указана')} · {getSafeText(vacancy.location, 'Локация не указана')}</p>
                   </div>
                   <p className="vacancy-row__salary">{formatSalary(vacancy)}</p>
-                  <StatusPill tone={vacancy.status?.toLowerCase() === 'open' ? 'success' : 'neutral'}>{vacancy.status ?? 'unknown'}</StatusPill>
-                  <p className="vacancy-row__date">updated {formatDateTime(vacancy.updated_at) ?? '—'}</p>
+                  <StatusPill tone={vacancy.status?.toLowerCase() === 'open' ? 'success' : 'neutral'}>{vacancy.status ?? 'неизвестно'}</StatusPill>
+                  <p className="vacancy-row__date">обновлено {formatDateTime(vacancy.updated_at) ?? '—'}</p>
                 </Link>
               ))}
             </div>
