@@ -6,7 +6,7 @@ function resolveProfileId(profileId) {
   const resolved = profileId ?? getCurrentProfileId();
 
   if (!Number.isInteger(resolved) || resolved <= 0) {
-    throw new Error('Current profile is not available. Please log in again.');
+    throw new Error('Текущий профиль недоступен. Пожалуйста, войдите снова.');
   }
 
   return resolved;
