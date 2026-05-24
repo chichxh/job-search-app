@@ -22,7 +22,6 @@ def build_resume_prompt(
     tailoring: Mapping[str, Any],
 ) -> list[LLMMessage]:
     user_prompt = (
-        "Сформируй резюме строго в markdown.\n"
         "Обязательные секции и порядок: Summary, Skills, Experience, Projects, Education.\n"
         "Если данных для любой секции не хватает — добавь блок 'НУЖНО УТОЧНИТЬ' с вопросами.\n\n"
         f"{_build_shared_facts_block(profile_facts, vacancy_facts, tailoring)}"

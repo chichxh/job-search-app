@@ -35,7 +35,7 @@ Alembic migration `2b7d4e1a9c3f_add_users_and_profile_ownership`:
 
 1. создаёт `users` и unique index по `email`;
 2. добавляет `profiles.user_id`;
-3. создаёт demo пользователя `demo@example.local`;
+3. создаёт demo пользователя `anna.backend@example.local`;
 4. привязывает существующие профили к demo пользователю;
 5. делает `profiles.user_id` обязательным (`NOT NULL`) и добавляет FK.
 

@@ -38,13 +38,13 @@ def upgrade() -> None:
     connection.execute(
         sa.text("INSERT INTO users (email, password_hash, is_active) VALUES (:email, :password_hash, true)"),
         {
-            "email": "demo@example.local",
-            "password_hash": "pbkdf2_sha256$120000$fe9f4285820b62acfe810482c1654ae7$800e74c8a32c5cee937b3afa01e01ca96f90bad89f7104d317e012423a436125",
+            "email": "anna.backend@example.local",
+            "password_hash": "pbkdf2_sha256$120000$bde25e361d0028e524590b98d8dbea2c$f2d9da129686a6b55be0aba176e8853769d48a2857540c9618d4e320a8530eea",
         },
     )
     connection.execute(
         sa.text("UPDATE profiles SET user_id = (SELECT id FROM users WHERE email = :email)"),
-        {"email": "demo@example.local"},
+        {"email": "anna.backend@example.local"},
     )
 
     op.alter_column("profiles", "user_id", nullable=False)

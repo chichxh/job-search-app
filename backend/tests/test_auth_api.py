@@ -20,14 +20,14 @@ def test_register_creates_user_and_profile(client, fake_db):
 def test_login_success_and_failure(client):
     success = client.post(
         "/api/v1/auth/login",
-        json={"email": "demo@example.local", "password": "demo-password-change-me"},
+        json={"email": "anna.backend@example.local", "password": "qwerty123"},
     )
     assert success.status_code == 200
     assert success.json()["access_token"]
 
     failure = client.post(
         "/api/v1/auth/login",
-        json={"email": "demo@example.local", "password": "wrong-password"},
+        json={"email": "anna.backend@example.local", "password": "wrong-password"},
     )
     assert failure.status_code == 401
 
@@ -38,7 +38,7 @@ def test_auth_me_requires_token(client):
 
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": "demo@example.local", "password": "demo-password-change-me"},
+        json={"email": "anna.backend@example.local", "password": "demo-password-change-me"},
     )
     token = login.json()["access_token"]
 

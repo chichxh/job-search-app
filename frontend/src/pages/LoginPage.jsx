@@ -7,8 +7,8 @@ import { useAuth } from '../auth/useAuth.js';
 export default function LoginPage() {
   const { isAuthenticated, isBootstrapping, login } = useAuth();
   const location = useLocation();
-  const [email, setEmail] = useState('demo@example.local');
-  const [password, setPassword] = useState('demo-password-change-me');
+  const [email, setEmail] = useState('anna.backend@example.local');
+  const [password, setPassword] = useState('qwerty123');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 

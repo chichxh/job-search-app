@@ -88,7 +88,7 @@ class FakeDB:
 def fake_db():
     db = FakeDB()
     user = models.User(
-        email="demo@example.local",
+        email="anna.backend@example.local",
         password_hash="pbkdf2_sha256$120000$fe9f4285820b62acfe810482c1654ae7$800e74c8a32c5cee937b3afa01e01ca96f90bad89f7104d317e012423a436125",
         is_active=True,
     )
