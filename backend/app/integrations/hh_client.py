@@ -3,6 +3,7 @@ import os
 import random
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from http import HTTPStatus
 from typing import Any, Optional
 
 import httpx
@@ -162,6 +163,19 @@ class HHClient:
                 await asyncio.sleep(2**attempt)
                 continue
 
+            if response.status_code == HTTPStatus.FORBIDDEN:
+                request_id = self._extract_hh_request_id(response)
+                details = response.text[:300]
+                raise HHAPIError(
+                    "HH API returned 403 Forbidden for "
+                    f"{method} {url}. "
+                    "Typical reasons: invalid HH_USER_AGENT format, missing/invalid auth for protected "
+                    "endpoints, or geo/IP restrictions from HH API. "
+                    "Use a descriptive HH_USER_AGENT like 'my-app/1.0 (email@example.com)' and, "
+                    "if needed, route requests through a permitted RU/KZ-region egress IP. "
+                    f"request_id={request_id or 'n/a'} response={details}"
+                )
+
             raise HHAPIError(
                 f"HH API returned {response.status_code} for {method} {url}: {response.text[:300]}"
             )
@@ -185,3 +199,15 @@ class HHClient:
             return max(wait_s, 0.0)
         except (TypeError, ValueError, IndexError):
             return None
+
+    @staticmethod
+    def _extract_hh_request_id(response: httpx.Response) -> str | None:
+        try:
+            payload = response.json()
+            if isinstance(payload, dict):
+                request_id = payload.get("request_id")
+                if request_id is not None:
+                    return str(request_id)
+        except Exception:  # noqa: BLE001
+            return None
+        return None
