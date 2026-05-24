@@ -1,4 +1,4 @@
-const NUMBER_FORMATTER = new Intl.NumberFormat('en-US');
+const NUMBER_FORMATTER = new Intl.NumberFormat('ru-RU');
 
 export function getSafeText(value, fallback) {
   if (value == null) {
@@ -11,12 +11,12 @@ export function getSafeText(value, fallback) {
 
 export function formatSalary(vacancy, options = {}) {
   const {
-    emptyLabel = 'Salary not specified',
-    fromLabel = 'from',
-    toLabel = 'up to',
+    emptyLabel = 'Зарплата не указана',
+    отLabel = 'от',
+    toLabel = 'до',
   } = options;
 
-  const salaryFrom = vacancy?.salary_from;
+  const salaryFrom = vacancy?.salary_от;
   const salaryTo = vacancy?.salary_to;
   const currency = vacancy?.currency;
 
@@ -24,16 +24,16 @@ export function formatSalary(vacancy, options = {}) {
     return emptyLabel;
   }
 
-  const fromPart = salaryFrom != null ? NUMBER_FORMATTER.format(salaryFrom) : null;
+  const отPart = salaryFrom != null ? NUMBER_FORMATTER.format(salaryFrom) : null;
   const toPart = salaryTo != null ? NUMBER_FORMATTER.format(salaryTo) : null;
   const currencyPart = currency ? ` ${currency}` : '';
 
-  if (fromPart && toPart) {
-    return `${fromPart} - ${toPart}${currencyPart}`;
+  if (отPart && toPart) {
+    return `${отPart} - ${toPart}${currencyPart}`;
   }
 
-  if (fromPart) {
-    return `${fromLabel} ${fromPart}${currencyPart}`;
+  if (отPart) {
+    return `${отLabel} ${отPart}${currencyPart}`;
   }
 
   return `${toLabel} ${toPart}${currencyPart}`;
