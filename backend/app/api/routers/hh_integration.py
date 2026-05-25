@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
+import json
 import os
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
@@ -11,6 +13,8 @@ from app.db.session import get_db
 from app.schemas.hh_integration import (
     HHOAuthConnectionStatus,
     HHOAuthStartResponse,
+    HHDemoConnectResponse,
+    HHDemoProfileSummary,
     HHProfileImportJSONRequest,
     HHProfileImportRequest,
     HHProfileImportResponse,
@@ -20,6 +24,12 @@ from app.services.hh_oauth_service import HHOAuthError, HHOAuthService
 from app.services.hh_profile_importer import HHImportPayloadError, HHProfileImporter
 
 router = APIRouter(prefix="/integrations/hh", tags=["hh-integration"])
+_DEMO_FIXTURE_PATH = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "hh" / "demo_hh_profile.json"
+
+
+def _is_hh_demo_enabled() -> bool:
+    enabled = (os.getenv("DEMO_MODE", "") or os.getenv("HH_DEMO_MODE", "")).strip().lower()
+    return enabled in {"1", "true", "yes", "on"}
 
 
 @router.post("/connect/start", response_model=HHOAuthStartResponse)
@@ -169,3 +179,41 @@ async def import_hh_profile_json(
 async def disconnect_hh(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> None:
     service = HHOAuthService(db)
     await service.disconnect(user_id=current_user.id)
+
+
+@router.post("/demo-connect", response_model=HHDemoConnectResponse)
+async def hh_demo_connect(
+    current_user: User = Depends(get_current_user),
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+) -> HHDemoConnectResponse:
+    if not _is_hh_demo_enabled():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Demo HH connection is disabled")
+
+    if profile.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
+
+    fixture_payload = json.loads(_DEMO_FIXTURE_PATH.read_text(encoding="utf-8"))
+    importer = HHProfileImporter(db)
+    selected = importer.select_resume_from_payload(payload=fixture_payload, resume_id=None)
+    importer.import_resume(profile=profile, resume=selected.resume_payload)
+    profile.resume_text = profile.resume_text or "Imported from HH demo profile"
+    db.add(profile)
+    db.commit()
+
+    raw_skills = selected.resume_payload.get("skill_set")
+    skills_count = len(raw_skills) if isinstance(raw_skills, list) else 0
+    raw_experiences = selected.resume_payload.get("experience")
+    experiences_count = len(raw_experiences) if isinstance(raw_experiences, list) else 0
+
+    return HHDemoConnectResponse(
+        status="connected",
+        mode="demo",
+        profile=HHDemoProfileSummary(
+            full_name=profile.full_name or "Тестовый пользователь",
+            title=profile.title or "Backend Developer",
+            city=profile.city or "Москва",
+            skills_count=skills_count,
+            experiences_count=experiences_count,
+        ),
+    )

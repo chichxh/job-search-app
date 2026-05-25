@@ -153,16 +153,15 @@ export default function RecommendationsPage() {
 
       <SectionCard
         className="recommendations-hero"
-        title=""
-        subtitle="Обновите рекомендации на основе текущего профиля и лимита рекомендаций."
+
+        title="Пересчёт рекомендаций"
+        subtitle="Обновите рекомендации на основе текущего профиля."
         actions={(
           <div className="button-group">
             <button className="button" type="button" onClick={handleRecompute} disabled={Boolean(taskId)}>
               Пересчитать рекомендации
             </button>
-            <button className="button button--secondary" type="button" onClick={handleReloadSettings}>
-              Обновить настройки
-            </button>
+            <button className="button button--secondary" type="button" onClick={handleReloadSettings}>Обновить параметры</button>
           </div>
         )}
       >
@@ -170,6 +169,7 @@ export default function RecommendationsPage() {
           <MetricTile label="Видимых рекомендаций" value={visibleRecommendations.length} hint="После фильтров слабых/отклоненных" />
           <MetricTile label="Лучший реузльтат" value={formatScore(topScore)} tone="info" hint="Лучший элемент текущего ранжирования" />
           <MetricTile label="Лимит" value={settings.recommendationsLimit} hint={`Скрывать отклоненные: ${settings.hideReject ? 'вкл' : 'выкл'}`} />
+
         </div>
         <label className="vacancy-filters__toggle">
           <input
@@ -180,7 +180,7 @@ export default function RecommendationsPage() {
           <span>Скрывать слабые совпадения</span>
         </label>
         {taskId ? (
-          <p className="info-banner">Задача {taskId}: {taskState}</p>
+          <p className="info-banner">Идёт пересчёт рекомендаций: {taskState}</p>
         ) : taskState === 'SUCCESS' ? (
           <p className="success-banner">Рекомендации пересчитаны.</p>
         ) : null}
@@ -188,7 +188,8 @@ export default function RecommendationsPage() {
 
       {taskError ? <ErrorBanner message={taskError} /> : null}
 
-      <SectionCard title="Рейтинговый список" subtitle="Сначала самые сильные кандидаты на отклик.">
+
+      <SectionCard title="Список рекомендаций" subtitle="Сначала самые сильные кандидаты на отклик.">
         {loading ? <Loading message="Загружаем рекомендации..." /> : null}
         {!loading && error ? <ErrorBanner message={error} /> : null}
 
@@ -201,16 +202,17 @@ export default function RecommendationsPage() {
                   <div className="recommendation-row__main">
                     <p className="recommendation-row__title">{getSafeText(item.title, 'Название вакансии не указано')}</p>
                     <p className="recommendation-row__meta">{getSafeText(item.company_name ?? item.company, 'Компания не указана')} · {getSafeText(item.location, 'Локация не указана')}</p>
-                    {/* <p className="recommendation-row__dates">updated {formatDateTime(item.updated_at) ?? '—'} · created {formatDateTime(item.created_at) ?? '—'}</p> */}
+                    <p className="recommendation-row__dates">updated {formatDateTime(item.updated_at) ?? '—'} · created {formatDateTime(item.created_at) ?? '—'}</p>
                   </div>
                   <div className="recommendation-row__scorebox">
                     <p className="recommendation-row__score">{formatScore(item.final_score)}</p>
-                    <p className="recommendation-row__score-label">Процент совпадения</p>
+
+                    <p className="recommendation-row__score-label">Оценка</p>
                     <VerdictBadge verdict={item.verdict} />
                   </div>
                   <div className="recommendation-row__actions">
-                    <Link className="recommendation-row__link" to={`/vacancies/${item.id}`}>Перейти →</Link>
-                    <p className="recommendation-row__next">Далее: сопоставление и создание резюме</p>
+                    <Link className="recommendation-row__link" to={`/vacancies/${item.id}`}>Открыть вакансию →</Link>
+                    <p className="recommendation-row__next">Следующий шаг: проверить мэтчинг и документы</p>
                   </div>
                 </article>
               ))}

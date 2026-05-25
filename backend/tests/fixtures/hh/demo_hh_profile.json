@@ -1,0 +1,84 @@
+{
+  "resume": {
+    "id": "demo-resume-001",
+    "first_name": "Тестовый",
+    "last_name": "пользователь",
+    "title": "Junior Python Developer",
+    "area": {
+      "name": "Москва"
+    },
+    "skills": "Учебный профиль для демонстрации интеграции с HH без реальной авторизации.",
+    "description": "Demo resume data only. No personal identifiers.",
+    "skill_set": [
+      {
+        "name": "Python"
+      },
+      {
+        "name": "FastAPI"
+      },
+      {
+        "name": "PostgreSQL"
+      },
+      {
+        "name": "Docker"
+      },
+      {
+        "name": "REST API"
+      },
+      {
+        "name": "Git"
+      },
+      {
+        "name": "SQL"
+      }
+    ],
+    "experience": [
+      {
+        "company": "Учебный проект API Lab",
+        "position": "Backend Developer Intern",
+        "start": "2023-09-01",
+        "end": "2024-02-01",
+        "description": "Разрабатывал REST API на FastAPI, писал SQL-запросы и покрывал код тестами.",
+        "employment": {
+          "name": "Стажировка"
+        },
+        "area": {
+          "name": "Москва"
+        }
+      },
+      {
+        "company": "Pet Project Team",
+        "position": "Junior Python Developer",
+        "start": "2024-03-01",
+        "description": "Разработал backend для трекера откликов, контейнеризировал сервисы через Docker.",
+        "employment": {
+          "name": "Проектная работа"
+        },
+        "area": {
+          "name": "Москва"
+        }
+      }
+    ],
+    "language": [
+      {
+        "name": "Русский",
+        "level": {
+          "name": "Родной"
+        }
+      },
+      {
+        "name": "Английский",
+        "level": {
+          "name": "B1"
+        }
+      }
+    ],
+    "education": [
+      {
+        "organization": "Тестовый технический колледж",
+        "result": "Программирование",
+        "year": 2024
+      }
+    ]
+  }
+}

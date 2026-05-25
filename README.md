@@ -2,6 +2,19 @@
 
 ## Verification
 
+## Demo data seed
+
+Для воспроизводимого сценария защиты без реальной HH/LLM авторизации:
+
+```bash
+docker compose -f infra/docker-compose.yml exec api python scripts/seed_demo_data.py
+```
+
+Демо-логин: `demo@example.com`.
+
+Пароль задается через `DEMO_USER_PASSWORD` в `.env` (если переменная не задана, используется `demo12345`).
+
+
 ## Testing
 
 Минимальный backend smoke/integration suite и инструкции запуска: `TESTING.md`.
@@ -154,6 +167,15 @@ Manual сценарий MVP:
 - [ ] Generate resume draft
 - [ ] Generate cover letter draft
 - [ ] Approve generated document
+
+## Demo HH authorization
+
+Для защиты доступен безопасный demo endpoint без реального HH OAuth/browser session:
+
+- `POST /api/v1/integrations/hh/demo-connect`
+- endpoint работает только при `DEMO_MODE=true` или `HH_DEMO_MODE=true`;
+- при вызове endpoint помечает HH как `connected` в режиме `demo` и импортирует тестовый HH-профиль в текущий профиль пользователя;
+- endpoint не требует логин/пароль/SMS/капчу и не ходит во внешнюю HH-сессию.
 
 ## HH apply from vacancy page (compact MVP UX)
 
