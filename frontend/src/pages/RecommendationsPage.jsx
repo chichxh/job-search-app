@@ -153,22 +153,20 @@ export default function RecommendationsPage() {
 
       <SectionCard
         className="recommendations-hero"
-        title="Recompute & control"
-        subtitle="Обновите ranking на основе текущего профиля и лимита рекомендаций."
+        title="Пересчёт рекомендаций"
+        subtitle="Обновите рекомендации на основе текущего профиля."
         actions={(
           <div className="button-group">
             <button className="button" type="button" onClick={handleRecompute} disabled={Boolean(taskId)}>
               Пересчитать рекомендации
             </button>
-            <button className="button button--secondary" type="button" onClick={handleReloadSettings}>
-              Обновить настройки
-            </button>
+            <button className="button button--secondary" type="button" onClick={handleReloadSettings}>Обновить параметры</button>
           </div>
         )}
       >
         <div className="recommendations-metrics">
           <MetricTile label="Видимых рекомендаций" value={visibleRecommendations.length} hint="После фильтров weak/reject" />
-          <MetricTile label="Top final_score" value={formatScore(topScore)} tone="info" hint="Лучший элемент текущего ранжирования" />
+          <MetricTile label="Лучшая оценка" value={formatScore(topScore)} tone="info" hint="Лучший вариант в текущем списке" />
           <MetricTile label="Лимит" value={settings.recommendationsLimit} hint={`hideReject: ${settings.hideReject ? 'on' : 'off'}`} />
         </div>
         <label className="vacancy-filters__toggle">
@@ -177,10 +175,10 @@ export default function RecommendationsPage() {
             checked={hideWeak}
             onChange={(event) => setHideWeak(event.target.checked)}
           />
-          <span>Скрывать weak verdict</span>
+          <span>Скрывать слабые совпадения</span>
         </label>
         {taskId ? (
-          <p className="info-banner">Задача {taskId}: {taskState}</p>
+          <p className="info-banner">Идёт пересчёт рекомендаций: {taskState}</p>
         ) : taskState === 'SUCCESS' ? (
           <p className="success-banner">Рекомендации пересчитаны.</p>
         ) : null}
@@ -188,7 +186,7 @@ export default function RecommendationsPage() {
 
       {taskError ? <ErrorBanner message={taskError} /> : null}
 
-      <SectionCard title="Ranked list" subtitle="Сначала самые сильные кандидаты на отклик.">
+      <SectionCard title="Список рекомендаций" subtitle="Сначала самые сильные кандидаты на отклик.">
         {loading ? <Loading message="Загружаем рекомендации..." /> : null}
         {!loading && error ? <ErrorBanner message={error} /> : null}
 
@@ -205,12 +203,12 @@ export default function RecommendationsPage() {
                   </div>
                   <div className="recommendation-row__scorebox">
                     <p className="recommendation-row__score">{formatScore(item.final_score)}</p>
-                    <p className="recommendation-row__score-label">final_score</p>
+                    <p className="recommendation-row__score-label">Оценка</p>
                     <VerdictBadge verdict={item.verdict} />
                   </div>
                   <div className="recommendation-row__actions">
-                    <Link className="recommendation-row__link" to={`/vacancies/${item.id}`}>Открыть details →</Link>
-                    <p className="recommendation-row__next">Next: tailoring + draft docs</p>
+                    <Link className="recommendation-row__link" to={`/vacancies/${item.id}`}>Открыть вакансию →</Link>
+                    <p className="recommendation-row__next">Следующий шаг: проверить мэтчинг и документы</p>
                   </div>
                 </article>
               ))}

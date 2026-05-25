@@ -771,10 +771,7 @@ export default function VacancyDetailsPage() {
           ) : null}
 
           {!loading && tailoring && !hasTailoringSections ? (
-            <details>
-              <summary>Raw tailoring JSON</summary>
-              <pre className="vacancy-details__description">{JSON.stringify(tailoring, null, 2)}</pre>
-            </details>
+            <p className="vacancy-details__hint-text">Детализация мэтчинга пока недоступна. Нажмите «Обновить мэтчинг» или пересчитайте рекомендации.</p>
           ) : null}
         </SectionCard>
 
@@ -925,7 +922,7 @@ export default function VacancyDetailsPage() {
                 {!managedResumesEligible.length ? <option value="">Нет доступных HH-резюме</option> : null}
                 {managedResumesEligible.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {(item.title || `HH resume #${item.id}`)} · vacancy_id={item.vacancy_id ?? '—'} · {item.status}
+                    {(item.title || 'Резюме HH')} · {item.status}
                   </option>
                 ))}
               </select>
@@ -940,7 +937,7 @@ export default function VacancyDetailsPage() {
                 <option value="">Без cover letter</option>
                 {coverLetterDocuments.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.title || `Cover letter #${item.id}`} · {item.status}
+                    {item.title || 'Сопроводительное письмо'} · {item.status}
                   </option>
                 ))}
               </select>
@@ -948,7 +945,7 @@ export default function VacancyDetailsPage() {
               {selectedCoverLetter ? (
                 <div>
                   <p className="vacancy-details__hint-text">
-                    Preview selected cover letter: {selectedCoverLetter.title || `#${selectedCoverLetter.id}`}
+                    Выбрано сопроводительное письмо: {selectedCoverLetter.title || 'Без названия'}
                     {' · '}
                     {selectedCoverLetter.status}
                   </p>
@@ -990,15 +987,15 @@ export default function VacancyDetailsPage() {
                     <strong>HH resume used:</strong>
                     {' '}
                     {latestRunManagedResume
-                      ? `${latestRunManagedResume.title || `HH resume #${latestRunManagedResume.id}`} (#${latestRunManagedResume.id})`
-                      : `#${latestApplyRunForVacancy.hh_resume_managed_id}`}
+                      ? `${latestRunManagedResume.title || 'Резюме HH'}`
+                      : 'Выбранное резюме HH'}
                   </li>
                   <li>
                     <strong>Cover letter used:</strong>
                     {' '}
                     {latestRunCoverLetter
-                      ? `${latestRunCoverLetter.title || `Cover letter #${latestRunCoverLetter.id}`} (#${latestRunCoverLetter.id})`
-                      : (latestApplyRunForVacancy.source_cover_letter_version_id ? `#${latestApplyRunForVacancy.source_cover_letter_version_id}` : 'без cover letter')}
+                      ? `${latestRunCoverLetter.title || 'Сопроводительное письмо'}`
+                      : (latestApplyRunForVacancy.source_cover_letter_version_id ? 'Выбранное сопроводительное письмо' : 'без cover letter')}
                   </li>
                   <li><strong>Updated:</strong> {formatDateTime(latestApplyRunForVacancy.updated_at) ?? '—'}</li>
                   <li><strong>Finished:</strong> {formatDateTime(latestApplyRunForVacancy.finished_at) ?? '—'}</li>
@@ -1031,14 +1028,14 @@ export default function VacancyDetailsPage() {
                   <strong>HH resume used:</strong>
                   {' '}
                   {hhApplyOutcome.selectedManagedResume
-                    ? `${hhApplyOutcome.selectedManagedResume.title || `HH resume #${hhApplyOutcome.selectedManagedResume.id}`} (#${hhApplyOutcome.selectedManagedResume.id})`
-                    : `#${hhApplyOutcome.run.hh_resume_managed_id}`}
+                    ? `${hhApplyOutcome.selectedManagedResume.title || 'Резюме HH'}`
+                    : 'Выбранное резюме HH'}
                 </li>
                 <li>
                   <strong>Cover letter used:</strong>
                   {' '}
                   {hhApplyOutcome.selectedCoverLetter
-                    ? `${hhApplyOutcome.selectedCoverLetter.title || `Cover letter #${hhApplyOutcome.selectedCoverLetter.id}`} (#${hhApplyOutcome.selectedCoverLetter.id})`
+                    ? `${hhApplyOutcome.selectedCoverLetter.title || 'Сопроводительное письмо'}`
                     : 'без cover letter'}
                 </li>
                 <li><strong>Last apply timestamp:</strong> {formatDateTime(hhApplyOutcome.run.finished_at ?? hhApplyOutcome.run.updated_at) ?? '—'}</li>
