@@ -5,9 +5,8 @@ import {
   extractResumeImportFile,
   getHhConnectionStatus,
   getProfile,
-  importProfileFromHh,
+  demoConnectHh,
   parseResumeImportText,
-  startHhOAuthConnect,
 } from '../api/endpoints.js';
 import { useAuth } from '../auth/useAuth.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
@@ -27,6 +26,7 @@ export default function SettingsPage() {
   const [hhBusy, setHhBusy] = useState(false);
   const [hhError, setHhError] = useState('');
   const [hhImportedProfile, setHhImportedProfile] = useState(null);
+  const [hhSuccess, setHhSuccess] = useState('');
 
   const [resumeText, setResumeText] = useState('');
   const [resumeFile, setResumeFile] = useState(null);
@@ -86,25 +86,20 @@ export default function SettingsPage() {
   async function handleHhAuth() {
     setHhBusy(true);
     setHhError('');
+    setHhSuccess('');
     try {
-      const response = await startHhOAuthConnect();
-      window.location.href = response.authorize_url;
-    } catch {
-      setHhError('Не удалось начать авторизацию HeadHunter. Попробуйте еще раз.');
-      setHhBusy(false);
-    }
-  }
-
-  async function handleHhImportDemo() {
-    setHhBusy(true);
-    setHhError('');
-    try {
-      await importProfileFromHh({ consent: true });
-      const [status, profile] = await Promise.all([getHhConnectionStatus(), getProfile(profileId)]);
-      setHhStatus(status ?? { connected: true });
-      setHhImportedProfile(profile ?? null);
-    } catch {
-      setHhError('Не удалось получить данные профиля из HeadHunter. Попробуйте позже.');
+      const response = await demoConnectHh();
+      const importedProfile = response?.profile ?? response?.data?.profile ?? null;
+      setHhStatus({ connected: true });
+      setHhImportedProfile(importedProfile);
+      setHhSuccess('Данные профиля импортированы из HeadHunter в демонстрационном режиме');
+    } catch (error) {
+      const message = error?.message || '';
+      if (message.toLowerCase().includes('demo_mode') || message.toLowerCase().includes('demo mode')) {
+        setHhError('Демо-авторизация HH отключена. Включите DEMO_MODE=true');
+      } else {
+        setHhError('Не удалось выполнить авторизацию через HH. Попробуйте еще раз позже.');
+      }
     } finally {
       setHhBusy(false);
     }
@@ -179,6 +174,8 @@ export default function SettingsPage() {
           title="Авторизация HeadHunter"
           subtitle="Подключите аккаунт HeadHunter, чтобы импортировать данные профиля и использовать их для подбора вакансий."
         >
+          <p className="settings-demo-hint">Доступно в демонстрационном режиме</p>
+
           <div className="settings-demo-status-row">
             <span>Статус подключения</span>
             <StatusPill tone={hhUiStatus.tone}>{hhUiStatus.label}</StatusPill>
@@ -186,12 +183,11 @@ export default function SettingsPage() {
 
           {hhError ? <ErrorBanner message={hhError} /> : null}
 
+          {hhSuccess ? <p className="settings-demo-success">{hhSuccess}</p> : null}
+
           <div className="settings-demo-actions">
             <button type="button" className="button button-primary" onClick={handleHhAuth} disabled={hhBusy}>
-              Авторизоваться через HH
-            </button>
-            <button type="button" className="button button-secondary" onClick={handleHhImportDemo} disabled={hhBusy || !hhStatus?.connected}>
-              Импортировать данные
+              {hhBusy ? 'Подключаем...' : 'Авторизоваться через HH'}
             </button>
           </div>
 

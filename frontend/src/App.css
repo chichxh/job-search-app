@@ -1039,6 +1039,12 @@ textarea:disabled {
   gap: 1rem;
 }
 
+
+.settings-demo-hint {
+  margin: 0 0 0.6rem;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
 .settings-demo-status-row {
   display: flex;
   justify-content: space-between;
