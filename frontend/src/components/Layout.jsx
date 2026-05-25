@@ -42,7 +42,7 @@ export default function Layout() {
       <aside className="app-shell__sidebar">
         <div className="app-shell__brand-block">
           <p className="app-shell__eyebrow">Рабочее пространство</p>
-          <p className="app-shell__brand">Поиск работы OS</p>
+          <p className="app-shell__brand">Поиск работы</p>
         </div>
 
         <nav>

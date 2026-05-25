@@ -304,9 +304,9 @@ export default function ApplicationsPage() {
       <section className="applications-summary" aria-label="Сводка по откликам">
         <article><p>Всего</p><strong>{summary.total}</strong></article>
         <article><p>Активные</p><strong>{summary.active}</strong></article>
-        <article><p>Applied</p><strong>{summary.applied}</strong></article>
-        <article><p>Interview</p><strong>{summary.interview}</strong></article>
-        <article><p>Offers</p><strong>{summary.offers}</strong></article>
+        <article><p>Приянтых</p><strong>{summary.applied}</strong></article>
+        <article><p>Собеседований</p><strong>{summary.interview}</strong></article>
+        <article><p>Офферов</p><strong>{summary.offers}</strong></article>
       </section>
 
       <SectionCard title="Создать отклик" subtitle="Добавьте вакансию в воронку и сразу откройте детали.">

@@ -202,7 +202,7 @@ export default function RecommendationsPage() {
                   <div className="recommendation-row__main">
                     <p className="recommendation-row__title">{getSafeText(item.title, 'Название вакансии не указано')}</p>
                     <p className="recommendation-row__meta">{getSafeText(item.company_name ?? item.company, 'Компания не указана')} · {getSafeText(item.location, 'Локация не указана')}</p>
-                    <p className="recommendation-row__dates">updated {formatDateTime(item.updated_at) ?? '—'} · created {formatDateTime(item.created_at) ?? '—'}</p>
+                    {/* <p className="recommendation-row__dates">updated {formatDateTime(item.updated_at) ?? '—'} · created {formatDateTime(item.created_at) ?? '—'}</p> */}
                   </div>
                   <div className="recommendation-row__scorebox">
                     <p className="recommendation-row__score">{formatScore(item.final_score)}</p>
