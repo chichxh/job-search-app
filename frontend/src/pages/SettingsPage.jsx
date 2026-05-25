@@ -1153,8 +1153,7 @@ export default function SettingsPage() {
     <section className="page-stack">
       <header className="product-page-header">
         <div>
-          <p className="product-page-header__eyebrow">Profile workspace</p>
-          <h1>{`Settings (profile_id=${profileId})`}</h1>
+          <h1>{`Настройки`}</h1>
           <p className="product-page-header__subtitle">Управляйте профилем, документами и интеграциями в едином рабочем модуле.</p>
         </div>
       </header>
@@ -1163,10 +1162,10 @@ export default function SettingsPage() {
 
       <section className="applications-summary">
         <article><p>Профиль</p><strong>{profileCompleteness}%</strong></article>
-        <article><p>Skills</p><strong>{skills.length}</strong></article>
-        <article><p>Experience</p><strong>{experiences.length}</strong></article>
-        <article><p>Resume versions</p><strong>{resumes.length}</strong></article>
-        <article><p>Cover letters</p><strong>{letters.length}</strong></article>
+        <article><p>Навыки</p><strong>{skills.length}</strong></article>
+        <article><p>Опыт</p><strong>{experiences.length}</strong></article>
+        <article><p>Версий резюме</p><strong>{resumes.length}</strong></article>
+        <article><p>Сопроводительных писем</p><strong>{letters.length}</strong></article>
       </section>
 
       <div className="recommendations-toolbar">
@@ -1179,10 +1178,7 @@ export default function SettingsPage() {
         <Link to="/recommendations" className="button button--ghost">Перейти к рекомендациям</Link>
       </div>
 
-      <Section title="Интеграция HH через браузерную сессию" defaultOpen>
-        <p className="muted-text">
-          Подключение выполняется через живую браузерную сессию HH. Это не OAuth-поток: вы проходите стандартные шаги входа HH.
-        </p>
+      <Section title="Интеграция с Head Hunter" defaultOpen>
         <p className="muted-text">Пароль и код подтверждения используются только для текущего шага и не сохраняются в хранилище приложения.</p>
         <p className="muted-text">После успешного входа используется серверная HH-сессия для дальнейших операций.</p>
         {hhBrowserLoading ? <Loading message="Обновляем HH Browser статус..." /> : null}
@@ -1347,16 +1343,16 @@ export default function SettingsPage() {
         ) : null}
       </Section>
 
-      <Section title="Targeted HH-резюме (MVP foundation)" defaultOpen>
+      <Section title="Создание резюме" defaultOpen>
         <p className="muted-text">
-          Этот экран покрывает безопасный MVP: создание targeted HH-резюме + проверка текущей видимости + действие «Скрыть от всех».
+          Создайте таргетированное резюме + проверьте текущую видимостю резюме + действие «Скрыть от всех».
         </p>
         <p className="muted-text">
           Важно: по умолчанию новое HH-резюме на HH может быть видно работодателям. Для точечного резюме рекомендуем сразу применить «Скрыть от всех».
         </p>
         {!hhSessionActive ? (
           <div className="error-banner">
-            <p><strong>Нужна активная HH browser session.</strong> Без неё создание targeted HH-резюме недоступно.</p>
+            <p><strong>Нужна активная HH browser session.</strong> Без неё создание тарегитрованного резюме недоступно.</p>
             <button
               className="button"
               type="button"
@@ -1473,21 +1469,21 @@ export default function SettingsPage() {
             <p><strong>Created:</strong> {formatDateTime(hhTargetLastResult.создано)}</p>
             <p><strong>Updated:</strong> {formatDateTime(hhTargetLastResult.updated_at)}</p>
             <p className="muted-text">
-              Рекомендуемый безопасный шаг: сразу проверьте visibility и при необходимости нажмите «Скрыть от всех» в списке tracked HH-резюме ниже.
+              Рекомендуемый безопасный шаг: сразу проверьте видимость и при необходимости нажмите «Скрыть от всех» в списке резюме ниже.
             </p>
           </article>
         ) : null}
 
         <article className="editor-card">
           <div className="editor-card__header">
-            <h3 className="hh-targeted-preview-card__title">Локально отслеживаемые HH managed resumes</h3>
+            <h3 className="hh-targeted-preview-card__title">Локально отслеживаемые резюме</h3>
             <button className="button button--ghost button--sm" type="button" onClick={refreshManagedResumesList} disabled={hhTargetBusy}>
               Обновить список
             </button>
           </div>
           {hhVisibilityError ? <ErrorBanner message={hhVisibilityError} /> : null}
           {hhVisibilityMessage ? <p className="success-banner">{hhVisibilityMessage}</p> : null}
-          {!managedResumeRows.length ? <p className="muted-text">Пока нет tracked HH managed resumes.</p> : null}
+          {!managedResumeRows.length ? <p className="muted-text">Пока нет отслеживаемых резюме</p> : null}
           {managedResumeRows.length ? (
             <div className="hh-managed-table-wrap">
               <table className="hh-managed-table">
@@ -1635,7 +1631,7 @@ export default function SettingsPage() {
         ) : null}
         <hr />
         <p className="muted-text">
-          Fallback/dev path: импорт из локального HH-like JSON (файл или вставка текста) без live OAuth callback.
+          Fallback/dev path: импорт из локального HH-like JSON (файл или вставка текста) без OAuth.
         </p>
         <div className="settings-grid settings-grid--two">
           <label className="field">

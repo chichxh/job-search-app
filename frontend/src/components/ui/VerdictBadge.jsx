@@ -1,8 +1,8 @@
 const LABELS = {
   strong: 'Сильное соответствие',
-  ok: 'Потенциальное соответствие',
+  ok: 'Среднее соответствие',
   weak: 'Слабое соответствие',
-  reject: 'Отклонить',
+  reject: 'Отклонено',
 };
 
 export default function VerdictBadge({ verdict }) {

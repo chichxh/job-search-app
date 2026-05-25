@@ -166,7 +166,7 @@ export default function VacanciesPage() {
   return (
     <section className="page-stack">
       <PageHeader
-        eyebrow="Vacancy Discovery"
+        eyebrow=""
         title="Вакансии"
         subtitle="Импортируйте поток вакансий и поддерживайте чистый shortlist для мэтчинга и генерации документов."
       />

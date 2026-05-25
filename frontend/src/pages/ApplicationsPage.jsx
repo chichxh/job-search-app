@@ -295,7 +295,7 @@ export default function ApplicationsPage() {
   return (
     <section className="page-stack applications-page">
       <PageHeader
-        eyebrow="Workflow"
+        eyebrow=""
         title="Воронка откликов"
         subtitle="Компактная доска по статусам, быстрые правки и связка с документами."
       />

@@ -146,15 +146,15 @@ export default function RecommendationsPage() {
   return (
     <section className="page-stack">
       <PageHeader
-        eyebrow="Ranking Workspace"
+        eyebrow=""
         title="Рекомендации"
         subtitle="Ключевой экран ранжирования: пересчёт, скоринг, вердикт и быстрый переход к деталям вакансии."
       />
 
       <SectionCard
         className="recommendations-hero"
-        title="Recompute & control"
-        subtitle="Обновите ranking на основе текущего профиля и лимита рекомендаций."
+        title=""
+        subtitle="Обновите рекомендации на основе текущего профиля и лимита рекомендаций."
         actions={(
           <div className="button-group">
             <button className="button" type="button" onClick={handleRecompute} disabled={Boolean(taskId)}>
@@ -167,9 +167,9 @@ export default function RecommendationsPage() {
         )}
       >
         <div className="recommendations-metrics">
-          <MetricTile label="Видимых рекомендаций" value={visibleRecommendations.length} hint="После фильтров weak/reject" />
-          <MetricTile label="Top final_score" value={formatScore(topScore)} tone="info" hint="Лучший элемент текущего ранжирования" />
-          <MetricTile label="Лимит" value={settings.recommendationsLimit} hint={`hideReject: ${settings.hideReject ? 'on' : 'off'}`} />
+          <MetricTile label="Видимых рекомендаций" value={visibleRecommendations.length} hint="После фильтров слабых/отклоненных" />
+          <MetricTile label="Лучший реузльтат" value={formatScore(topScore)} tone="info" hint="Лучший элемент текущего ранжирования" />
+          <MetricTile label="Лимит" value={settings.recommendationsLimit} hint={`Скрывать отклоненные: ${settings.hideReject ? 'вкл' : 'выкл'}`} />
         </div>
         <label className="vacancy-filters__toggle">
           <input
@@ -177,7 +177,7 @@ export default function RecommendationsPage() {
             checked={hideWeak}
             onChange={(event) => setHideWeak(event.target.checked)}
           />
-          <span>Скрывать weak verdict</span>
+          <span>Скрывать слабые совпадения</span>
         </label>
         {taskId ? (
           <p className="info-banner">Задача {taskId}: {taskState}</p>
@@ -188,7 +188,7 @@ export default function RecommendationsPage() {
 
       {taskError ? <ErrorBanner message={taskError} /> : null}
 
-      <SectionCard title="Ranked list" subtitle="Сначала самые сильные кандидаты на отклик.">
+      <SectionCard title="Рейтинговый список" subtitle="Сначала самые сильные кандидаты на отклик.">
         {loading ? <Loading message="Загружаем рекомендации..." /> : null}
         {!loading && error ? <ErrorBanner message={error} /> : null}
 
@@ -201,16 +201,16 @@ export default function RecommendationsPage() {
                   <div className="recommendation-row__main">
                     <p className="recommendation-row__title">{getSafeText(item.title, 'Название вакансии не указано')}</p>
                     <p className="recommendation-row__meta">{getSafeText(item.company_name ?? item.company, 'Компания не указана')} · {getSafeText(item.location, 'Локация не указана')}</p>
-                    <p className="recommendation-row__dates">updated {formatDateTime(item.updated_at) ?? '—'} · created {formatDateTime(item.created_at) ?? '—'}</p>
+                    {/* <p className="recommendation-row__dates">updated {formatDateTime(item.updated_at) ?? '—'} · created {formatDateTime(item.created_at) ?? '—'}</p> */}
                   </div>
                   <div className="recommendation-row__scorebox">
                     <p className="recommendation-row__score">{formatScore(item.final_score)}</p>
-                    <p className="recommendation-row__score-label">final_score</p>
+                    <p className="recommendation-row__score-label">Процент совпадения</p>
                     <VerdictBadge verdict={item.verdict} />
                   </div>
                   <div className="recommendation-row__actions">
-                    <Link className="recommendation-row__link" to={`/vacancies/${item.id}`}>Открыть details →</Link>
-                    <p className="recommendation-row__next">Next: tailoring + draft docs</p>
+                    <Link className="recommendation-row__link" to={`/vacancies/${item.id}`}>Перейти →</Link>
+                    <p className="recommendation-row__next">Далее: сопоставление и создание резюме</p>
                   </div>
                 </article>
               ))}
