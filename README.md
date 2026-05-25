@@ -2,6 +2,19 @@
 
 ## Verification
 
+## Demo data seed
+
+Для воспроизводимого сценария защиты без реальной HH/LLM авторизации:
+
+```bash
+docker compose -f infra/docker-compose.yml exec api python scripts/seed_demo_data.py
+```
+
+Демо-логин: `demo@example.com`.
+
+Пароль задается через `DEMO_USER_PASSWORD` в `.env` (если переменная не задана, используется `demo12345`).
+
+
 ## Testing
 
 Минимальный backend smoke/integration suite и инструкции запуска: `TESTING.md`.

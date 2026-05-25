@@ -121,3 +121,28 @@ npm run dev
 - без employer-specific/privacy matrix;
 - apply automation пока не включён;
 - по умолчанию новый HH resume может быть виден работодателям, поэтому hide-from-all рекомендован сразу после создания targeted-резюме.
+
+
+## Demo defense flow
+
+1. Запустить docker compose:
+   - `docker compose -f infra/docker-compose.yml up -d db redis api worker beat frontend`
+2. Применить миграции:
+   - `docker compose -f infra/docker-compose.yml exec api alembic upgrade head`
+3. Выполнить seed:
+   - `docker compose -f infra/docker-compose.yml exec api python scripts/seed_demo_data.py`
+4. Открыть frontend (`http://127.0.0.1:5173`).
+5. Войти под demo user:
+   - email: `demo@example.com`
+   - пароль: `demo12345` (или значение `DEMO_USER_PASSWORD` из `.env`).
+6. Открыть **Settings**.
+7. Нажать **«Авторизоваться через HH»**.
+8. Показать блок **«Нет резюме в HH?»**.
+9. Открыть **Vacancies**.
+10. Открыть **Recommendations**.
+11. Открыть карточку вакансии.
+12. Показать мэтчинг.
+13. Показать сгенерированные документы.
+14. Создать отклик.
+15. Открыть **Applications**.
+16. Показать воронку и историю статусов.
