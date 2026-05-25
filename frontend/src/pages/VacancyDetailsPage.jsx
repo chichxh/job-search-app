@@ -369,61 +369,23 @@ export default function VacancyDetailsPage() {
         return;
       }
 
-      setHhBrowserStatus(browserStatusResponse);
-      setHhManagedResumes(managedResumesResponse);
-      setHhApplyRuns(applyRunsResponse);
+      setHhBrowserStatus(browserStatusResponse ?? null);
+      setHhManagedResumes(toList(managedResumesResponse));
+      setHhApplyRuns(toList(applyRunsResponse));
     } catch (requestError) {
       if (!isMountedRef.current) {
         return;
       }
       setHhApplyError(getUserFacingError(requestError, 'Не удалось загрузить HH apply контекст.'));
+      setHhBrowserStatus(null);
+      setHhManagedResumes([]);
+      setHhApplyRuns([]);
     } finally {
       if (isMountedRef.current) {
         setHhApplyLoading(false);
       }
     }
   }, []);
-
-  const handleRunHhApply = useCallback(async () => {
-    if (!vacancyId || !selectedHhManagedResumeId) {
-      return;
-    }
-
-    setHhApplyError('');
-    setHhApplySuccess('');
-    setHhApplyOutcome(null);
-    setHhApplyBusy(true);
-    try {
-      const response = await createHhApplyRun({
-        vacancy_id: Number(vacancyId),
-        hh_resume_managed_id: Number(selectedHhManagedResumeId),
-        cover_letter_version_id: selectedCoverLetterId ? Number(selectedCoverLetterId) : null,
-      });
-      const run = response?.hh_apply_run ?? response;
-      setHhApplyRuns((current) => [run, ...current.filter((item) => item.id !== run.id)]);
-      setHhApplyOutcome({
-        run,
-        selectedManagedResume: selectedManagedResume ?? null,
-        selectedCoverLetter: selectedCoverLetter ?? null,
-      });
-
-      const safeResultMessage = getSafeText(run?.result_message, 'Отклик обработан.');
-      const applyVisibilityReminder = 'HH может автоматически показать резюме работодателю, которому отправлен отклик.';
-      if (run?.result_type === 'already_applied') {
-        setHhApplySuccess(`На HH уже есть отклик. ${safeResultMessage} ${applyVisibilityReminder}`);
-      } else if (run?.status === 'submitted') {
-        setHhApplySuccess(`Отклик отправлен через HH. ${safeResultMessage} ${applyVisibilityReminder}`);
-      } else if (run?.status === 'retryable_failed') {
-        setHhApplySuccess(`Отклик не завершён: ошибку можно исправить и повторить. ${safeResultMessage}`);
-      } else {
-        setHhApplySuccess(`Запуск завершён со статусом ${run?.status}. ${safeResultMessage}`);
-      }
-    } catch (requestError) {
-      setHhApplyError(getUserFacingError(requestError, 'Не удалось отправить отклик через HH.'));
-    } finally {
-      setHhApplyBusy(false);
-    }
-  }, [selectedCoverLetter, selectedCoverLetterId, selectedHhManagedResumeId, selectedManagedResume, vacancyId]);
 
   const handleTrackApplication = useCallback(async () => {
     if (!vacancyId) {
@@ -641,6 +603,47 @@ export default function VacancyDetailsPage() {
   const latestRunCoverLetter = latestApplyRunForVacancy
     ? coverLetterDocuments.find((item) => item.id === latestApplyRunForVacancy.source_cover_letter_version_id) ?? null
     : null;
+
+  const handleRunHhApply = useCallback(async () => {
+    if (!vacancyId || !selectedHhManagedResumeId) {
+      return;
+    }
+
+    setHhApplyError('');
+    setHhApplySuccess('');
+    setHhApplyOutcome(null);
+    setHhApplyBusy(true);
+    try {
+      const response = await createHhApplyRun({
+        vacancy_id: Number(vacancyId),
+        hh_resume_managed_id: Number(selectedHhManagedResumeId),
+        cover_letter_version_id: selectedCoverLetterId ? Number(selectedCoverLetterId) : null,
+      });
+      const run = response?.hh_apply_run ?? response;
+      setHhApplyRuns((current) => [run, ...current.filter((item) => item.id !== run.id)]);
+      setHhApplyOutcome({
+        run,
+        selectedManagedResume: selectedManagedResume ?? null,
+        selectedCoverLetter: selectedCoverLetter ?? null,
+      });
+
+      const safeResultMessage = getSafeText(run?.result_message, 'Отклик обработан.');
+      const applyVisibilityReminder = 'HH может автоматически показать резюме работодателю, которому отправлен отклик.';
+      if (run?.result_type === 'already_applied') {
+        setHhApplySuccess(`На HH уже есть отклик. ${safeResultMessage} ${applyVisibilityReminder}`);
+      } else if (run?.status === 'submitted') {
+        setHhApplySuccess(`Отклик отправлен через HH. ${safeResultMessage} ${applyVisibilityReminder}`);
+      } else if (run?.status === 'retryable_failed') {
+        setHhApplySuccess(`Отклик не завершён: ошибку можно исправить и повторить. ${safeResultMessage}`);
+      } else {
+        setHhApplySuccess(`Запуск завершён со статусом ${run?.status}. ${safeResultMessage}`);
+      }
+    } catch (requestError) {
+      setHhApplyError(getUserFacingError(requestError, 'Не удалось отправить отклик через HH.'));
+    } finally {
+      setHhApplyBusy(false);
+    }
+  }, [selectedCoverLetter, selectedCoverLetterId, selectedHhManagedResumeId, selectedManagedResume, vacancyId]);
 
   useEffect(() => {
     if (selectedHhManagedResumeId && managedResumesEligible.some((item) => String(item.id) === selectedHhManagedResumeId)) {
