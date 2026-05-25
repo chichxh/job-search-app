@@ -376,7 +376,7 @@ export default function ApplicationsPage() {
 
                   return (
                     <div className="applications-card" key={application.id}>
-                      <p className="applications-card__title"><strong>{vacancy?.title ?? `Вакансия #${application.vacancy_id}`}</strong></p>
+                      <p className="applications-card__title"><strong>{vacancy?.title ?? 'Вакансия'}</strong></p>
                       <p className="applications-card__company">{vacancy?.company_name || 'Неизвестная компания'}</p>
                       {application.last_hh_apply_run_id ? (
                         <div className="applications-card__source-row">
@@ -395,8 +395,8 @@ export default function ApplicationsPage() {
                       <div className="applications-card__docs">
                         <p>Resume: {resume?.title || 'Не привязано'} {resume?.status === 'approved' ? <span className="doc-state-badge doc-state-badge--approved">approved</span> : null}</p>
                         <p>Cover letter: {cover?.title || 'Не привязано'} {cover?.status === 'approved' ? <span className="doc-state-badge doc-state-badge--approved">approved</span> : null}</p>
-                        {application.last_hh_apply_run_id ? <p>HH apply run: #{application.last_hh_apply_run_id}</p> : null}
-                        {application.hh_managed_resume_id ? <p>HH resume id: #{application.hh_managed_resume_id}</p> : null}
+                        {application.last_hh_apply_run_id ? <p>Есть запуск отклика через HH</p> : null}
+                        {application.hh_managed_resume_id ? <p>Использовано резюме HH</p> : null}
                         {application.last_external_apply_at ? <p>HH applied at: {formatDateTime(application.last_external_apply_at) ?? '—'}</p> : null}
                       </div>
 
@@ -424,7 +424,7 @@ export default function ApplicationsPage() {
                             <li key={item.id}>
                               <span>{formatDateTime(item.created_at) ?? '—'}</span>
                               <span>{getStatusMeta(item.from_status || 'saved').label} → {getStatusMeta(item.to_status).label}</span>
-                              <span>{item.note || 'без заметки'}{item.hh_apply_run_id ? ` · HH apply run #${item.hh_apply_run_id}` : ''}</span>
+                              <span>{item.note || 'без заметки'}{item.hh_apply_run_id ? ' · запуск через HH' : ''}</span>
                             </li>
                           ))}
                         </ul>
@@ -440,7 +440,7 @@ export default function ApplicationsPage() {
 
       {selectedApplicationId ? (
         <article className="vacancy-details applications-detail-panel">
-          <h2 className="vacancy-details__section-title">Детали отклика #{selectedApplicationId}</h2>
+          <h2 className="vacancy-details__section-title">Детали отклика</h2>
           {detailsLoading ? <Loading message="Загружаем детали..." /> : null}
           {selectedApplication ? (
             <>
@@ -469,7 +469,7 @@ export default function ApplicationsPage() {
                       .filter((item) => item.vacancy_id == null || item.vacancy_id === selectedApplication.vacancy_id)
                       .map((item) => (
                         <option key={item.id} value={item.id}>
-                          {(item.title || `Резюме #${item.id}`)}{item.status === 'approved' ? ' • approved' : ''}
+                          {(item.title || 'Резюме')}{item.status === 'approved' ? ' • approved' : ''}
                         </option>
                       ))}
                   </select>
@@ -482,7 +482,7 @@ export default function ApplicationsPage() {
                       .filter((item) => item.vacancy_id == null || item.vacancy_id === selectedApplication.vacancy_id)
                       .map((item) => (
                         <option key={item.id} value={item.id}>
-                          {(item.title || `Сопроводительное письмо #${item.id}`)}{item.status === 'approved' ? ' • approved' : ''}
+                          {(item.title || 'Сопроводительное письмо')}{item.status === 'approved' ? ' • approved' : ''}
                         </option>
                       ))}
                   </select>
@@ -492,17 +492,17 @@ export default function ApplicationsPage() {
 
               <h3 className="vacancy-details__section-title">Связанные документы</h3>
               <ul>
-                <li>Resume: {selectedResume ? <>{selectedResume.title || `Резюме #${selectedResume.id}`} ({selectedResume.status}) · <Link to="/settings">открыть в настройках</Link></> : 'Пока не прикреплено'}</li>
-                <li>Cover letter: {selectedCover ? <>{selectedCover.title || `Сопроводительное письмо #${selectedCover.id}`} ({selectedCover.status}) · <Link to="/settings">открыть в настройках</Link></> : 'Пока не прикреплено'}</li>
+                <li>Resume: {selectedResume ? <>{selectedResume.title || 'Резюме'} ({selectedResume.status}) · <Link to="/settings">открыть в настройках</Link></> : 'Пока не прикреплено'}</li>
+                <li>Cover letter: {selectedCover ? <>{selectedCover.title || 'Сопроводительное письмо'} ({selectedCover.status}) · <Link to="/settings">открыть в настройках</Link></> : 'Пока не прикреплено'}</li>
               </ul>
 
               {selectedApplication.last_hh_apply_run_id ? (
                 <>
                   <h3 className="vacancy-details__section-title">HH automation linkage</h3>
                   <ul>
-                    <li>Источник: HH apply automation (run #{selectedApplication.last_hh_apply_run_id})</li>
+                    <li>Источник: автоматизация HH</li>
                     <li>External apply status: {getExternalApplyStatusLabel(selectedApplication.external_apply_status)}</li>
-                    <li>HH managed resume id: {selectedApplication.hh_managed_resume_id ? `#${selectedApplication.hh_managed_resume_id}` : 'не зафиксирован'}</li>
+                    <li>Резюме HH: {selectedApplication.hh_managed_resume_id ? 'использовано' : 'не зафиксировано'}</li>
                     <li>Последний external apply: {formatDateTime(selectedApplication.last_external_apply_at) ?? '—'}</li>
                   </ul>
                 </>
@@ -514,7 +514,7 @@ export default function ApplicationsPage() {
                   <li key={item.id}>
                     <span>{formatDateTime(item.created_at) ?? '—'}</span>
                     <span>{getStatusMeta(item.from_status || 'saved').label} → {getStatusMeta(item.to_status).label}</span>
-                    <span>{item.note || 'без заметки'}{item.hh_apply_run_id ? ` · HH apply run #${item.hh_apply_run_id}` : ''}</span>
+                    <span>{item.note || 'без заметки'}{item.hh_apply_run_id ? ' · запуск через HH' : ''}</span>
                   </li>
                 ))}
               </ul>

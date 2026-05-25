@@ -182,13 +182,13 @@ export default function VacanciesPage() {
             onClick={handleStartImport}
             disabled={isImporting}
           >
-            {isImporting ? 'Идёт импорт...' : 'Выгрузить вакансии из HH'}
+            {isImporting ? 'Идёт импорт...' : 'Загрузить демо-вакансии'}
           </button>
         )}
       >
         <div className="inline-status-row">
           <StatusPill tone={isImporting ? 'info' : importSuccess ? 'success' : 'neutral'}>
-            {isImporting ? `Задача ${importTaskId || '—'} · ${importState}` : importSuccess || 'Готово к запуску импорта'}
+            {isImporting ? `Импорт выполняется · ${importState}` : importSuccess || 'Готово к запуску импорта'}
           </StatusPill>
           <p className="flow-hint">После импорта перейдите в <Link className="vacancy-details__link" to="/recommendations">Рекомендации</Link> и пересчитайте ранжирование.</p>
         </div>
