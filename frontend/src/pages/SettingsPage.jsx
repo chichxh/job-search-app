@@ -17,6 +17,19 @@ import StatusPill from '../components/ui/StatusPill.jsx';
 
 const SUPPORTED_FILE_EXTENSIONS = ['txt', 'pdf', 'docx'];
 
+function normalizeResumeImportError(error) {
+  const rawMessage = (error?.message || '').trim();
+  const message = rawMessage.toLowerCase();
+
+  if (!rawMessage) return 'Не удалось обработать резюме. Попробуйте снова.';
+  if (message.includes('too short') || message.includes('nothing useful')) return 'Текст резюме слишком короткий или не содержит полезных данных.';
+  if (message.includes('unsupported') || message.includes('format')) return 'Неподдерживаемый формат файла. Загрузите .txt, .pdf или .docx.';
+  if (message.includes('no extractable text') || message.includes('empty') || message.includes('cannot extract')) return 'Не удалось извлечь текст из файла. Попробуйте другой файл или вставьте текст вручную.';
+  if (message.includes('failed') || message.includes('error') || message.includes('exception')) return 'Ошибка backend при обработке резюме. Попробуйте еще раз.';
+  return rawMessage;
+}
+
+
 export default function SettingsPage() {
   const { profileId } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -112,6 +125,17 @@ export default function SettingsPage() {
     setResumeDraft(null);
 
     try {
+      const hasText = Boolean(resumeText.trim());
+      const hasFile = Boolean(resumeFile);
+
+      if (hasText && hasFile) {
+        throw new Error('Выберите только один способ: текст или файл');
+      }
+
+      if (!hasText && !hasFile) {
+        throw new Error('Добавьте текст резюме или загрузите файл');
+      }
+
       let textPayload = resumeText.trim();
       if (resumeFile) {
         const extension = resumeFile.name.includes('.') ? resumeFile.name.split('.').pop().toLowerCase() : '';
@@ -123,13 +147,13 @@ export default function SettingsPage() {
       }
 
       if (!textPayload) {
-        throw new Error('Добавьте текст резюме или загрузите файл.');
+        throw new Error('Не удалось извлечь текст из файла. Попробуйте другой файл или вставьте текст вручную.');
       }
 
       const parseResult = await parseResumeImportText(profileId, textPayload);
       setResumeDraft(parseResult?.draft ?? null);
     } catch (error) {
-      setResumeError(error?.message || 'Не удалось обработать резюме. Проверьте данные и попробуйте снова.');
+      setResumeError(normalizeResumeImportError(error));
     } finally {
       setResumeBusy(false);
     }
@@ -150,8 +174,8 @@ export default function SettingsPage() {
       setApplySuccess('Профиль обновлен');
       const profile = await getProfile(profileId);
       setHhImportedProfile(profile ?? null);
-    } catch {
-      setResumeError('Не удалось применить данные к профилю. Попробуйте еще раз.');
+    } catch (error) {
+      setResumeError(normalizeResumeImportError(error));
     } finally {
       setResumeBusy(false);
     }
@@ -213,12 +237,12 @@ export default function SettingsPage() {
           {applySuccess ? <p className="settings-demo-success">{applySuccess}</p> : null}
 
           <label className="settings-demo-field">
-            <span>Текст резюме</span>
+            <span>Вставьте текст резюме</span>
             <textarea rows={8} value={resumeText} onChange={(event) => setResumeText(event.target.value)} placeholder="Вставьте резюме в свободной форме" />
           </label>
 
           <label className="settings-demo-field">
-            <span>Файл резюме (txt, pdf, docx)</span>
+            <span>Загрузить файл резюме (.txt, .pdf, .docx)</span>
             <input type="file" accept=".txt,.pdf,.docx" onChange={(event) => setResumeFile(event.target.files?.[0] ?? null)} />
           </label>
 
@@ -233,10 +257,11 @@ export default function SettingsPage() {
               <h4>Распознанные данные</h4>
               <ul>
                 <li><strong>ФИО:</strong> {resumeDraft.full_name || '—'}</li>
-                <li><strong>Должность:</strong> {resumeDraft.professional_title || '—'}</li>
+                <li><strong>Должность:</strong> {resumeDraft.title || '—'}</li>
                 <li><strong>Навыки:</strong> {Array.isArray(resumeDraft.skills) ? resumeDraft.skills.map((item) => item.name_raw || item.name).filter(Boolean).join(', ') || '—' : '—'}</li>
                 <li><strong>Опыт:</strong> {Array.isArray(resumeDraft.experiences) ? `${resumeDraft.experiences.length} записей` : '—'}</li>
-                <li><strong>Образование:</strong> {Array.isArray(resumeDraft.education) && resumeDraft.education.length ? `${resumeDraft.education.length} записей` : 'не указано'}</li>
+                <li><strong>Образование:</strong> {Array.isArray(resumeDraft.education) && resumeDraft.education.length ? `${resumeDraft.education.length} записей` : 'не распознано'}</li>
+                <li><strong>Краткое summary:</strong> {resumeDraft.summary_about || '—'}</li>
               </ul>
 
               <button type="button" className="button button-secondary" onClick={handleApplyProfile} disabled={resumeBusy}>
